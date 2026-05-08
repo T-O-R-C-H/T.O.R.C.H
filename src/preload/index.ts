@@ -1,0 +1,47 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import { electronAPI } from '@electron-toolkit/preload'
+
+// TORCH API exposed to renderer
+const torchAPI = {
+  // Window controls
+  minimizeWindow: (): void => ipcRenderer.send('window:minimize'),
+  maximizeWindow: (): void => ipcRenderer.send('window:maximize'),
+  closeWindow: (): void => ipcRenderer.send('window:close'),
+
+  // Overlay controls
+  showOverlay: (): void => ipcRenderer.send('overlay:show'),
+  hideOverlay: (): void => ipcRenderer.send('overlay:hide'),
+
+  // External links
+  openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
+
+  // Event listeners
+  onOverlayActivate: (callback: () => void): void => {
+    ipcRenderer.on('overlay:activate', callback)
+  },
+  onScreenWatchToggle: (callback: (_e: unknown, enabled: boolean) => void): void => {
+    ipcRenderer.on('screenwatch:toggle', callback)
+  },
+
+  // Remove listeners
+  removeOverlayActivate: (): void => {
+    ipcRenderer.removeAllListeners('overlay:activate')
+  },
+  removeScreenWatchToggle: (): void => {
+    ipcRenderer.removeAllListeners('screenwatch:toggle')
+  }
+}
+
+if (process.contextIsolated) {
+  try {
+    contextBridge.exposeInMainWorld('electron', electronAPI)
+    contextBridge.exposeInMainWorld('torchAPI', torchAPI)
+  } catch (error) {
+    console.error(error)
+  }
+} else {
+  // @ts-ignore
+  window.electron = electronAPI
+  // @ts-ignore
+  window.torchAPI = torchAPI
+}

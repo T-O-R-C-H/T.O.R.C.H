@@ -1,0 +1,177 @@
+import { create } from 'zustand'
+
+// ─── TYPES ───
+
+export type AgentStatus = 'idle' | 'listening' | 'processing' | 'executing' | 'speaking' | 'awaiting_approval'
+export type InputMode = 'type' | 'voice' | 'heytorch'
+export type StepStatus = 'pending' | 'active' | 'done' | 'failed' | 'hitl_required'
+
+export interface Step {
+  id: string
+  label: string
+  tool: string
+  args: Record<string, unknown>
+  status: StepStatus
+  result?: string
+  error?: string
+  requiresApproval: boolean
+}
+
+export interface Message {
+  id: string
+  role: 'user' | 'torch' | 'system'
+  content: string
+  timestamp: number
+  steps?: Step[]
+  isTyping?: boolean
+}
+
+export interface Metrics {
+  tasksCompleted: number
+  tasksDelta: number
+  timeSaved: number
+  timeDelta: number
+  actionsExecuted: number
+  actionsDelta: number
+  successRate: number
+  successDelta: number
+}
+
+export interface TerminalLine {
+  id: string
+  timestamp: string
+  content: string
+  type: 'info' | 'success' | 'error' | 'warning' | 'hitl'
+}
+
+export interface TorchState {
+  // Agent
+  agentStatus: AgentStatus
+  setAgentStatus: (status: AgentStatus) => void
+
+  // Input
+  inputMode: InputMode
+  setInputMode: (mode: InputMode) => void
+
+  // Messages
+  messages: Message[]
+  addMessage: (msg: Message) => void
+  updateMessage: (id: string, updates: Partial<Message>) => void
+  updateStep: (messageId: string, stepId: string, updates: Partial<Step>) => void
+  clearMessages: () => void
+
+  // Metrics
+  metrics: Metrics
+  setMetrics: (metrics: Partial<Metrics>) => void
+
+  // Terminal
+  terminalLines: TerminalLine[]
+  addTerminalLine: (line: TerminalLine) => void
+  clearTerminal: () => void
+
+  // Overlay
+  overlayVisible: boolean
+  setOverlayVisible: (visible: boolean) => void
+  overlayStatus: 'idle' | 'listening' | 'processing' | 'speaking'
+  setOverlayStatus: (status: 'idle' | 'listening' | 'processing' | 'speaking') => void
+  overlayReply: string
+  setOverlayReply: (reply: string) => void
+
+  // Screen Watch
+  screenWatchEnabled: boolean
+  setScreenWatchEnabled: (enabled: boolean) => void
+
+  // WebSocket
+  wsConnected: boolean
+  setWsConnected: (connected: boolean) => void
+
+  // Onboarding
+  onboardingComplete: boolean
+  setOnboardingComplete: (complete: boolean) => void
+
+  // Current task count (for sidebar badge)
+  activeTaskCount: number
+  setActiveTaskCount: (count: number) => void
+}
+
+export const useTorchStore = create<TorchState>((set) => ({
+  // Agent
+  agentStatus: 'idle',
+  setAgentStatus: (status): void => set({ agentStatus: status }),
+
+  // Input
+  inputMode: 'type',
+  setInputMode: (mode): void => set({ inputMode: mode }),
+
+  // Messages
+  messages: [],
+  addMessage: (msg): void =>
+    set((state) => ({ messages: [...state.messages, msg] })),
+  updateMessage: (id, updates): void =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === id ? { ...m, ...updates } : m
+      )
+    })),
+  updateStep: (messageId, stepId, updates): void =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === messageId
+          ? {
+              ...m,
+              steps: m.steps?.map((s) =>
+                s.id === stepId ? { ...s, ...updates } : s
+              )
+            }
+          : m
+      )
+    })),
+  clearMessages: (): void => set({ messages: [] }),
+
+  // Metrics (demo data for v1)
+  metrics: {
+    tasksCompleted: 47,
+    tasksDelta: 12,
+    timeSaved: 3.2,
+    timeDelta: 0.8,
+    actionsExecuted: 156,
+    actionsDelta: 34,
+    successRate: 94,
+    successDelta: 2
+  },
+  setMetrics: (updates): void =>
+    set((state) => ({ metrics: { ...state.metrics, ...updates } })),
+
+  // Terminal
+  terminalLines: [],
+  addTerminalLine: (line): void =>
+    set((state) => ({ terminalLines: [...state.terminalLines, line] })),
+  clearTerminal: (): void => set({ terminalLines: [] }),
+
+  // Overlay
+  overlayVisible: false,
+  setOverlayVisible: (visible): void => set({ overlayVisible: visible }),
+  overlayStatus: 'idle',
+  setOverlayStatus: (status): void => set({ overlayStatus: status }),
+  overlayReply: '',
+  setOverlayReply: (reply): void => set({ overlayReply: reply }),
+
+  // Screen Watch
+  screenWatchEnabled: false,
+  setScreenWatchEnabled: (enabled): void => set({ screenWatchEnabled: enabled }),
+
+  // WebSocket
+  wsConnected: false,
+  setWsConnected: (connected): void => set({ wsConnected: connected }),
+
+  // Onboarding
+  onboardingComplete: localStorage.getItem('torch_onboarding_complete') !== 'false',
+  setOnboardingComplete: (complete): void => {
+    localStorage.setItem('torch_onboarding_complete', String(complete))
+    set({ onboardingComplete: complete })
+  },
+
+  // Tasks
+  activeTaskCount: 0,
+  setActiveTaskCount: (count): void => set({ activeTaskCount: count })
+}))
