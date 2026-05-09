@@ -1,10 +1,52 @@
 import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { spawn, ChildProcess } from 'child_process'
+import { existsSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+let backendProcess: ChildProcess | null = null
+
+function startBackend(): void {
+  // In dev, __dirname is in out/main, so go up 2 levels to project root, then into backend
+  // In production, backend is bundled next to the app
+  const projectRoot = is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
+  const backendDir = join(projectRoot, 'backend')
+  const venvPython = join(backendDir, 'venv', 'Scripts', 'python.exe')
+  const pythonExe = existsSync(venvPython) ? venvPython : 'python'
+
+  console.log('[TORCH] Starting backend from:', backendDir)
+  console.log('[TORCH] Using Python:', pythonExe)
+
+  backendProcess = spawn(pythonExe, ['main.py'], {
+    cwd: backendDir,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env }
+  })
+
+  backendProcess.stdout?.on('data', (data: Buffer) => {
+    console.log('[Backend]', data.toString().trim())
+  })
+
+  backendProcess.stderr?.on('data', (data: Buffer) => {
+    console.error('[Backend]', data.toString().trim())
+  })
+
+  backendProcess.on('exit', (code) => {
+    console.log(`[TORCH] Backend exited with code ${code}`)
+    backendProcess = null
+  })
+}
+
+function stopBackend(): void {
+  if (backendProcess) {
+    console.log('[TORCH] Stopping backend...')
+    backendProcess.kill()
+    backendProcess = null
+  }
+}
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -174,6 +216,7 @@ app.whenReady().then(() => {
   createMainWindow()
   createOverlayWindow()
   createTray()
+  startBackend()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -184,6 +227,10 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   // Keep running in tray
+})
+
+app.on('before-quit', () => {
+  stopBackend()
 })
 
 // Prevent multiple instances

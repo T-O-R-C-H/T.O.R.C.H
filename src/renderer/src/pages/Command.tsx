@@ -3,17 +3,19 @@ import { CommandInput } from '../components/input/CommandInput'
 import { MetricsBar } from '../components/layout/MetricsBar'
 import { useTorchStore } from '../store/torchStore'
 import { useMemoryStore } from '../store/memoryStore'
-import { Sparkles, X } from 'lucide-react'
+import { useWebSocket } from '../hooks/useWebSocket'
+import { Sparkles, X, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
-  const setAgentStatus = useTorchStore((s) => s.setAgentStatus)
+  const wsConnected = useTorchStore((s) => s.wsConnected)
   const predictions = useMemoryStore((s) => s.predictions)
   const [showPrediction, setShowPrediction] = useState(true)
+  const { sendCommand, sendApproval } = useWebSocket()
 
   const handleSend = (command: string): void => {
-    // Add user message
+    // Add user message immediately
     addMessage({
       id: crypto.randomUUID(),
       role: 'user',
@@ -21,36 +23,42 @@ export function Command(): JSX.Element {
       timestamp: Date.now()
     })
 
-    // Set processing status
-    setAgentStatus('processing')
-
-    // Simulate TORCH response (in production, this goes through WebSocket)
-    setTimeout(() => {
-      addMessage({
-        id: crypto.randomUUID(),
-        role: 'torch',
-        content: `Processing your request: "${command}"`,
-        timestamp: Date.now(),
-        steps: [
-          { id: '1', label: 'Analyzing command intent', tool: 'brain', args: {}, status: 'done', requiresApproval: false },
-          { id: '2', label: 'Planning execution steps', tool: 'planner', args: {}, status: 'active', requiresApproval: false },
-          { id: '3', label: 'Executing actions', tool: 'executor', args: {}, status: 'pending', requiresApproval: false }
-        ]
-      })
-      setAgentStatus('executing')
-    }, 800)
+    if (wsConnected) {
+      // Send through WebSocket to backend
+      sendCommand(command)
+    } else {
+      // Offline fallback — show simulated response
+      useTorchStore.getState().setAgentStatus('processing')
+      setTimeout(() => {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'torch',
+          content: `Backend not connected. Please start the Python server:\n\`cd backend && python main.py\`\n\nYour command: "${command}"`,
+          timestamp: Date.now(),
+          steps: [
+            { id: '1', label: 'Waiting for backend connection', tool: 'system', args: {}, status: 'failed', requiresApproval: false, error: 'Backend offline' }
+          ]
+        })
+        useTorchStore.getState().setAgentStatus('idle')
+      }, 500)
+    }
   }
 
   const handleApprove = (messageId: string, stepId: string): void => {
+    if (wsConnected) {
+      sendApproval(messageId, stepId, 'approve')
+    }
     useTorchStore.getState().updateStep(messageId, stepId, { status: 'done' })
   }
 
   const handleEdit = (messageId: string, stepId: string): void => {
-    // Open edit modal — for now just log
     console.log('Edit step:', messageId, stepId)
   }
 
   const handleCancel = (messageId: string, stepId: string): void => {
+    if (wsConnected) {
+      sendApproval(messageId, stepId, 'cancel')
+    }
     useTorchStore.getState().updateStep(messageId, stepId, { status: 'failed', error: 'Cancelled by user' })
     useTorchStore.getState().setAgentStatus('idle')
   }
@@ -58,6 +66,16 @@ export function Command(): JSX.Element {
   return (
     <div className="flex-1 flex flex-col h-full page-enter">
       <MetricsBar />
+
+      {/* Connection status banner */}
+      {!wsConnected && (
+        <div className="mx-6 mt-2 flex items-center gap-2 px-4 py-2 border border-[#eab308]/30 bg-[#eab308]/5">
+          <WifiOff size={12} className="text-[#eab308]" />
+          <span className="mono-xs text-[#eab308]">
+            Backend offline — run: cd backend && python main.py
+          </span>
+        </div>
+      )}
 
       {/* Prediction card */}
       {showPrediction && predictions.length > 0 && (
