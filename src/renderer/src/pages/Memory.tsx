@@ -1,4 +1,4 @@
-import { Brain, Command, User, FolderOpen, BarChart3 } from 'lucide-react'
+import { IconBrain as Brain, IconCommand as Command, IconUser as User, IconFolder as FolderOpen, IconChart as BarChart3 } from '../components/icons'
 import { useMemoryStore } from '../store/memoryStore'
 
 export function Memory(): JSX.Element {

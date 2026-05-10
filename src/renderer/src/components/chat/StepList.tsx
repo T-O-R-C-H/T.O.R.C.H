@@ -1,4 +1,4 @@
-import { Loader2, Check, AlertTriangle } from 'lucide-react'
+import { IconLoader, IconCheck, IconAlertTriangle, IconCircle } from '../icons'
 import type { Step } from '../../store/torchStore'
 
 interface StepListProps {
@@ -12,25 +12,26 @@ export function StepList({ steps }: StepListProps): JSX.Element {
         <div
           key={step.id}
           className={`flex items-start gap-2 py-1 ${
-            step.status === 'done' ? 'step-done' : 'step-active'
+            step.status === 'done' ? 'step-done' :
+            step.status === 'pending' ? 'step-pending' : 'step-active'
           }`}
         >
           {/* Status icon */}
           <div className="w-4 h-4 flex items-center justify-center flex-shrink-0 mt-0.5">
             {step.status === 'pending' && (
-              <div className="w-1.5 h-1.5 bg-[#333]" />
+              <span className="text-[#2a2a2a]"><IconCircle size={10} /></span>
             )}
             {step.status === 'active' && (
-              <Loader2 size={12} className="spinner text-white" />
+              <span className="text-white"><IconLoader size={12} /></span>
             )}
             {step.status === 'done' && (
-              <Check size={12} className="text-[#555]" />
+              <span className="text-[#444]"><IconCheck size={12} /></span>
             )}
             {step.status === 'failed' && (
-              <AlertTriangle size={12} className="text-[#ef4444]" />
+              <span className="text-[#555]"><IconAlertTriangle size={12} /></span>
             )}
             {step.status === 'hitl_required' && (
-              <AlertTriangle size={12} className="text-[#eab308]" />
+              <span className="text-[#555]"><IconAlertTriangle size={12} /></span>
             )}
           </div>
 
@@ -44,7 +45,7 @@ export function StepList({ steps }: StepListProps): JSX.Element {
               <div className="mono-xs text-[#333] mt-0.5 pl-6 truncate">{step.result}</div>
             )}
             {step.error && (
-              <div className="mono-xs text-[#ef4444] mt-0.5 pl-6">{step.error}</div>
+              <div className="mono-xs text-[#555] mt-0.5 pl-6">{step.error}</div>
             )}
           </div>
         </div>

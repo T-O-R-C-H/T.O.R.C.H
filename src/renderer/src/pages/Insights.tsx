@@ -1,4 +1,4 @@
-import { BarChart3, TrendingUp, Target, Clock } from 'lucide-react'
+import { IconChart as BarChart3, IconTrendingUp as TrendingUp, IconTarget as Target, IconClock as Clock } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { useEffect, useState, useRef } from 'react'
 

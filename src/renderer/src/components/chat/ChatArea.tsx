@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { Flame, Sparkles, Send, FileText, Mail, Globe } from 'lucide-react'
+import { IconFile, IconMail, IconGlobe, IconSend } from '../icons'
 import { Message } from './Message'
 import { useTorchStore } from '../../store/torchStore'
 
 const promptSuggestions = [
-  { icon: FileText, label: 'Find and summarize my latest report' },
-  { icon: Mail, label: 'Draft a reply to my last email' },
-  { icon: Globe, label: 'Search the web for latest AI news' },
-  { icon: Send, label: 'Post an update to social media' }
+  { icon: IconFile, label: 'Find and summarize my latest report' },
+  { icon: IconMail, label: 'Draft a reply to my last email' },
+  { icon: IconGlobe, label: 'Search the web for latest AI news' },
+  { icon: IconSend, label: 'Post an update to social media' }
 ]
 
 interface ChatAreaProps {
@@ -30,15 +30,16 @@ export function ChatArea({ onApprove, onEdit, onCancel }: ChatAreaProps): JSX.El
   if (messages.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-8">
-        {/* TORCH Logo */}
+        {/* TORCH Logo (spec: 32x32 viewBox) */}
         <div className="mb-6 opacity-20">
-          <svg width="48" height="64" viewBox="0 0 28 38" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="10" y="20" width="8" height="16" fill="#ffffff" opacity="0.9" />
-            <rect x="11" y="21" width="6" height="14" fill="#1c1c1c" />
-            <rect x="12" y="22" width="4" height="12" fill="#2a2a2a" />
-            <ellipse cx="14" cy="12" rx="10" ry="13" fill="#ffffff" className="torch-flame" opacity="0.95" />
-            <ellipse cx="14" cy="13" rx="6" ry="9" fill="#000000" />
-            <ellipse cx="14" cy="14" rx="3" ry="5" fill="#ffffff" opacity="0.95" />
+          <svg width="48" height="48" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="12" y="19" width="8" height="11" rx="0" fill="#ffffff" />
+            <line x1="12" y1="22" x2="20" y2="22" stroke="#000" strokeWidth="0.8" />
+            <line x1="12" y1="25" x2="20" y2="25" stroke="#000" strokeWidth="0.8" />
+            <ellipse cx="16" cy="12" rx="4.5" ry="7" fill="#ffffff" className="torch-flame" />
+            <ellipse cx="16" cy="11" rx="3" ry="5" fill="#000000" />
+            <ellipse cx="16" cy="10" rx="1.5" ry="3" fill="#ffffff" />
+            <path d="M16 4 L14.5 8 L16 7 L17.5 8 Z" fill="#ffffff" />
           </svg>
         </div>
 
@@ -49,24 +50,27 @@ export function ChatArea({ onApprove, onEdit, onCancel }: ChatAreaProps): JSX.El
 
         {/* Suggestion cards */}
         <div className="grid grid-cols-2 gap-2 w-full max-w-[500px]">
-          {promptSuggestions.map((s, i) => (
-            <button
-              key={i}
-              className="flex items-center gap-3 px-4 py-3 border border-[#1c1c1c] bg-[#060606] hover:border-[#2a2a2a] transition-colors duration-120 text-left group"
-            >
-              <s.icon size={14} className="text-[#333] group-hover:text-[#666] transition-colors" />
-              <span className="text-[11px] text-[#666] group-hover:text-[#aaa] transition-colors">
-                {s.label}
-              </span>
-            </button>
-          ))}
+          {promptSuggestions.map((s, i) => {
+            const Icon = s.icon
+            return (
+              <button
+                key={i}
+                className="flex items-center gap-3 px-4 py-3 border border-[#1c1c1c] bg-[#060606] hover:border-[#2a2a2a] transition-colors duration-120 text-left group"
+              >
+                <span className="text-[#333] group-hover:text-[#666] transition-colors"><Icon size={14} /></span>
+                <span className="text-[11px] text-[#666] group-hover:text-[#aaa] transition-colors">
+                  {s.label}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
     )
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
       {messages.map((msg) => (
         <Message
           key={msg.id}

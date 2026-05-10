@@ -1,7 +1,19 @@
-import { Flame, User } from 'lucide-react'
+import { IconFlame, IconUser } from '../icons'
 import { StepList } from './StepList'
 import { ApprovalCard } from './ApprovalCard'
 import type { Message as MessageType } from '../../store/torchStore'
+
+/* ─── TORCH MINI LOGO (for avatar) ─── */
+function TorchMini(): JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 32 32" fill="none">
+      <rect x="12" y="19" width="8" height="11" rx="0" fill="#000" />
+      <ellipse cx="16" cy="12" rx="4.5" ry="7" fill="#000" />
+      <ellipse cx="16" cy="11" rx="3" ry="5" fill="#fff" />
+      <ellipse cx="16" cy="10" rx="1.5" ry="3" fill="#000" />
+    </svg>
+  )
+}
 
 interface MessageProps {
   message: MessageType
@@ -20,13 +32,13 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
     <div className={`message-enter flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isSystem ? 'justify-center' : ''}`}>
       {/* Avatar */}
       {!isSystem && (
-        <div className={`w-7 h-7 flex items-center justify-center flex-shrink-0 border border-[#1c1c1c] ${
-          isUser ? 'bg-[#0d0d0d]' : 'bg-[#060606]'
+        <div className={`w-6 h-6 flex items-center justify-center flex-shrink-0 ${
+          isUser ? 'bg-[#000] border border-[#1c1c1c]' : 'bg-white'
         }`}>
           {isUser ? (
-            <User size={12} className="text-[#666]" />
+            <span className="text-[#666]"><IconUser size={10} /></span>
           ) : (
-            <Flame size={12} className="text-white" />
+            <TorchMini />
           )}
         </div>
       )}
@@ -41,13 +53,15 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
         {/* Message body */}
         <div className={`inline-block text-left ${
           isUser
-            ? 'bg-[#1c1c1c] px-4 py-2.5'
+            ? 'bg-white px-4 py-2.5'
             : isSystem
             ? 'text-center'
-            : 'border border-[#1c1c1c] px-4 py-2.5'
-        }`}>
+            : 'bg-[#0d0d0d] border border-[#1c1c1c] px-4 py-2.5'
+        }`} style={{
+          borderRadius: isUser ? '6px 0 6px 6px' : isSystem ? '0' : '0 6px 6px 6px'
+        }}>
           <p className={`text-[12px] leading-relaxed ${
-            isUser ? 'text-white' : isSystem ? 'text-[#444] mono-xs' : 'text-[#ccc]'
+            isUser ? 'text-black' : isSystem ? 'text-[#444] mono-xs' : 'text-[#aaa]'
           } ${message.isTyping ? 'typewriter-cursor' : ''}`}>
             {message.content}
           </p>

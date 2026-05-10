@@ -1,4 +1,4 @@
-import { FolderOpen, Search } from 'lucide-react'
+import { IconFolder as FolderOpen, IconSearch as Search } from '../../components/icons'
 import { useState } from 'react'
 
 export function Files(): JSX.Element {

@@ -1,4 +1,4 @@
-import { MessageSquare } from 'lucide-react'
+import { IconMessage as MessageSquare } from '../../components/icons'
 
 export function Messaging(): JSX.Element {
   return (

@@ -1,4 +1,4 @@
-import { Monitor, Eye, EyeOff } from 'lucide-react'
+import { IconMonitor as Monitor, IconEye as Eye, IconEyeOff as EyeOff } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { useMemoryStore } from '../store/memoryStore'
 

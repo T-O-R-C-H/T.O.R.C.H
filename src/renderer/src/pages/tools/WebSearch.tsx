@@ -1,4 +1,4 @@
-import { Globe, Search } from 'lucide-react'
+import { IconGlobe as Globe, IconSearch as Search } from '../../components/icons'
 import { useState } from 'react'
 
 export function WebSearch(): JSX.Element {

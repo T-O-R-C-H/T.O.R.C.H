@@ -1,4 +1,4 @@
-import { ListChecks, Check, Loader2, Circle } from 'lucide-react'
+import { IconList as ListChecks, IconCheck as Check, IconLoader as Loader2, IconCircle as Circle } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 
 export function Tasks(): JSX.Element {

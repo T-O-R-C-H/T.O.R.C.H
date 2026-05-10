@@ -1,4 +1,4 @@
-import { Globe2, Globe } from 'lucide-react'
+import { IconBrowser as Globe2, IconGlobe as Globe } from '../../components/icons'
 import { useState } from 'react'
 
 export function Browser(): JSX.Element {

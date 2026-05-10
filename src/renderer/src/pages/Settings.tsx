@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Key, Mail, Mic, Monitor, Palette, Power, Database, ExternalLink } from 'lucide-react'
+import { IconSettings as SettingsIcon, IconKey as Key, IconMail as Mail, IconMic as Mic, IconMonitor as Monitor, IconPalette as Palette, IconPower as Power, IconDatabase as Database, IconExternalLink as ExternalLink } from '../components/icons'
 
 interface SettingRowProps {
   label: string

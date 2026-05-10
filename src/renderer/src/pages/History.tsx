@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, X, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { IconCheck as Check, IconX as X, IconChevronDown as ChevronDown, IconChevronUp as ChevronUp, IconClock as Clock } from '../components/icons'
 import { useMemoryStore, type HistoryEntry } from '../store/memoryStore'
 
 const demoHistory: HistoryEntry[] = [

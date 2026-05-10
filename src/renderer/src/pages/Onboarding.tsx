@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Mic, ArrowRight, ArrowLeft, Check } from 'lucide-react'
+import { IconExternalLink as ExternalLink, IconMic as Mic, IconArrowRight as ArrowRight, IconArrowLeft as ArrowLeft, IconCheck as Check } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { TorchOrb } from '../components/overlay/TorchOrb'
 
