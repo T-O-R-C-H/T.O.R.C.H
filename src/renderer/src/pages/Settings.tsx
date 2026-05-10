@@ -32,6 +32,26 @@ export function Settings(): JSX.Element {
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
 
+  const handleSave = async (): Promise<void> => {
+    try {
+      await fetch('http://localhost:8000/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gemini_api_key: geminiKey,
+          gmail_address: gmailAddress,
+          gmail_app_password: gmailPassword,
+          wake_word_sensitivity: wakeWordSensitivity / 100,
+          screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
+          whisper_model_size: voiceModel,
+        })
+      })
+      alert('Settings saved')
+    } catch {
+      alert('Failed to save — is the backend running?')
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full page-enter overflow-y-auto">
       <div className="flex items-center gap-3 px-6 py-4 border-b border-[#1c1c1c] flex-shrink-0">
@@ -218,6 +238,12 @@ export function Settings(): JSX.Element {
             <button className="btn-secondary text-[10px]">Export history</button>
             <button className="btn-danger text-[10px]">Reset all habits</button>
           </div>
+        </div>
+
+        <div className="pt-4">
+          <button onClick={handleSave} className="btn-primary px-6 py-2">
+            Save settings
+          </button>
         </div>
       </div>
     </div>

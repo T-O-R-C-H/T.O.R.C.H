@@ -17,7 +17,30 @@ export function Onboarding(): JSX.Element {
 
   const currentIndex = steps.indexOf(currentStep)
 
-  const goNext = (): void => {
+  const goNext = async (): Promise<void> => {
+    // Save Gemini key to backend when leaving step 1
+    if (currentStep === 'gemini' && geminiKey) {
+      try {
+        await fetch('http://localhost:8000/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gemini_api_key: geminiKey })
+        })
+      } catch {}
+    }
+    // Save Gmail credentials when leaving step 2
+    if (currentStep === 'gmail' && gmailAddress) {
+      try {
+        await fetch('http://localhost:8000/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gmail_address: gmailAddress,
+            gmail_app_password: gmailPassword
+          })
+        })
+      } catch {}
+    }
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1])
     }

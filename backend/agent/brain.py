@@ -39,6 +39,9 @@ SYSTEM_PROMPT = """You are TORCH, a powerful AI agent that controls the user's c
 You can search files, send emails, browse the web, control the mouse and keyboard,
 take screenshots, analyze screen content, post on social media, and execute system commands.
 
+The user is currently running on a **Windows Operating System**. 
+When using the 'run_terminal' tool, you MUST use Windows CMD or PowerShell commands (e.g., use 'dir' instead of 'ls').
+
 When the user gives you a command, break it down into a sequence of tool calls.
 
 Available tools:
@@ -76,7 +79,7 @@ async def plan_command(user_command: str, context: Optional[List[Dict]] = None) 
         List of step dictionaries with tool, label, args, requires_approval
     """
     try:
-        import google.generativeai as genai
+        from google import genai
 
         if not settings.gemini_api_key:
             return [{
@@ -87,8 +90,7 @@ async def plan_command(user_command: str, context: Optional[List[Dict]] = None) 
                 "error": "Please add your Gemini API key in Settings"
             }]
 
-        genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel(settings.gemini_model)
+        client = genai.Client(api_key=settings.gemini_api_key)
 
         # Build tools description
         tools_desc = "\n".join(
@@ -99,18 +101,19 @@ async def plan_command(user_command: str, context: Optional[List[Dict]] = None) 
 
         system = SYSTEM_PROMPT.format(tools=tools_desc)
 
-        # Build message history
-        messages = []
+        # Build message contents
+        contents = system + "\n\nUser command: " + user_command
         if context:
-            for msg in context[-10:]:  # Last 10 messages for context
-                role = "user" if msg.get("role") == "user" else "model"
-                messages.append({"role": role, "parts": [msg.get("content", "")]})
+            ctx_text = "\n".join(
+                f"{'User' if m.get('role') == 'user' else 'TORCH'}: {m.get('content', '')}"
+                for m in context[-10:]
+            )
+            contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
-        messages.append({"role": "user", "parts": [user_command]})
-
-        response = model.generate_content(
-            [{"role": "user", "parts": [system]}, *messages],
-            generation_config={
+        response = client.models.generate_content(
+            model=settings.gemini_model,
+            contents=contents,
+            config={
                 "temperature": 0.1,
                 "max_output_tokens": 4096,
             },

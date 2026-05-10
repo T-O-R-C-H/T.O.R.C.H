@@ -5,7 +5,7 @@ import { useTorchStore } from '../store/torchStore'
 import { useMemoryStore } from '../store/memoryStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { Sparkles, X, Wifi, WifiOff } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
@@ -13,6 +13,13 @@ export function Command(): JSX.Element {
   const predictions = useMemoryStore((s) => s.predictions)
   const [showPrediction, setShowPrediction] = useState(true)
   const { sendCommand, sendApproval } = useWebSocket()
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/metrics')
+      .then((r) => r.json())
+      .then((data) => useTorchStore.getState().setMetrics(data))
+      .catch(() => {}) // silently fail if backend is offline
+  }, [wsConnected])
 
   const handleSend = (command: string): void => {
     // Add user message immediately
