@@ -1,8 +1,28 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
-import { ArrowUp, Mic } from 'lucide-react'
 import { ModeTabs } from './ModeTabs'
 import { WaveStrip } from './WaveStrip'
 import { useTorchStore } from '../../store/torchStore'
+
+/* ─── INLINE SVG ICONS ─── */
+function IconArrowUp(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </svg>
+  )
+}
+
+function IconMic(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  )
+}
 
 interface CommandInputProps {
   onSend: (command: string) => void
@@ -42,7 +62,7 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
       )}
 
       {/* Input area */}
-      <div className="px-4 py-3">
+      <div className="px-5 py-[11px]">
         {/* Mode tabs */}
         <div className="flex items-center justify-between mb-3">
           <ModeTabs />
@@ -53,41 +73,37 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
 
         {/* Input row */}
         {inputMode === 'type' && (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <input
-                ref={inputRef}
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask TORCH to do anything — find files, send emails, browse the web..."
-                className="w-full bg-transparent text-[12px] text-white border border-[#1c1c1c] px-4 py-2.5 pr-10 focus:border-[#2a2a2a] placeholder:text-[#2a2a2a]"
-                disabled={isProcessing}
-              />
-            </div>
+          <div className="flex items-center border border-[#1c1c1c]">
+            <input
+              ref={inputRef}
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask TORCH to do anything — find files, send emails, browse the web..."
+              className="flex-1 bg-[#000] text-[12px] text-[#aaa] border-0 px-4 py-2.5 placeholder:text-[#2a2a2a] focus:border-0"
+              disabled={isProcessing}
+            />
             <button
               onClick={() => useTorchStore.getState().setInputMode('voice')}
-              className="p-2.5 border border-[#1c1c1c] text-[#444] hover:text-white hover:border-[#2a2a2a] transition-colors duration-120"
+              className="w-10 h-10 flex items-center justify-center text-[#444] hover:text-white border-l border-[#1c1c1c] transition-colors duration-120"
             >
-              <Mic size={14} />
+              <IconMic />
             </button>
             <button
               onClick={handleSend}
               disabled={!text.trim() || isProcessing}
-              className="p-2.5 bg-white text-black border border-white hover:opacity-90 transition-opacity duration-120 disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-10 h-10 flex items-center justify-center bg-white text-black border-l border-[#1c1c1c] hover:opacity-90 transition-opacity duration-120 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <ArrowUp size={14} />
+              <IconArrowUp />
             </button>
           </div>
         )}
 
         {inputMode === 'voice' && (
           <div className="flex items-center justify-center gap-3">
-            <button
-              className="p-3 bg-white text-black border border-white"
-            >
-              <Mic size={16} />
+            <button className="p-3 bg-white text-black border border-white">
+              <IconMic />
             </button>
             <span className="mono-xs text-[#444]">Tap to stop</span>
           </div>
@@ -99,7 +115,7 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
               say "hey torch" to activate — listening in background
             </span>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-[#22c55e] animate-pulse" />
+              <div className="w-2 h-2 bg-white animate-pulse" />
               <span className="mono-xs text-[#333]">wake word detection active</span>
             </div>
           </div>
