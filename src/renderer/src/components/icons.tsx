@@ -21,7 +21,7 @@ import {
   RiHistoryLine,
   RiPieChartLine,
   RiStockLine,
-  RiTargetLine,
+  RiFocus2Line,
   RiMentalHealthLine,
   RiListCheck,
   RiKeyLine,
@@ -72,7 +72,7 @@ export const IconEyeOff = ({ size = 16, className }: IconProps) => <RiEyeOffLine
 export const IconClock = ({ size = 16, className }: IconProps) => <RiHistoryLine size={size} className={className} />
 export const IconChart = ({ size = 16, className }: IconProps) => <RiPieChartLine size={size} className={className} />
 export const IconTrendingUp = ({ size = 16, className }: IconProps) => <RiStockLine size={size} className={className} />
-export const IconTarget = ({ size = 16, className }: IconProps) => <RiTargetLine size={size} className={className} />
+export const IconTarget = ({ size = 16, className }: IconProps) => <RiFocus2Line size={size} className={className} />
 export const IconBrain = ({ size = 16, className }: IconProps) => <RiMentalHealthLine size={size} className={className} />
 export const IconList = ({ size = 16, className }: IconProps) => <RiListCheck size={size} className={className} />
 export const IconKey = ({ size = 16, className }: IconProps) => <RiKeyLine size={size} className={className} />
