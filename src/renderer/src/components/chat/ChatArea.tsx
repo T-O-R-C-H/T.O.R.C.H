@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { 
-  RiFileTextLine, 
-  RiMailLine, 
-  RiGlobalLine, 
-  RiBrowserLine, 
-  RiFolderLine, 
-  RiListCheck 
-} from 'react-icons/ri'
+  IconFile, 
+  IconMail, 
+  IconGlobe, 
+  IconBrowser, 
+  IconFolder, 
+  IconList 
+} from '../icons'
 import { Message } from './Message'
 import { useTorchStore } from '../../store/torchStore'
 import { TorchLogo } from '../ui/TorchLogo'
@@ -17,12 +17,12 @@ import { TorchLogo } from '../ui/TorchLogo'
    ═══════════════════════════════════════════════════════════════ */
 
 const promptSuggestions = [
-  { icon: RiFileTextLine, title: "Find and summarize my latest report", desc: "FILESYSTEM • SUMMARIZATION" },
-  { icon: RiMailLine, title: "Draft a reply to my last email", desc: "GMAIL • GENERATION" },
-  { icon: RiGlobalLine, title: "Search web for latest AI news", desc: "BROWSER • RESEARCH" },
-  { icon: RiBrowserLine, title: "Open browser and research competitors", desc: "AUTOMATION • ANALYSIS" },
-  { icon: RiFolderLine, title: "Analyse today's downloads folder", desc: "FILESYSTEM • CLEANUP" },
-  { icon: RiListCheck, title: "Prepare client delivery workflow", desc: "PLANNING • TASKS" }
+  { icon: IconFile, title: "Find and summarize my latest report", desc: "FILESYSTEM • SUMMARIZATION" },
+  { icon: IconMail, title: "Draft a reply to my last email", desc: "GMAIL • GENERATION" },
+  { icon: IconGlobe, title: "Search web for latest AI news", desc: "BROWSER • RESEARCH" },
+  { icon: IconBrowser, title: "Open browser and research competitors", desc: "AUTOMATION • ANALYSIS" },
+  { icon: IconFolder, title: "Analyse today's downloads folder", desc: "FILESYSTEM • CLEANUP" },
+  { icon: IconList, title: "Prepare client delivery workflow", desc: "PLANNING • TASKS" }
 ]
 
 interface ChatAreaProps {

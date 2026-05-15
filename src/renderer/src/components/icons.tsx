@@ -37,7 +37,14 @@ import {
   RiArrowUpSLine,
   RiCommandLine,
   RiWindowLine,
-  RiShareForwardLine
+  RiShareForwardLine,
+  RiCalendarLine,
+  RiInboxLine,
+  RiFileListLine,
+  RiPlayFill,
+  RiAddLine,
+  RiClipboardLine,
+  RiTerminalBoxLine
 } from 'react-icons/ri'
 
 /**
@@ -89,3 +96,10 @@ export const IconChevronUp = ({ size = 16, className }: IconProps) => <RiArrowUp
 export const IconCommand = ({ size = 16, className }: IconProps) => <RiCommandLine size={size} className={className} />
 export const IconBrowser = ({ size = 16, className }: IconProps) => <RiWindowLine size={size} className={className} />
 export const IconShare = ({ size = 16, className }: IconProps) => <RiShareForwardLine size={size} className={className} />
+export const IconCalendar = ({ size = 16, className }: IconProps) => <RiCalendarLine size={size} className={className} />
+export const IconInbox = ({ size = 16, className }: IconProps) => <RiInboxLine size={size} className={className} />
+export const IconFileList = ({ size = 16, className }: IconProps) => <RiFileListLine size={size} className={className} />
+export const IconPlay = ({ size = 16, className }: IconProps) => <RiPlayFill size={size} className={className} />
+export const IconAdd = ({ size = 16, className }: IconProps) => <RiAddLine size={size} className={className} />
+export const IconClipboard = ({ size = 16, className }: IconProps) => <RiClipboardLine size={size} className={className} />
+export const IconTerminal = ({ size = 16, className }: IconProps) => <RiTerminalBoxLine size={size} className={className} />

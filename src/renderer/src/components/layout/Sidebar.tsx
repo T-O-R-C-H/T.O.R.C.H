@@ -8,20 +8,20 @@ import { TorchLogo } from '../ui/TorchLogo'
    ═══════════════════════════════════════════════════════════════ */
 
 import { 
-  RiChat3Line, 
-  RiCalendarLine, 
-  RiHistoryLine, 
-  RiInboxLine, 
-  RiFolderLine, 
-  RiFileListLine, 
-  RiPlayFill, 
-  RiAddLine, 
-  RiClipboardLine, 
-  RiComputerLine, 
-  RiPieChartLine, 
-  RiTerminalBoxLine, 
-  RiSettings3Line 
-} from 'react-icons/ri'
+  IconMessage, 
+  IconCalendar, 
+  IconClock, 
+  IconInbox, 
+  IconFolder, 
+  IconFile, 
+  IconPlay, 
+  IconAdd, 
+  IconClipboard, 
+  IconMonitor, 
+  IconChart, 
+  IconTerminal, 
+  IconSettings 
+} from '../icons'
 
 /* ═══════════════════════════════════════════════════════════════
    TORCH SIDEBAR — v2 Redesign
@@ -30,18 +30,18 @@ import {
 
 /* ─── ICON MAP ─── */
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
-  chat: RiChat3Line,
-  today: RiCalendarLine,
-  history: RiHistoryLine,
-  inbox: RiInboxLine,
-  files: RiFolderLine,
-  followups: RiFileListLine,
-  shortcut: RiPlayFill,
-  plus: RiAddLine,
-  clipboard: RiClipboardLine,
-  monitor: RiComputerLine,
-  chart: RiPieChartLine,
-  terminal: RiTerminalBoxLine,
+  chat: IconMessage,
+  today: IconCalendar,
+  history: IconClock,
+  inbox: IconInbox,
+  files: IconFolder,
+  followups: IconFile,
+  shortcut: IconPlay,
+  plus: IconAdd,
+  clipboard: IconClipboard,
+  monitor: IconMonitor,
+  chart: IconChart,
+  terminal: IconTerminal,
 }
 
 interface NavItem {
@@ -214,7 +214,7 @@ export function Sidebar(): JSX.Element {
         flexShrink: 0,
       }}>
         <NavLink to="/terminal" className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}>
-          <RiTerminalBoxLine />
+          <IconTerminal />
           <span>Terminal</span>
         </NavLink>
         
@@ -263,7 +263,7 @@ export function Sidebar(): JSX.Element {
               el.style.color = '#444'
             }}
           >
-            <RiSettings3Line />
+            <IconSettings />
           </NavLink>
         </div>
       </div>
