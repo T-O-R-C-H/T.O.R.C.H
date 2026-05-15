@@ -7,7 +7,6 @@ export function Memory(): JSX.Element {
   const frequentContacts = useMemoryStore((s) => s.frequentContacts)
   const frequentFiles = useMemoryStore((s) => s.frequentFiles)
 
-  // Demo data
   const demoCommands = frequentCommands.length > 0 ? frequentCommands : [
     { command: 'Send email', count: 34 },
     { command: 'Find file', count: 28 },
@@ -37,85 +36,89 @@ export function Memory(): JSX.Element {
   const maxCount = Math.max(...demoCommands.map((c) => c.count))
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter overflow-y-auto">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-[#1c1c1c] flex-shrink-0">
-        <Brain size={14} className="text-[#666]" />
-        <span className="label">HABIT LEARNING</span>
+    <div className="flex-1 flex flex-col h-full page-enter">
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-4 border-b border-[#141414] flex-shrink-0">
+        <h1 className="t-page-title">Memory</h1>
+        <span className="t-mono-xs text-[#333] border border-[#181818] px-2.5 py-1">habit learning</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-px bg-[#0d0d0d] flex-1">
-        {/* Most used commands */}
-        <div className="bg-[#000] p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Command size={12} className="text-[#444]" />
-            <span className="label">FREQUENT COMMANDS</span>
-          </div>
-          <div className="space-y-3">
-            {demoCommands.map((cmd, i) => (
-              <div key={i}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] text-[#aaa]">{cmd.command}</span>
-                  <span className="mono-xs text-[#333]">{cmd.count}</span>
+      {/* Grid */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-2 gap-px bg-[#0e0e0e]">
+          {/* Frequent commands */}
+          <div className="bg-[#000] p-6">
+            <div className="flex items-center gap-2.5 mb-5">
+              <Command size={13} className="text-[#555]" />
+              <span className="t-label">FREQUENT COMMANDS</span>
+            </div>
+            <div className="space-y-4">
+              {demoCommands.map((cmd, i) => (
+                <div key={i}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[13px] text-[#bbb]">{cmd.command}</span>
+                    <span className="t-mono-xs text-[#444]">{cmd.count}</span>
+                  </div>
+                  <div className="w-full h-[3px] bg-[#0e0e0e]">
+                    <div
+                      className="h-full bg-white transition-all duration-700"
+                      style={{ width: `${(cmd.count / maxCount) * 100}%`, opacity: 0.15 + (cmd.count / maxCount) * 0.85 }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full h-1 bg-[#0d0d0d]">
-                  <div
-                    className="h-full bg-white transition-all duration-500"
-                    style={{ width: `${(cmd.count / maxCount) * 100}%`, opacity: 0.3 + (cmd.count / maxCount) * 0.7 }}
-                  />
+              ))}
+            </div>
+          </div>
+
+          {/* Frequent contacts */}
+          <div className="bg-[#000] p-6">
+            <div className="flex items-center gap-2.5 mb-5">
+              <User size={13} className="text-[#555]" />
+              <span className="t-label">FREQUENT CONTACTS</span>
+            </div>
+            <div className="space-y-0">
+              {demoContacts.map((contact, i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
+                  <span className="text-[13px] text-[#bbb] font-mono">{contact.name}</span>
+                  <span className="t-mono-xs text-[#444]">{contact.count} interactions</span>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Frequent contacts */}
-        <div className="bg-[#000] p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <User size={12} className="text-[#444]" />
-            <span className="label">FREQUENT CONTACTS</span>
-          </div>
-          <div className="space-y-2">
-            {demoContacts.map((contact, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-[#0d0d0d]">
-                <span className="text-[11px] text-[#aaa] font-mono">{contact.name}</span>
-                <span className="mono-xs text-[#333]">{contact.count} interactions</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Frequent files */}
-        <div className="bg-[#000] p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <FolderOpen size={12} className="text-[#444]" />
-            <span className="label">FREQUENT FILES</span>
-          </div>
-          <div className="space-y-2">
-            {demoFiles.map((file, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-[#0d0d0d]">
-                <span className="text-[11px] text-[#666] font-mono truncate max-w-[70%]">{file.path}</span>
-                <span className="mono-xs text-[#333]">{file.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Daily patterns */}
-        <div className="bg-[#000] p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <BarChart3 size={12} className="text-[#444]" />
-            <span className="label">DAILY PATTERNS</span>
-          </div>
-          <div className="space-y-2">
-            {demoHabits.map((habit) => (
-              <div key={habit.id} className="flex items-center justify-between py-2 border-b border-[#0d0d0d]">
-                <div>
-                  <span className="text-[11px] text-[#aaa]">{habit.action}</span>
-                  <span className="mono-xs text-[#333] ml-2">@ {habit.timeOfDay}</span>
+          {/* Frequent files */}
+          <div className="bg-[#000] p-6">
+            <div className="flex items-center gap-2.5 mb-5">
+              <FolderOpen size={13} className="text-[#555]" />
+              <span className="t-label">FREQUENT FILES</span>
+            </div>
+            <div className="space-y-0">
+              {demoFiles.map((file, i) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
+                  <span className="text-[12px] text-[#777] font-mono truncate max-w-[70%]">{file.path}</span>
+                  <span className="t-mono-xs text-[#444]">{file.count}×</span>
                 </div>
-                <span className="mono-xs text-[#333]">{habit.frequency}x/week</span>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          {/* Daily patterns */}
+          <div className="bg-[#000] p-6">
+            <div className="flex items-center gap-2.5 mb-5">
+              <BarChart3 size={13} className="text-[#555]" />
+              <span className="t-label">DAILY PATTERNS</span>
+            </div>
+            <div className="space-y-0">
+              {demoHabits.map((habit) => (
+                <div key={habit.id} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] text-[#bbb]">{habit.action}</span>
+                    <span className="t-mono-xs text-[#333] border border-[#181818] px-1.5 py-0.5">@ {habit.timeOfDay}</span>
+                  </div>
+                  <span className="t-mono-xs text-[#444]">{habit.frequency}×/week</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

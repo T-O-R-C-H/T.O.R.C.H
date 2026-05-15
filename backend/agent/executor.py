@@ -28,6 +28,7 @@ class Executor:
             "tools.files": [
                 "find_file", "read_pdf", "read_word", "read_excel",
                 "move_file", "delete_file", "create_folder", "zip_files",
+                "list_directory"
             ],
             "tools.email": ["send_email", "read_inbox"],
             "tools.browser": ["open_browser", "click", "type_text", "search_web"],
@@ -143,9 +144,30 @@ class Executor:
                     )
 
                 result_str = str(result) if result is not None else "Done"
+
+                if tool_name == "find_file" and result_str.startswith("No files matching"):
+                    try:
+                        import os
+                        from tools.files import find_file_fuzzy
+                        fuzzy = find_file_fuzzy(**resolved_args)
+                        if fuzzy["suggestions"]:
+                            suggestions = "\n".join([f"  • {os.path.basename(s)}" for s in fuzzy["suggestions"][:3]])
+                            result_str = (
+                                f"No exact match found for '{resolved_args.get('name')}'.\n"
+                                f"Did you mean one of these?\n{suggestions}\n"
+                                f"Full path: {fuzzy['suggestions'][0]}"
+                            )
+                            # Use first suggestion as the result for next steps
+                            results.append(fuzzy["suggestions"][0])
+                        else:
+                            results.append(result_str)
+                    except Exception:
+                        results.append(result_str)
+                else:
+                    results.append(result_str)
+
                 step["status"] = "done"
                 step["result"] = result_str
-                results.append(result_str)
 
                 await ws_manager.send_step_update(
                     message_id, step_id, "done",

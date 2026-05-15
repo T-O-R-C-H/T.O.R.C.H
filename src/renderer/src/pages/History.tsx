@@ -41,64 +41,83 @@ export function History(): JSX.Element {
 
   const entries = history.length > 0 ? history : demoHistory
 
-  const statusIcon = (status: string): JSX.Element => {
-    if (status === 'completed') return <Check size={12} className="text-[#22c55e]" />
-    if (status === 'failed') return <X size={12} className="text-[#ef4444]" />
-    return <X size={12} className="text-[#eab308]" />
+  const statusBadge = (status: string): JSX.Element => {
+    if (status === 'completed') return (
+      <div className="flex items-center gap-1.5 badge-success px-2 py-0.5">
+        <Check size={10} />
+        <span className="text-[9px] font-mono">done</span>
+      </div>
+    )
+    if (status === 'failed') return (
+      <div className="flex items-center gap-1.5 badge-error px-2 py-0.5">
+        <X size={10} />
+        <span className="text-[9px] font-mono">failed</span>
+      </div>
+    )
+    return (
+      <div className="flex items-center gap-1.5 badge-warning px-2 py-0.5">
+        <X size={10} />
+        <span className="text-[9px] font-mono">cancelled</span>
+      </div>
+    )
   }
 
   return (
     <div className="flex-1 flex flex-col h-full page-enter">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#1c1c1c] flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <Clock size={14} className="text-[#666]" />
-          <span className="label">TASK HISTORY</span>
-          <span className="mono-xs text-[#333]">{entries.length} entries</span>
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#141414] flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <h1 className="t-page-title">History</h1>
+          <span className="t-mono-xs text-[#333] border border-[#181818] px-2.5 py-1">{entries.length} entries</span>
         </div>
         <button
           onClick={() => useMemoryStore.getState().clearHistory()}
-          className="mono-xs text-[#333] hover:text-[#666] transition-colors"
+          className="btn-secondary text-[10px] px-4 py-1.5"
         >
-          clear all
+          Clear all
         </button>
       </div>
 
+      {/* List */}
       <div className="flex-1 overflow-y-auto">
         {entries.map((entry) => (
-          <div key={entry.id} className="border-b border-[#0d0d0d]">
-            {/* Entry header */}
+          <div key={entry.id} className="border-b border-[#0e0e0e]">
             <button
               onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
-              className="w-full flex items-center gap-4 px-6 py-3 hover:bg-[#060606] transition-colors duration-120 text-left"
+              className="w-full flex items-center gap-5 px-6 py-4 row-hover text-left group"
             >
-              {statusIcon(entry.status)}
+              {statusBadge(entry.status)}
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] text-[#ccc] truncate">{entry.command}</p>
+                <p className="text-[13px] text-[#ccc] truncate group-hover:text-white transition-colors">{entry.command}</p>
               </div>
-              <div className="flex items-center gap-4 flex-shrink-0">
-                <span className="mono-xs text-[#333]">{entry.stepsCount} steps</span>
-                <span className="mono-xs text-[#333]">{entry.duration}s</span>
-                <span className="mono-xs text-[#333]">
+              <div className="flex items-center gap-5 flex-shrink-0">
+                <span className="t-mono-xs text-[#333]">{entry.stepsCount} steps</span>
+                <span className="t-mono-xs text-[#333]">{entry.duration}s</span>
+                <span className="t-mono-xs text-[#333]">
                   {new Date(entry.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
                 </span>
-                {expanded === entry.id ? <ChevronUp size={12} className="text-[#333]" /> : <ChevronDown size={12} className="text-[#333]" />}
+                <span className="text-[#333] group-hover:text-[#666] transition-colors">
+                  {expanded === entry.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </span>
               </div>
             </button>
 
             {/* Expanded steps */}
             {expanded === entry.id && (
-              <div className="px-6 pb-4 pl-12">
-                {entry.steps.map((step, i) => (
-                  <div key={i} className="flex items-center gap-2 py-1">
-                    <span className="mono-xs text-[#333] w-5">{String(i + 1).padStart(2, '0')}</span>
-                    <span className={`text-[11px] ${
-                      step.status === 'done' ? 'text-[#555]' :
-                      step.status === 'failed' ? 'text-[#ef4444]' : 'text-[#666]'
-                    }`}>
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
+              <div className="px-6 pb-4 pl-[52px]">
+                <div className="border-l border-[#181818] pl-4 space-y-1">
+                  {entry.steps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-3 py-1.5">
+                      <span className="t-mono-xs text-[#222] w-5">{String(i + 1).padStart(2, '0')}</span>
+                      <span className={`text-[12px] ${
+                        step.status === 'done' ? 'text-[#666]' :
+                        step.status === 'failed' ? 'text-[#ef4444]' : 'text-[#555]'
+                      }`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

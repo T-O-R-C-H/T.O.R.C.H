@@ -162,3 +162,101 @@ def _format_size(size_bytes: int) -> str:
             return f"{size_bytes:.1f}{unit}"
         size_bytes /= 1024
     return f"{size_bytes:.1f}TB"
+
+
+def find_file_fuzzy(name: str, path: str = "~") -> dict:
+    """
+    Search for a file with fuzzy matching.
+    Returns: { "found": str|None, "suggestions": list[str], "exact": bool }
+    """
+    import difflib
+
+    search_path = Path(path).expanduser().resolve()
+    all_files = []
+
+    try:
+        for root, dirs, files in os.walk(search_path):
+            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
+                'node_modules', '__pycache__', '.git', 'venv', '.venv',
+                'Windows', 'Program Files', '$Recycle.Bin'
+            )]
+            for f in files:
+                all_files.append(os.path.join(root, f))
+                if len(all_files) > 2000:
+                    break
+    except PermissionError:
+        pass
+
+    # Exact match first
+    name_lower = name.lower().replace('.', '').replace(' ', '')
+    exact_matches = [f for f in all_files if name.lower() in os.path.basename(f).lower()]
+
+    if exact_matches:
+        return {
+            "found": exact_matches[0],
+            "suggestions": exact_matches[:3],
+            "exact": True
+        }
+
+    # Fuzzy match — extract just filenames for comparison
+    filenames = [os.path.basename(f) for f in all_files]
+
+    # Try stripping extension and matching core name
+    name_core = name.lower().replace('.docx', '').replace('.pdf', '').replace('.docs', '').replace('.doc', '').replace(' ', '')
+
+    fuzzy_matches = []
+    for i, fname in enumerate(filenames):
+        fname_core = fname.lower().replace('.docx', '').replace('.pdf', '').replace('.doc', '').replace(' ', '')
+        # Check if the digits/letters in name_core appear in fname_core
+        ratio = difflib.SequenceMatcher(None, name_core, fname_core).ratio()
+        if ratio > 0.5:
+            fuzzy_matches.append((ratio, all_files[i]))
+
+    fuzzy_matches.sort(reverse=True)
+    top_matches = [f for _, f in fuzzy_matches[:3]]
+
+    return {
+        "found": top_matches[0] if top_matches else None,
+        "suggestions": top_matches,
+        "exact": False
+    }
+
+
+def list_directory(path: str = "~") -> str:
+    """List all files in a directory in a formatted way."""
+    dir_path = Path(path).expanduser().resolve()
+    if not dir_path.exists():
+        return f"Directory not found: {dir_path}"
+    if not dir_path.is_dir():
+        return f"Not a directory: {dir_path}"
+
+    try:
+        files = list(dir_path.iterdir())
+    except PermissionError:
+        return f"Permission denied accessing {dir_path}"
+
+    if not files:
+        return f"Directory {dir_path} is empty."
+
+    # Sort: directories first, then files by name
+    dirs = sorted([f for f in files if f.is_dir()], key=lambda x: x.name.lower())
+    docs = sorted([f for f in files if f.is_file()], key=lambda x: x.name.lower())
+
+    lines = [f"Contents of {dir_path}:"]
+    
+    if dirs:
+        lines.append("\nDirectories:")
+        for d in dirs[:15]:
+            lines.append(f"  [DIR]  {d.name}")
+        if len(dirs) > 15:
+            lines.append(f"  ... and {len(dirs) - 15} more directories")
+
+    if docs:
+        lines.append("\nFiles:")
+        for f in docs[:30]:
+            size_str = _format_size(f.stat().st_size)
+            lines.append(f"  {f.name} ({size_str})")
+        if len(docs) > 30:
+            lines.append(f"  ... and {len(docs) - 30} more files")
+
+    return "\n".join(lines)

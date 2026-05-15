@@ -46,6 +46,12 @@ async def lifespan(app: FastAPI):
     # Create data directory
     os.makedirs(settings.data_dir, exist_ok=True)
 
+    try:
+        from playwright.async_api import async_playwright
+        logger.info("Playwright: available")
+    except ImportError:
+        logger.warning("Playwright not installed — run: playwright install chromium")
+
     yield
 
     logger.info("TORCH backend shutting down")
@@ -102,10 +108,44 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def update_settings(data: dict):
-    """Update settings."""
+    """Update settings and persist to .env."""
+    import os
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    
+    # Update in memory
     for key, value in data.items():
         if hasattr(settings, key):
             setattr(settings, key, value)
+            
+    # Read existing env
+    env_vars = {}
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env_vars[k] = v
+                    
+    # Map pydantic field names to env vars
+    mapping = {
+        "gemini_api_key": "GEMINI_API_KEY",
+        "gemini_model": "GEMINI_MODEL",
+        "gmail_address": "GMAIL_ADDRESS",
+        "gmail_app_password": "GMAIL_APP_PASSWORD",
+        "wake_word": "WAKE_WORD"
+    }
+    
+    for key, value in data.items():
+        if key in mapping:
+            env_vars[mapping[key]] = str(value)
+            
+    # Write back
+    with open(env_path, "w") as f:
+        f.write("# TORCH Environment\n")
+        for k, v in env_vars.items():
+            f.write(f"{k}={v}\n")
+            
     return {"status": "updated"}
 
 
@@ -201,9 +241,15 @@ async def process_command(command: str, client_id: str) -> None:
         validated_steps = validate_plan(raw_steps)
 
         # 4. Create response message and send to frontend
-        response_msg = create_response_message(
-            f"Executing: {command}", validated_steps
-        )
+        step_labels = [s["label"] for s in validated_steps[:2]]
+        if len(step_labels) == 1:
+            natural_response = f"On it. {step_labels[0]}."
+        elif len(step_labels) >= 2:
+            natural_response = f"Got it. Here's my plan:"
+        else:
+            natural_response = "Working on it."
+
+        response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         await ws_manager.send_terminal_line(
             f"Plan: {len(validated_steps)} steps", "info", client_id

@@ -1,19 +1,7 @@
-import { IconFlame, IconUser } from '../icons'
 import { StepList } from './StepList'
 import { ApprovalCard } from './ApprovalCard'
 import type { Message as MessageType } from '../../store/torchStore'
-
-/* ─── TORCH MINI LOGO (for avatar) ─── */
-function TorchMini(): JSX.Element {
-  return (
-    <svg width="12" height="12" viewBox="0 0 32 32" fill="none">
-      <rect x="12" y="19" width="8" height="11" rx="0" fill="#000" />
-      <ellipse cx="16" cy="12" rx="4.5" ry="7" fill="#000" />
-      <ellipse cx="16" cy="11" rx="3" ry="5" fill="#fff" />
-      <ellipse cx="16" cy="10" rx="1.5" ry="3" fill="#000" />
-    </svg>
-  )
-}
+import { useTorchStore } from '../../store/torchStore'
 
 interface MessageProps {
   message: MessageType
@@ -25,67 +13,95 @@ interface MessageProps {
 export function Message({ message, onApprove, onEdit, onCancel }: MessageProps): JSX.Element {
   const isUser = message.role === 'user'
   const isSystem = message.role === 'system'
+  const wsConnected = useTorchStore((s) => s.wsConnected)
 
   const hitlStep = message.steps?.find((s) => s.status === 'hitl_required')
 
-  return (
-    <div className={`message-enter flex gap-3 ${isUser ? 'flex-row-reverse' : ''} ${isSystem ? 'justify-center' : ''}`}>
-      {/* Avatar */}
-      {!isSystem && (
-        <div className={`w-6 h-6 flex items-center justify-center flex-shrink-0 ${
-          isUser ? 'bg-[#000] border border-[#1c1c1c]' : 'bg-white'
-        }`}>
-          {isUser ? (
-            <span className="text-[#666]"><IconUser size={10} /></span>
-          ) : (
-            <TorchMini />
-          )}
-        </div>
-      )}
+  const hitlWarning = hitlStep?.error?.includes('not configured')
+    ? 'Service not configured — check Settings before approving'
+    : hitlStep?.tool === 'send_email' && !wsConnected
+    ? 'Gmail credentials not configured in Settings'
+    : undefined
 
-      {/* Content */}
-      <div className={`flex-1 max-w-[80%] ${isUser ? 'text-right' : ''}`}>
-        {/* Role label */}
-        <div className={`mono-xs mb-1 ${isUser ? 'text-[#444]' : 'text-[#333]'}`}>
-          {isUser ? 'you' : isSystem ? '' : 'torch'}
-        </div>
+  if (isSystem) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0', animation: 'fade-in 200ms ease' }}>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '10px', color: '#333' }}>
+          {message.content}
+        </span>
+      </div>
+    )
+  }
 
-        {/* Message body */}
-        <div className={`inline-block text-left ${
-          isUser
-            ? 'bg-white px-4 py-2.5'
-            : isSystem
-            ? 'text-center'
-            : 'bg-[#0d0d0d] border border-[#1c1c1c] px-4 py-2.5'
-        }`} style={{
-          borderRadius: isUser ? '6px 0 6px 6px' : isSystem ? '0' : '0 6px 6px 6px'
+  if (isUser) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        width: '100%',
+        animation: 'fade-in 200ms ease',
+      }}>
+        <div style={{
+          background: '#0f0f0f',
+          border: '1px solid #1a1a1a',
+          padding: '12px 16px',
+          maxWidth: '70%',
+          fontFamily: "'Inter', sans-serif",
+          fontSize: '13px',
+          color: '#ffffff',
+          lineHeight: '1.5',
         }}>
-          <p className={`text-[12px] leading-relaxed ${
-            isUser ? 'text-black' : isSystem ? 'text-[#444] mono-xs' : 'text-[#aaa]'
-          } ${message.isTyping ? 'typewriter-cursor' : ''}`}>
+          {message.content}
+        </div>
+      </div>
+    )
+  }
+
+  // TORCH Message
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      width: '100%',
+      animation: 'fade-in 200ms ease',
+    }}>
+      <div style={{
+        background: 'transparent',
+        padding: '4px 0',
+        width: '100%',
+      }}>
+        {/* Content text (optional for TORCH, mostly it's just steps) */}
+        {message.content && (
+          <p style={{
+            fontFamily: "'Inter', sans-serif",
+            fontSize: '13px',
+            color: '#d0d0d0',
+            lineHeight: '1.6',
+            marginBottom: '6px'
+          }}>
             {message.content}
           </p>
+        )}
 
-          {/* Steps */}
-          {message.steps && message.steps.length > 0 && (
-            <StepList steps={message.steps} />
-          )}
+        {/* Steps */}
+        {message.steps && message.steps.length > 0 && (
+          <StepList steps={message.steps} />
+        )}
 
-          {/* HITL Approval */}
-          {hitlStep && (
+        {/* HITL Approval */}
+        {hitlStep && (
+          <div style={{ marginTop: '12px' }}>
             <ApprovalCard
               summary={`${hitlStep.tool}: ${hitlStep.label}`}
+              warning={hitlWarning}
               onApprove={() => onApprove?.(hitlStep.id)}
               onEdit={() => onEdit?.(hitlStep.id)}
               onCancel={() => onCancel?.(hitlStep.id)}
             />
-          )}
-        </div>
-
-        {/* Timestamp */}
-        <div className={`mono-xs text-[#2a2a2a] mt-1 ${isUser ? 'text-right' : ''}`}>
-          {new Date(message.timestamp).toLocaleTimeString('en-US', { hour12: false })}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )

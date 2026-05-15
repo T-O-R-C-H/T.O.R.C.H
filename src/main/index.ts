@@ -63,8 +63,14 @@ function createMainWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      zoomFactor: 1.0
     }
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.setZoomFactor(1.0)
+    mainWindow?.webContents.setZoomLevel(0)
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -110,8 +116,14 @@ function createOverlayWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      zoomFactor: 1.0
     }
+  })
+
+  overlayWindow.webContents.on('did-finish-load', () => {
+    overlayWindow?.webContents.setZoomFactor(1.0)
+    overlayWindow?.webContents.setZoomLevel(0)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

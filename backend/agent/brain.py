@@ -13,6 +13,7 @@ logger = logging.getLogger("torch.brain")
 # Tool definitions for Gemini
 AVAILABLE_TOOLS = [
     {"name": "find_file", "description": "Search for a file by name on the filesystem", "params": ["name", "path"]},
+    {"name": "list_directory", "description": "List all files and folders in a directory", "params": ["path"]},
     {"name": "read_pdf", "description": "Extract text content from a PDF file", "params": ["filepath"]},
     {"name": "read_word", "description": "Extract text content from a Word document", "params": ["filepath"]},
     {"name": "read_excel", "description": "Extract data from an Excel spreadsheet", "params": ["filepath"]},
@@ -55,6 +56,14 @@ CRITICAL RULES:
 5. Be specific in your labels — the user sees these in real-time.
 6. Use the minimum number of steps needed.
 7. If you need to find information before acting, add a search/read step first.
+
+FILE MATCHING RULES:
+- When searching for files, always use find_file tool first
+- If the exact filename is not found, use find_file_fuzzy to get suggestions
+- If fuzzy matches are found, include them in your response:
+  "I couldn't find '[original name]' exactly. I found '[suggestion]' — is that what you meant?"
+- Never silently fail on file searches — always report what was found or suggest alternatives
+- Common user mistakes: wrong extension (.docs instead of .docx), reversed words, missing numbers
 
 Respond ONLY with a JSON array. No markdown, no explanation, just the JSON.
 
