@@ -9,7 +9,6 @@ import {
 } from '../icons'
 import { Message } from './Message'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchLogo } from '../ui/TorchLogo'
 
 /* ═══════════════════════════════════════════════════════════════
    TORCH COMMAND AREA — Immersive AI Execution Interface
@@ -32,27 +31,6 @@ interface ChatAreaProps {
   onSend?: (command: string) => void
 }
 
-/* ─── 84px Animated Logo ─── */
-function HeroOrb(): JSX.Element {
-  return (
-    <div style={{
-      marginBottom: '32px',
-      position: 'relative',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      animation: 'hero-logo-breathe 4s ease-in-out infinite',
-    }}>
-      <style>{`
-        @keyframes hero-logo-breathe {
-          0%, 100% { transform: scale(1); opacity: 0.9; }
-          50% { transform: scale(1.02); opacity: 1; }
-        }
-      `}</style>
-      <TorchLogo size={84} />
-    </div>
-  )
-}
 
 function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClick: () => void }): JSX.Element {
   const [hovered, setHovered] = useState(false)
@@ -139,7 +117,6 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
             100% { opacity: 1; transform: translateY(0); }
           }
         `}</style>
-        <HeroOrb />
         
         <h1 style={{
           fontFamily: "'Inter', sans-serif",
