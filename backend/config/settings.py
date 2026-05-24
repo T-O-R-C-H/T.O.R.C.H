@@ -47,4 +47,4 @@ class TorchSettings(BaseSettings):
 
 
 # Singleton
-settings = TorchSettings()
+settings = TorchSettings() 

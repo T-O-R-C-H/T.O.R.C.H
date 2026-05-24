@@ -90,6 +90,20 @@ async def get_status():
     }
 
 
+@app.get("/api/system-check")
+async def system_check():
+    """Check if Playwright browser automation is installed and ready."""
+    playwright_installed = False
+    try:
+        from playwright.async_api import async_playwright
+        playwright_installed = True
+    except ImportError:
+        pass
+    return {
+        "playwright_installed": playwright_installed
+    }
+
+
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""

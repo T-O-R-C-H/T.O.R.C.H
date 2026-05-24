@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { useTorchStore, type Message, type TerminalLine } from '../store/torchStore'
 
 const WS_URL = 'ws://localhost:8000/ws'
@@ -9,10 +9,14 @@ export function useWebSocket(): {
   reconnect: () => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
-  const { setWsConnected, addMessage, updateStep, setAgentStatus, addTerminalLine, setOverlayStatus, setOverlayReply, setMetrics } = useTorchStore.getState()
+  const reconnectTimer = useRef<any>(undefined)
+  const { setWsConnected, addTerminalLine } = useTorchStore.getState()
 
   const connect = useCallback(() => {
+    // Skip WebSocket connection in demo mode
+    if (useTorchStore.getState().demoMode) {
+      return
+    }
     try {
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
@@ -29,7 +33,9 @@ export function useWebSocket(): {
 
       ws.onclose = (): void => {
         setWsConnected(false)
-        reconnectTimer.current = setTimeout(connect, 3000)
+        if (!useTorchStore.getState().demoMode) {
+          reconnectTimer.current = setTimeout(connect, 3000)
+        }
       }
 
       ws.onerror = (): void => {
@@ -45,7 +51,9 @@ export function useWebSocket(): {
         }
       }
     } catch {
-      reconnectTimer.current = setTimeout(connect, 3000)
+      if (!useTorchStore.getState().demoMode) {
+        reconnectTimer.current = setTimeout(connect, 3000)
+      }
     }
   }, [])
 

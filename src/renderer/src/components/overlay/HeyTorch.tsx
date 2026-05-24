@@ -8,7 +8,19 @@ export function HeyTorch(): JSX.Element {
   const overlayReply = useTorchStore((s) => s.overlayReply)
   const setOverlayVisible = useTorchStore((s) => s.setOverlayVisible)
   const [displayedReply, setDisplayedReply] = useState('')
-  const typewriterRef = useRef<ReturnType<typeof setInterval>>()
+  const typewriterRef = useRef<any>(undefined)
+
+  // Listen for Electron main process activation event
+  useEffect(() => {
+    const handleActivate = (): void => {
+      useTorchStore.getState().setOverlayStatus('listening')
+      useTorchStore.getState().setOverlayVisible(true)
+    }
+    window.torchAPI?.onOverlayActivate(handleActivate)
+    return (): void => {
+      window.torchAPI?.removeOverlayActivate()
+    }
+  }, [])
 
   // Typewriter effect for reply
   useEffect(() => {

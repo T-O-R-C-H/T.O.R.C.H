@@ -18,7 +18,7 @@ interface MetricCardProps {
 
 function MetricCard({ label, value, delta, suffix = '', decimals = 0, delay = 0, noBorder = false }: MetricCardProps): JSX.Element {
   const [displayValue, setDisplayValue] = useState(0)
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
 
   // 600ms smooth count-up animation
   useEffect(() => {

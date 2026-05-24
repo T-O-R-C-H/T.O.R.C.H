@@ -26,51 +26,45 @@ class TorchDatabase:
         self._init_db()
 
     def _init_db(self) -> None:
-        """Create tables if they don't exist."""
-        with self._connect() as conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    command TEXT NOT NULL,
-                    status TEXT DEFAULT 'pending',
-                    steps_json TEXT,
-                    duration_ms INTEGER,
-                    created_at TEXT DEFAULT (datetime('now')),
-                    completed_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS activity_log (
-                    id TEXT PRIMARY KEY,
-                    app TEXT,
-                    description TEXT,
-                    screenshot_path TEXT,
-                    created_at TEXT DEFAULT (datetime('now'))
-                );
-
-                CREATE TABLE IF NOT EXISTS contacts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    email TEXT,
-                    platform TEXT,
-                    interaction_count INTEGER DEFAULT 0,
-                    last_interaction TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS file_access (
-                    id TEXT PRIMARY KEY,
-                    filepath TEXT NOT NULL,
-                    action TEXT,
-                    access_count INTEGER DEFAULT 0,
-                    last_accessed TEXT DEFAULT (datetime('now'))
-                );
-
-                CREATE TABLE IF NOT EXISTS commands_log (
-                    id TEXT PRIMARY KEY,
-                    command TEXT NOT NULL,
-                    count INTEGER DEFAULT 1,
-                    last_used TEXT DEFAULT (datetime('now'))
-                );
-            """)
+        """Create tables by executing the schema.sql file."""
+        schema_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "schema.sql")
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                schema_sql = f.read()
+            with self._connect() as conn:
+                conn.executescript(schema_sql)
+            logger.info("Database initialized successfully from schema.sql")
+        except Exception as e:
+            logger.error(f"Failed to initialize database from schema.sql: {e}")
+            # Fallback inline schema in case file read fails
+            with self._connect() as conn:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        id TEXT PRIMARY KEY,
+                        command TEXT,
+                        status TEXT,
+                        steps_json TEXT,
+                        duration_ms INTEGER,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        completed_at TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS habits (
+                        id TEXT PRIMARY KEY,
+                        command TEXT,
+                        count INTEGER DEFAULT 1,
+                        last_used TEXT DEFAULT (datetime('now')),
+                        hour_of_day INTEGER,
+                        day_of_week TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS contacts (
+                        id TEXT PRIMARY KEY,
+                        name TEXT,
+                        email TEXT,
+                        platform TEXT,
+                        interaction_count INTEGER DEFAULT 0,
+                        last_interaction TEXT
+                    );
+                """)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -113,28 +107,31 @@ class TorchDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    # ─── Commands frequency ───
+    # ─── Commands frequency / Habits ───
 
     def log_command(self, command: str) -> None:
+        now = datetime.now()
+        hour_of_day = now.hour
+        day_of_week = now.strftime("%A")
         with self._connect() as conn:
             existing = conn.execute(
-                "SELECT id, count FROM commands_log WHERE command = ?", (command,)
+                "SELECT id, count FROM habits WHERE command = ?", (command,)
             ).fetchone()
             if existing:
                 conn.execute(
-                    "UPDATE commands_log SET count = count + 1, last_used = ? WHERE id = ?",
-                    (datetime.now().isoformat(), existing["id"]),
+                    "UPDATE habits SET count = count + 1, last_used = ?, hour_of_day = ?, day_of_week = ? WHERE id = ?",
+                    (now.isoformat(), hour_of_day, day_of_week, existing["id"]),
                 )
             else:
                 conn.execute(
-                    "INSERT INTO commands_log (id, command) VALUES (?, ?)",
-                    (str(uuid.uuid4()), command),
+                    "INSERT INTO habits (id, command, count, last_used, hour_of_day, day_of_week) VALUES (?, ?, ?, ?, ?, ?)",
+                    (str(uuid.uuid4()), command, 1, now.isoformat(), hour_of_day, day_of_week),
                 )
 
     def get_frequent_commands(self, limit: int = 10) -> List[Dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT command, count FROM commands_log ORDER BY count DESC LIMIT ?", (limit,)
+                "SELECT command, count FROM habits ORDER BY count DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -167,8 +164,11 @@ class TorchDatabase:
 
     def clear_all(self) -> None:
         with self._connect() as conn:
-            for table in ["tasks", "activity_log", "contacts", "file_access", "commands_log"]:
-                conn.execute(f"DELETE FROM {table}")
+            for table in ["tasks", "steps", "habits", "contacts", "files_accessed", "notifications", "scheduled_tasks", "skills", "activity_log"]:
+                try:
+                    conn.execute(f"DELETE FROM {table}")
+                except Exception:
+                    pass
 
 
 # Singleton

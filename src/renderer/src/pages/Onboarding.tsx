@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconExternalLink as ExternalLink, IconMic as Mic, IconArrowRight as ArrowRight, IconArrowLeft as ArrowLeft, IconCheck as Check } from '../components/icons'
+import { IconExternalLink as ExternalLink, IconMic as Mic, IconArrowRight as ArrowRight, IconArrowLeft as ArrowLeft, IconCheck as Check, IconLoader } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { TorchOrb } from '../components/overlay/TorchOrb'
 
@@ -13,25 +13,50 @@ export function Onboarding(): JSX.Element {
   const [gmailPassword, setGmailPassword] = useState('')
   const [launchOnLogin, setLaunchOnLogin] = useState(true)
   const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
+  const setDemoMode = useTorchStore((s) => s.setDemoMode)
+  const setShowSettingsKeyBanner = useTorchStore((s) => s.setShowSettingsKeyBanner)
   const [splashDone, setSplashDone] = useState(false)
+
+  // Loading and error states for backend persistence
+  const [loading, setLoading] = useState(false)
+  const [backendError, setBackendError] = useState<string | null>(null)
 
   const currentIndex = steps.indexOf(currentStep)
 
   const goNext = async (): Promise<void> => {
+    // If error is already showing, allow bypass on second click
+    if (backendError) {
+      setBackendError(null)
+      if (currentIndex < steps.length - 1) {
+        setCurrentStep(steps[currentIndex + 1])
+      }
+      return
+    }
+
     // Save Gemini key to backend when leaving step 1
     if (currentStep === 'gemini' && geminiKey) {
+      setLoading(true)
       try {
-        await fetch('http://localhost:8000/api/settings', {
+        const res = await fetch('http://localhost:8000/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gemini_api_key: geminiKey })
         })
-      } catch {}
+        if (!res.ok) throw new Error('Save failed')
+        setBackendError(null)
+      } catch {
+        setLoading(false)
+        setBackendError('Could not reach backend. Is it running? Click Next again to skip.')
+        return
+      }
+      setLoading(false)
     }
+
     // Save Gmail credentials when leaving step 2
     if (currentStep === 'gmail' && gmailAddress) {
+      setLoading(true)
       try {
-        await fetch('http://localhost:8000/api/settings', {
+        const res = await fetch('http://localhost:8000/api/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -39,20 +64,46 @@ export function Onboarding(): JSX.Element {
             gmail_app_password: gmailPassword
           })
         })
-      } catch {}
+        if (!res.ok) throw new Error('Save failed')
+        setBackendError(null)
+      } catch {
+        setLoading(false)
+        setBackendError('Could not reach backend. Is it running? Click Next again to skip.')
+        return
+      }
+      setLoading(false)
     }
+
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1])
     }
   }
 
   const goBack = (): void => {
+    setBackendError(null)
     if (currentIndex > 1) {
       setCurrentStep(steps[currentIndex - 1])
     }
   }
 
-  const finish = (): void => {
+  const finish = async (): Promise<void> => {
+    // Check if Gemini is configured on the backend
+    try {
+      const res = await fetch('http://localhost:8000/api/settings')
+      const data = await res.json()
+      if (!data.gemini_configured) {
+        setShowSettingsKeyBanner(true)
+      }
+    } catch {
+      // Backend offline — show warning banner
+      setShowSettingsKeyBanner(true)
+    }
+    setOnboardingComplete(true)
+  }
+
+  const startDemoMode = (): void => {
+    setDemoMode(true)
+    setShowSettingsKeyBanner(true)
     setOnboardingComplete(true)
   }
 
@@ -70,7 +121,7 @@ export function Onboarding(): JSX.Element {
           <TorchOrb isActive size={64} />
           <h1 className="text-[28px] font-semibold tracking-[-1px] mt-6 fade-in">TORCH</h1>
           <p className="text-[11px] text-[#444] mt-2 tracking-[0.15em] font-mono fade-in-delay">
-            Thinking, Observing, Reasoning, Creating & Handling
+            Thinking, Observing, Reasoning, Creating &amp; Handling
           </p>
         </div>
       )}
@@ -90,6 +141,11 @@ export function Onboarding(): JSX.Element {
             placeholder="Enter your Gemini API key"
             className="w-full text-[12px] mb-3"
           />
+          {backendError && (
+            <div className="w-full mb-3 px-3 py-2 border border-[#ef4444]/30 bg-[#ef4444]/5">
+              <p className="text-[10px] text-[#ef4444] font-mono">{backendError}</p>
+            </div>
+          )}
           <button
             onClick={() => window.torchAPI?.openExternal('https://aistudio.google.com')}
             className="flex items-center gap-2 mono-xs text-[#444] hover:text-[#666] transition-colors mb-8"
@@ -122,6 +178,11 @@ export function Onboarding(): JSX.Element {
             placeholder="App password"
             className="w-full text-[12px] mb-3"
           />
+          {backendError && (
+            <div className="w-full mb-3 px-3 py-2 border border-[#ef4444]/30 bg-[#ef4444]/5">
+              <p className="text-[10px] text-[#ef4444] font-mono">{backendError}</p>
+            </div>
+          )}
           <button
             onClick={() => window.torchAPI?.openExternal('https://myaccount.google.com/apppasswords')}
             className="flex items-center gap-2 mono-xs text-[#444] hover:text-[#666] transition-colors mb-8"
@@ -220,9 +281,22 @@ export function Onboarding(): JSX.Element {
                 back
               </button>
             )}
-            <button onClick={goNext} className="btn-primary flex items-center gap-2">
-              {currentStep === 'startup' ? 'finish' : 'next'}
-              <ArrowRight size={10} />
+            <button
+              onClick={goNext}
+              disabled={loading}
+              className="btn-primary flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <IconLoader size={12} />
+                  saving...
+                </>
+              ) : (
+                <>
+                  {currentStep === 'startup' ? 'finish' : 'next'}
+                  <ArrowRight size={10} />
+                </>
+              )}
             </button>
             {currentStep !== 'startup' && (
               <button onClick={goNext} className="mono-xs text-[#333] hover:text-[#666] transition-colors ml-2">
@@ -230,6 +304,17 @@ export function Onboarding(): JSX.Element {
               </button>
             )}
           </div>
+
+          {/* Demo mode link — only on step 1 (gemini) */}
+          {currentStep === 'gemini' && (
+            <button
+              onClick={startDemoMode}
+              className="mono-xs text-[#333] hover:text-[#888] transition-colors mt-2"
+              style={{ letterSpacing: '0.08em' }}
+            >
+              Try demo mode first →
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -92,6 +92,18 @@ export interface TorchState {
   // Current task count (for sidebar badge)
   activeTaskCount: number
   setActiveTaskCount: (count: number) => void
+
+  // Demo Mode
+  demoMode: boolean
+  setDemoMode: (val: boolean) => void
+
+  // Settings tab
+  activeSettingsTab: 'connections' | 'general'
+  setActiveSettingsTab: (tab: 'connections' | 'general') => void
+
+  // Warning banner
+  showSettingsKeyBanner: boolean
+  setShowSettingsKeyBanner: (show: boolean) => void
 }
 
 export const useTorchStore = create<TorchState>((set) => ({
@@ -173,5 +185,17 @@ export const useTorchStore = create<TorchState>((set) => ({
 
   // Tasks
   activeTaskCount: 0,
-  setActiveTaskCount: (count): void => set({ activeTaskCount: count })
+  setActiveTaskCount: (count): void => set({ activeTaskCount: count }),
+
+  // Demo Mode — not persisted to localStorage, always starts fresh
+  demoMode: false,
+  setDemoMode: (val): void => set({ demoMode: val }),
+
+  // Settings tab
+  activeSettingsTab: 'connections',
+  setActiveSettingsTab: (tab): void => set({ activeSettingsTab: tab }),
+
+  // Warning banner
+  showSettingsKeyBanner: false,
+  setShowSettingsKeyBanner: (show): void => set({ showSettingsKeyBanner: show })
 }))

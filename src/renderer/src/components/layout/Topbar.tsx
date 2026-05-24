@@ -119,7 +119,7 @@ export function Topbar(): JSX.Element {
     agentStatus === 'processing' ? 'THINKING' :
     agentStatus === 'executing' ? 'ACTIVE' :
     agentStatus === 'speaking' ? 'SPEAKING' :
-    agentStatus === 'awaiting_approval' ? 'AWAITING' : agentStatus.toUpperCase()
+    agentStatus === 'awaiting_approval' ? 'AWAITING' : (agentStatus as string).toUpperCase()
 
   const isActive = agentStatus !== 'idle'
 
