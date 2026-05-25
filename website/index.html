@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TORCH — Autonomous Desktop AI Operator</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Meet TORCH: A premium, local-first autonomous AI desktop operator. Control your browser, filesystem, and terminal securely with built-in Human-in-the-Loop protections.">
+  <meta name="keywords" content="AI agent, desktop automation, Electron, Playwright, Python, LLM, local AI, developer tools">
+  <meta name="author" content="Muyideen-js">
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Floating Ambient Lights -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <!-- Header Navigation -->
+  <header id="nav-header">
+    <div class="nav-container">
+      <a href="#" class="logo-area" id="nav-logo">
+        <div class="logo-orb"></div>
+        <span class="logo-text">T.O.R.C.H</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features" class="nav-item">Capabilities</a>
+        <a href="#simulator" class="nav-item">Live Simulator</a>
+        <a href="#architecture" class="nav-item">System Architecture</a>
+        <a href="#specs" class="nav-item">Specifications</a>
+        <a href="#faq" class="nav-item">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a href="#download" class="btn-nav" id="nav-btn-download">Install v1.0.0</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section" id="hero">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="badge-new-release">
+          <span class="pulse-dot"></span>
+          <span class="badge-text">Sprint 1 Deliverable — Fully Verified</span>
+        </div>
+        <h1 class="hero-headline">
+          The Autonomous <br>
+          <span class="gradient-text">Desktop AI Operator</span>
+        </h1>
+        <p class="hero-subtext">
+          An elite, local-first Electron + Python FastAPI application designed to navigate your operating system. From high-speed file searching to background Playwright web scraping, TORCH executes complex commands with complete Human-in-the-Loop oversight.
+        </p>
+        <div class="hero-actions">
+          <a href="#download" class="btn-primary" id="hero-btn-primary">
+            <span>Download for Windows x64</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          </a>
+          <a href="#simulator" class="btn-secondary" id="hero-btn-secondary">
+            <span>Run Web Playground</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-val" id="stat-completed">47k+</span>
+            <span class="stat-lbl">Tasks Handled</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" id="stat-speed">&lt; 1.0s</span>
+            <span class="stat-lbl">Overlay Wakeup</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-val" id="stat-security">100%</span>
+            <span class="stat-lbl">Local Database</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="hero-visual">
+        <div class="mockup-window">
+          <div class="window-header">
+            <div class="window-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <div class="window-title-tab">T.O.R.C.H Dashboard — Workspace</div>
+          </div>
+          <div class="window-body">
+            <img src="assets/app-screenshot.png" alt="TORCH Desktop Interface Mockup" class="screenshot-img" id="img-app-mockup">
+            <div class="telemetry-badge">
+              <span class="telemetry-lbl">SYSTEM STATUS:</span>
+              <span class="telemetry-val">ACTIVE_DEMO</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Detailed Core Capabilities Section -->
+  <section class="features-section" id="features">
+    <div class="section-header">
+      <span class="section-tag">ENGINE SPECS</span>
+      <h2 class="section-title">Designed for Autonomous Precision</h2>
+      <p class="section-desc">TORCH bridges the gap between deep large language models and native operating system interfaces, executing safely in a sandboxed, controllable environment.</p>
+    </div>
+    
+    <div class="features-grid">
+      <!-- Feature Card 1 -->
+      <div class="feature-card" id="feat-voice">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg>
+        </div>
+        <h3 class="feat-title">Cinematic Voice Overlay</h3>
+        <p class="feat-desc">Wake-word activated frameless circular voice overlay. Renders a stunning 9-bar staggered wave-strip and 3 pulsing orbital rings in under 1 second, showing immediate listening states.</p>
+        <ul class="feat-specs">
+          <li>Typewriter render speed: 30ms</li>
+          <li>System tray minimize/restore bind</li>
+          <li>Active microphone streaming</li>
+        </ul>
+      </div>
+
+      <!-- Feature Card 2 -->
+      <div class="feature-card" id="feat-memory">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>
+        </div>
+        <h3 class="feat-title">Secure Unified SQLite Schema</h3>
+        <p class="feat-desc">A highly organized memory layer powered by a single schema.sql file. Keeps track of tasks, execution steps, notifications, and scheduled crons entirely locally on your hard drive.</p>
+        <ul class="feat-specs">
+          <li>Adaptive User Habits scoring</li>
+          <li>Local context indexing</li>
+          <li>Zero external cloud syncing</li>
+        </ul>
+      </div>
+
+      <!-- Feature Card 3 -->
+      <div class="feature-card" id="feat-browser">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+        </div>
+        <h3 class="feat-title">Playwright Browser Automation</h3>
+        <p class="feat-desc">Automate complex web scenarios securely. TORCH leverages dynamic Playwright execution blocks to navigate websites, research topics, and scrape data on demand.</p>
+        <ul class="feat-specs">
+          <li>System-check dependency indicator</li>
+          <li>Connected Accounts social binding</li>
+          <li>Sandboxed chromium instances</li>
+        </ul>
+      </div>
+
+      <!-- Feature Card 4 -->
+      <div class="feature-card" id="feat-hitl">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3 class="feat-title">Human-in-the-Loop Gates</h3>
+        <p class="feat-desc">Security is paramount. When performing highly sensitive operations—such as sending system emails, executing terminal scripts, or altering files—TORCH blocks execution until you approve.</p>
+        <ul class="feat-specs">
+          <li>Interactive step approval popups</li>
+          <li>Real-time command abort gate</li>
+          <li>Configurable security thresholds</li>
+        </ul>
+      </div>
+
+      <!-- Feature Card 5 -->
+      <div class="feature-card" id="feat-fastapi">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m13 2-2 10h9L9 22l2-10H3L13 2z"/></svg>
+        </div>
+        <h3 class="feat-title">Full-Duplex FastAPI Bridge</h3>
+        <p class="feat-desc">The high-performance core engine runs an asynchronous Python FastAPI server, communicating with the Electron desktop workspace over ultra-fast full-duplex WebSockets.</p>
+        <ul class="feat-specs">
+          <li>Sub-millisecond latency messaging</li>
+          <li>Asynchronous multi-process spawning</li>
+          <li>Direct local environment hooks</li>
+        </ul>
+      </div>
+
+      <!-- Feature Card 6 -->
+      <div class="feature-card" id="feat-onboarding">
+        <div class="feat-icon-wrapper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3 class="feat-title">Intuitive Multi-Step Setup</h3>
+        <p class="feat-desc">Get started in seconds with a beautiful onboarding guide. Features auto-saving credentials, network resilience indicators, and an immersive try-first demo mode path.</p>
+        <ul class="feat-specs">
+          <li>Gemini API credentials check</li>
+          <li>Local environment persistence</li>
+          <li>One-click demo mode bypass</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Terminal Simulator (Playground) -->
+  <section class="simulator-section" id="simulator">
+    <div class="section-header">
+      <span class="section-tag">ONLINE PLAYGROUND</span>
+      <h2 class="section-title">Test TORCH Directly on the Web</h2>
+      <p class="section-desc">Click on any of the predefined commands below to see a live visual simulation of the TORCH autonomous agent execution workflow, fully animated.</p>
+    </div>
+
+    <div class="sim-container">
+      <!-- Preset Commands Sidebar -->
+      <div class="sim-sidebar">
+        <div class="sidebar-title">CHOOSE A SCENARIO</div>
+        
+        <button class="preset-btn active" id="btn-sim-file">
+          <span class="preset-icon">📄</span>
+          <div class="preset-info">
+            <span class="preset-title">Summarize Local PDF</span>
+            <span class="preset-desc">File search and extraction</span>
+          </div>
+        </button>
+
+        <button class="preset-btn" id="btn-sim-web">
+          <span class="preset-icon">🌐</span>
+          <div class="preset-info">
+            <span class="preset-title">Scrape AI Headlines</span>
+            <span class="preset-desc">Playwright web search</span>
+          </div>
+        </button>
+
+        <button class="preset-btn" id="btn-sim-email">
+          <span class="preset-icon">✉️</span>
+          <div class="preset-info">
+            <span class="preset-title">Send Progress Email</span>
+            <span class="preset-desc">HITL SMTP transaction</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Simulator Console Workspace -->
+      <div class="sim-console">
+        <!-- Console Header -->
+        <div class="console-header">
+          <div class="console-status-area">
+            <div class="status-indicator-orb" id="sim-status-orb"></div>
+            <span class="status-lbl">AGENT STATUS:</span>
+            <span class="status-val" id="sim-status-text">IDLE</span>
+          </div>
+          <div class="telemetry-bar">
+            <span>MEM: 24MB</span>
+            <span>WS: CONNECTED</span>
+          </div>
+        </div>
+
+        <!-- Console View Area -->
+        <div class="console-body">
+          <!-- Step Checklist Widget -->
+          <div class="step-widget">
+            <div class="widget-header">RUNNING SUB-STEPS</div>
+            <div class="widget-list" id="sim-step-list">
+              <!-- Dynamically rendered steps -->
+            </div>
+          </div>
+
+          <!-- Chat Conversation Log -->
+          <div class="chat-log" id="sim-chat-log">
+            <!-- Dynamically rendered chat bubbles -->
+          </div>
+        </div>
+
+        <!-- Simulator Action Bar -->
+        <div class="console-footer">
+          <div class="command-input-sim">
+            <span class="prompt-arrow">&gt;_</span>
+            <input type="text" id="sim-input-box" readonly value="find and summarize my latest Sales report">
+            <button class="btn-run-sim" id="btn-run-sim">Execute</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Technical Architecture Tabs Showcase -->
+  <section class="architecture-section" id="architecture">
+    <div class="section-header">
+      <span class="section-tag">ENGINEERING MODEL</span>
+      <h2 class="section-title">Robust Multi-Process Architecture</h2>
+      <p class="section-desc">Understand how TORCH leverages clean IPC messaging loops, isolated execution structures, and async web sockets to deliver unmatched desktop agility.</p>
+    </div>
+
+    <div class="arch-tabs-container">
+      <!-- Tabs Header -->
+      <div class="arch-tabs-header">
+        <button class="arch-tab-btn active" id="tab-btn-process">Process Flow</button>
+        <button class="arch-tab-btn" id="tab-btn-network">FastAPI Protocol</button>
+        <button class="arch-tab-btn" id="tab-btn-storage">Database Model</button>
+      </div>
+
+      <!-- Tabs Content -->
+      <div class="arch-tabs-content">
+        <!-- Tab 1: Process Flow -->
+        <div class="arch-tab-panel active" id="panel-process">
+          <div class="arch-grid">
+            <div class="arch-info">
+              <h3 class="arch-panel-title">Electron UI & Backend Coordination</h3>
+              <p class="arch-panel-desc">TORCH uses a modern dual-process Electron architecture. The renderer runs a React application, completely isolated from system privileges. Whenever a task is initiated, the preload script safely forwards messages to the Node main process, which manages visual display layers and spawns the core Python agent process.</p>
+              <ul class="arch-highlights">
+                <li><strong>Isolated Contexts:</strong> Zero node integration in UI processes to prevent remote code injection.</li>
+                <li><strong>Visual Tray Bindings:</strong> Minimizes and restores app viewport seamlessly on wake events.</li>
+                <li><strong>Local Python Spawner:</strong> Spins up and gracefully terminates Python workers.</li>
+              </ul>
+            </div>
+            <div class="arch-visual-block">
+              <pre class="code-block"><code>[React Frontend] (HashRouter View)
+      │
+      ▼  (Safe Preload contextBridge)
+[Electron Main Process] (Node.js)
+      │
+      ▼  (Asynchronous Subprocess Spawn)
+[Python Worker Engine] (FastAPI Core)</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Network / FastAPI -->
+        <div class="arch-tab-panel" id="panel-network">
+          <div class="arch-grid">
+            <div class="arch-info">
+              <h3 class="arch-panel-title">Asynchronous WebSocket Streaming</h3>
+              <p class="arch-panel-desc">To support high-frequency visual updates, micro-animations, and instant voice overlays, communication between Node and Python happens over a local WebSocket port. Telemetry steps, tool execution results, and status parameters are serialized as standard JSON packets and streamed in real-time.</p>
+              <ul class="arch-highlights">
+                <li><strong>JSON Telemetry Streams:</strong> Full step lists, result strings, and validation parameters.</li>
+                <li><strong>Playwright System Checks:</strong> Dynamic REST calls querying automation installations on-the-fly.</li>
+                <li><strong>Instant Voice Signals:</strong> Voice wake events trigger sub-second window animations.</li>
+              </ul>
+            </div>
+            <div class="arch-visual-block">
+              <pre class="code-block"><code>WS ws://localhost:8000/ws
+==========================
+{ "type": "agent_response", "steps": [...] }
+{ "type": "step_update", "status": "active" }
+{ "type": "hitl_request", "action": "approve" }
+{ "type": "metrics", "stats": {...} }</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Storage -->
+        <div class="arch-tab-panel" id="panel-storage">
+          <div class="arch-grid">
+            <div class="arch-info">
+              <h3 class="arch-panel-title">Unified Database Schema Layout</h3>
+              <p class="arch-panel-desc">All storage features (history, scheduling, user habits) are backed by a single SQLite database initialized from `backend/schema.sql`. The persistence layer implements foreign key constraints to correlate tools, notifications, and step executions with their parent tasks securely.</p>
+              <ul class="arch-highlights">
+                <li><strong>Command Habits Counting:</strong> Automatically records and weights user command intervals.</li>
+                <li><strong>Execution Step Logging:</strong> Saves detailed outcome metrics and error details.</li>
+                <li><strong>Cron Schedules Persistence:</strong> Supports background task scheduling crons.</li>
+              </ul>
+            </div>
+            <div class="arch-visual-block">
+              <pre class="code-block"><code>sqlite3 memory.db
+==========================
+• tasks (id, command, status, duration)
+• steps (id, task_id, tool, label, status)
+• habits (id, command, count, last_used)
+• contacts (id, name, email, platform)
+• scheduled_tasks (id, command, cron)</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Technical System Specifications -->
+  <section class="specs-section" id="specs">
+    <div class="section-header">
+      <span class="section-tag">HARDWARE ALIGNMENT</span>
+      <h2 class="section-title">System & Environment Requirements</h2>
+      <p class="section-desc">TORCH is designed to adapt to various developer hardware configurations. Below are the verified specifications for the application environment.</p>
+    </div>
+
+    <div class="specs-table-wrapper">
+      <table class="specs-table">
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Minimum Requirement</th>
+            <th>Recommended Specification</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="spec-name">Operating System</td>
+            <td>Windows 10 (x64) Build 19041+ / macOS 12+</td>
+            <td>Windows 11 (x64) / macOS 14 (Apple Silicon M-series)</td>
+          </tr>
+          <tr>
+            <td class="spec-name">Python Engine</td>
+            <td>Python 3.9+</td>
+            <td>Python 3.11.x with virtual environment (venv)</td>
+          </tr>
+          <tr>
+            <td class="spec-name">Local Runtime Node</td>
+            <td>Node.js v18.16.0 LTS</td>
+            <td>Node.js v20.x or v22.x LTS</td>
+          </tr>
+          <tr>
+            <td class="spec-name">Memory (RAM)</td>
+            <td>8 GB RAM</td>
+            <td>16 GB RAM or higher</td>
+          </tr>
+          <tr>
+            <td class="spec-name">Execution Engine</td>
+            <td>Local terminal interface or remote LLM connection</td>
+            <td>Gemini 2.5 Flash / Gemini 2.5 Pro API Key</td>
+          </tr>
+          <tr>
+            <td class="spec-name">Web Automation</td>
+            <td>Chromium browser dependency installed</td>
+            <td>Playwright bundle with full system-check validation</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Dynamic FAQ Accordion Section -->
+  <section class="faq-section" id="faq">
+    <div class="section-header">
+      <span class="section-tag">COMMON INQUIRIES</span>
+      <h2 class="section-title">Frequently Asked Questions</h2>
+      <p class="section-desc">Answers to common inquiries regarding TORCH deployment, security controls, and workflow automation.</p>
+    </div>
+
+    <div class="faq-accordion">
+      <!-- FAQ item 1 -->
+      <div class="faq-item" id="faq-item-1">
+        <button class="faq-trigger">
+          <span>Is my Gemini API key stored securely?</span>
+          <span class="faq-icon-arrow">+</span>
+        </button>
+        <div class="faq-content">
+          <p>Yes. Your API credentials are never sent to external cloud directories. When configuring onboarding steps, keys are transmitted via a local POST route directly to the backend running locally on your hardware. These are then cached in an environment file (.env) inside your sandboxed workspace directory.</p>
+        </div>
+      </div>
+
+      <!-- FAQ item 2 -->
+      <div class="faq-item" id="faq-item-2">
+        <button class="faq-trigger">
+          <span>How does the Human-in-the-Loop approval system operate?</span>
+          <span class="faq-icon-arrow">+</span>
+        </button>
+        <div class="faq-content">
+          <p>Whenever an AI task requests a high-risk tool execution (e.g., executing shell terminal processes, editing local system configurations, or initiating email SMTP transmissions), the Python backend enters an <code>awaiting_approval</code> state. The WebSocket streams this block to the Electron UI, which locks the console and renders a clear Approval Card asking you to Approve, Edit arguments, or Terminate the process.</p>
+        </div>
+      </div>
+
+      <!-- FAQ item 3 -->
+      <div class="faq-item" id="faq-item-3">
+        <button class="faq-trigger">
+          <span>Do I need to manually configure the SQLite database schema?</span>
+          <span class="faq-icon-arrow">+</span>
+        </button>
+        <div class="faq-content">
+          <p>No. When you start the FastAPI backend server (<code>python main.py</code>), the persistence storage engine reads the central <code>backend/schema.sql</code> file, executes it instantly, and provisions all 8 required tables + the legacy logs mapping. Any missing schema items are automatically resolved on database boot.</p>
+        </div>
+      </div>
+
+      <!-- FAQ item 4 -->
+      <div class="faq-item" id="faq-item-4">
+        <button class="faq-trigger">
+          <span>Can I test TORCH without setting up my API keys?</span>
+          <span class="faq-icon-arrow">+</span>
+        </button>
+        <div class="faq-content">
+          <p>Absolutely. TORCH includes a high-fidelity **Demo Mode** path in both the desktop app onboarding page and right here in our web simulator. Demo mode operates completely offline, cleanly bypassing active network sockets and running curated mock workflow scripts to showcase capabilities.</p>
+        </div>
+      </div>
+
+      <!-- FAQ item 5 -->
+      <div class="faq-item" id="faq-item-5">
+        <button class="faq-trigger">
+          <span>How do I install the Playwright dependency?</span>
+          <span class="faq-icon-arrow">+</span>
+        </button>
+        <div class="faq-content">
+          <p>Under the Settings Connections panel, TORCH checks if Playwright is fully installed on your host. If it's missing, you can open your system terminal inside the virtual environment and run <code>playwright install</code> to download the sandboxed web automation browsers instantly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Download Section & Footer -->
+  <section class="download-section" id="download">
+    <div class="download-card">
+      <div class="download-glow"></div>
+      <h2 class="download-title">Elevate Your OS Workflows Today</h2>
+      <p class="download-desc">Deploy TORCH locally, configure your Gemini credentials, and command your operating system using modern AI-driven automation.</p>
+      
+      <div class="download-button-group">
+        <a href="#" class="btn-download-win" id="btn-win-download">
+          <span class="btn-main-txt">Download for Windows</span>
+          <span class="btn-sub-txt">v1.0.0 Stable · x64 exe</span>
+        </a>
+        <a href="https://github.com/Muyideen-js/T.O.R.C.H" target="_blank" class="btn-github-source" id="btn-github-source">
+          <span class="btn-main-txt">Clone GitHub Repository</span>
+          <span class="btn-sub-txt">github.com/Muyideen-js/T.O.R.C.H</span>
+        </a>
+      </div>
+
+      <div class="badge-row">
+        <span class="badge">Electron v39.x</span>
+        <span class="badge">FastAPI v0.111</span>
+        <span class="badge">SQLite Persistence</span>
+        <span class="badge">MIT Licensed</span>
+      </div>
+    </div>
+
+    <!-- Footnotes -->
+    <footer class="site-footer">
+      <div class="footer-container">
+        <p>&copy; 2026 TORCH Project. Crafted with high-fidelity glassmorphic engineering.</p>
+        <div class="footer-links">
+          <a href="https://github.com/Muyideen-js/T.O.R.C.H/blob/main/README.md" target="_blank">Documentation</a>
+          <a href="https://github.com/Muyideen-js/T.O.R.C.H/blob/main/TESTING.md" target="_blank">Testing Plan</a>
+          <a href="https://aistudio.google.com" target="_blank">Google AI Studio</a>
+        </div>
+      </div>
+    </footer>
+  </section>
+
+  <!-- Core Scripts -->
+  <script src="main.js"></script>
+</body>
+</html>
