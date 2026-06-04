@@ -84,6 +84,18 @@ export function Settings(): JSX.Element {
       .then((r) => r.json())
       .then((data) => setPlaywrightInstalled(data.playwright_installed))
       .catch(() => setPlaywrightInstalled(null))
+
+    // Fetch current settings
+    fetch('http://localhost:8000/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.gemini_configured) setGeminiKey('********') // Don't show full key
+        setGmailAddress(data.gmail_address || '')
+        setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
+        setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
+        setVoiceModel(data.whisper_model_size || 'base')
+      })
+      .catch((err) => console.error('Failed to fetch settings:', err))
   }, [])
 
   const handleSocialLogin = (key: string, url: string): void => {
@@ -95,17 +107,23 @@ export function Settings(): JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     try {
+      const payload: any = {
+        gmail_address: gmailAddress,
+        gmail_app_password: gmailPassword,
+        wake_word_sensitivity: wakeWordSensitivity / 100,
+        screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
+        whisper_model_size: voiceModel,
+      }
+
+      // Only send API key if it's not the masked placeholder
+      if (geminiKey && geminiKey !== '********') {
+        payload.gemini_api_key = geminiKey
+      }
+
       await fetch('http://localhost:8000/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          gemini_api_key: geminiKey,
-          gmail_address: gmailAddress,
-          gmail_app_password: gmailPassword,
-          wake_word_sensitivity: wakeWordSensitivity / 100,
-          screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
-          whisper_model_size: voiceModel,
-        })
+        body: JSON.stringify(payload)
       })
       // If gemini key was just saved, clear the warning banner
       if (geminiKey) {
