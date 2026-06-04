@@ -26,7 +26,7 @@ class Executor:
         """Dynamically load all tool functions."""
         tool_modules = {
             "tools.files": [
-                "find_file", "read_pdf", "read_word", "read_excel",
+                "find_file", "find_file_fuzzy", "read_pdf", "read_word", "read_excel",
                 "move_file", "delete_file", "create_folder", "zip_files",
                 "list_directory"
             ],

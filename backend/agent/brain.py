@@ -13,6 +13,7 @@ logger = logging.getLogger("torch.brain")
 # Tool definitions for Gemini
 AVAILABLE_TOOLS = [
     {"name": "find_file", "description": "Search for a file by name on the filesystem", "params": ["name", "path"]},
+    {"name": "find_file_fuzzy", "description": "Search for a file with fuzzy matching when exact name is unknown", "params": ["name", "path"]},
     {"name": "list_directory", "description": "List all files and folders in a directory", "params": ["path"]},
     {"name": "read_pdf", "description": "Extract text content from a PDF file", "params": ["filepath"]},
     {"name": "read_word", "description": "Extract text content from a Word document", "params": ["filepath"]},
