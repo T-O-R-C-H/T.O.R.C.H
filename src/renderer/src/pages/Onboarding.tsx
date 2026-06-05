@@ -34,7 +34,7 @@ export function Onboarding(): JSX.Element {
     }
 
     // Save Gemini key to backend when leaving step 1
-    if (currentStep === 'gemini' && geminiKey) {
+    if (currentStep === 'gemini' && geminiKey.trim()) {
       setLoading(true)
       try {
         const res = await fetch('http://localhost:8000/api/settings', {
@@ -46,14 +46,14 @@ export function Onboarding(): JSX.Element {
         setBackendError(null)
       } catch {
         setLoading(false)
-        setBackendError('Could not reach backend. Is it running? Click Next again to skip.')
+        setBackendError('Backend not running')
         return
       }
       setLoading(false)
     }
 
     // Save Gmail credentials when leaving step 2
-    if (currentStep === 'gmail' && gmailAddress) {
+    if (currentStep === 'gmail' && gmailAddress.trim()) {
       setLoading(true)
       try {
         const res = await fetch('http://localhost:8000/api/settings', {
@@ -68,7 +68,7 @@ export function Onboarding(): JSX.Element {
         setBackendError(null)
       } catch {
         setLoading(false)
-        setBackendError('Could not reach backend. Is it running? Click Next again to skip.')
+        setBackendError('Backend not running')
         return
       }
       setLoading(false)
