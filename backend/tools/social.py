@@ -38,23 +38,34 @@ async def post_social(
 
     try:
         from tools.browser import _get_page
+        from playwright.async_api import TimeoutError as PlaywrightTimeout
 
         page = await _get_page()
-        await page.goto(url, wait_until="domcontentloaded")
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        except PlaywrightTimeout:
+            return (
+                f"Timeout while loading {platform}. This might be due to a slow connection. "
+                f"The page has been opened — please check if you need to log in manually."
+            )
 
         # Platform-specific automation
         # Note: Each platform requires user to be logged in already
         logger.info(f"Navigated to {platform} for posting")
 
         return (
-            f"Opened {platform} posting page. "
-            f"Message to post: {message[:100]}... "
-            f"Please complete the post manually or ensure you are logged in."
+            f"Successfully opened {platform} for you. "
+            f"Ready to post: \"{message[:80]}...\" "
+            f"\n\nIMPORTANT: If you see a login screen, please log in first. "
+            f"TORCH will wait for you to complete the post or provide further instructions."
         )
 
     except Exception as e:
         logger.error(f"Social post failed: {e}")
-        return f"Failed to post to {platform}: {e}"
+        error_msg = str(e)
+        if "playwright install" in error_msg.lower():
+            return error_msg
+        return f"I couldn't open {platform} automatically. Error: {error_msg}. \nTry opening it manually in your browser first."
 
 
 async def send_message(
@@ -83,18 +94,29 @@ async def send_message(
 
     try:
         from tools.browser import _get_page
+        from playwright.async_api import TimeoutError as PlaywrightTimeout
 
         page = await _get_page()
-        await page.goto(url, wait_until="domcontentloaded")
+        try:
+            # Messaging apps often take longer to load (e.g. WhatsApp QR)
+            await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        except PlaywrightTimeout:
+            return (
+                f"Opened {platform}, but it's taking a while to load. "
+                f"Please check the browser window — you might need to scan a QR code or log in."
+            )
 
         logger.info(f"Navigated to {platform} messaging")
 
         return (
-            f"Opened {platform}. "
-            f"Contact: {contact}, Message: {message[:100]}... "
-            f"Please ensure you are logged in to complete the action."
+            f"Opened {platform} for messaging. "
+            f"Contact: {contact}\nMessage: {message[:100]}... "
+            f"\n\nAction Required: Please ensure you are logged in and selecting the correct contact."
         )
 
     except Exception as e:
         logger.error(f"Message send failed: {e}")
-        return f"Failed to message on {platform}: {e}"
+        error_msg = str(e)
+        if "playwright install" in error_msg.lower():
+            return error_msg
+        return f"Failed to open {platform}: {error_msg}. Please check your internet connection or browser setup."

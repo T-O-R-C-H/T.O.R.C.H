@@ -14,14 +14,41 @@ _page = None
 
 
 async def _get_page():
-    """Get or create a Playwright browser page."""
+    """Get or create a Playwright browser page with robust error handling."""
     global _browser, _page
-    if _page is None:
+    
+    if _page is not None:
+        try:
+            # Check if page is still functional
+            await _page.title()
+            return _page
+        except Exception:
+            logger.info("Browser page lost, recreating...")
+            _page = None
+            _browser = None
+
+    try:
         from playwright.async_api import async_playwright
         pw = await async_playwright().start()
-        _browser = await pw.chromium.launch(headless=False)
+        
+        try:
+            _browser = await pw.chromium.launch(headless=False)
+        except Exception as launch_err:
+            if "executable" in str(launch_err).lower() or "not installed" in str(launch_err).lower():
+                raise RuntimeError(
+                    "Playwright browser (Chromium) is not installed. "
+                    "Please run 'playwright install chromium' in your terminal."
+                ) from launch_err
+            raise
+
         _page = await _browser.new_page()
-    return _page
+        return _page
+        
+    except ImportError:
+        raise ImportError(
+            "Playwright library is not installed. "
+            "Please run 'pip install playwright' and then 'playwright install chromium'."
+        )
 
 
 async def open_browser(url: str) -> str:
