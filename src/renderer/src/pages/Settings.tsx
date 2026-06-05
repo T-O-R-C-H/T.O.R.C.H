@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useTorchStore } from '../store/torchStore'
+
 import {
   IconKey as Key,
   IconMail as Mail,
@@ -11,6 +11,7 @@ import {
   IconExternalLink as ExternalLink,
   IconShare as Share2,
 } from '../components/icons'
+
 
 interface SettingRowProps {
   label: string
@@ -36,13 +37,11 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () =>
   return (
     <button
       onClick={onChange}
-      className={`w-10 h-5 border flex items-center px-0.5 transition-all duration-150 ${
-        checked ? 'bg-white border-white' : 'bg-transparent border-[#222]'
-      }`}
+      className={`w-10 h-5 border flex items-center px-0.5 transition-all duration-150 ${checked ? 'bg-white border-white' : 'bg-transparent border-[#222]'
+        }`}
     >
-      <div className={`w-3.5 h-3.5 transition-all duration-150 ${
-        checked ? 'bg-black translate-x-[18px]' : 'bg-[#444] translate-x-0'
-      }`} />
+      <div className={`w-3.5 h-3.5 transition-all duration-150 ${checked ? 'bg-black translate-x-[18px]' : 'bg-[#444] translate-x-0'
+        }`} />
     </button>
   )
 }
@@ -55,8 +54,7 @@ const SOCIAL_PLATFORMS = [
 ]
 
 export function Settings(): JSX.Element {
-  const activeTab = useTorchStore((s) => s.activeSettingsTab)
-  const setActiveTab = useTorchStore((s) => s.setActiveSettingsTab)
+  const [activeTab, setActiveTab] = useState("connections");
 
   const [geminiKey, setGeminiKey] = useState('')
   const [gmailAddress, setGmailAddress] = useState('')
@@ -142,9 +140,8 @@ export function Settings(): JSX.Element {
         <button
           key={opt.value}
           onClick={() => onChange(opt.value)}
-          className={`px-4 py-1.5 text-[10px] font-mono tracking-[0.04em] transition-all duration-120 ${
-            value === opt.value ? 'bg-white text-black font-medium' : 'text-[#444] hover:text-[#888]'
-          }`}
+          className={`px-4 py-1.5 text-[10px] font-mono tracking-[0.04em] transition-all duration-120 ${value === opt.value ? 'bg-white text-black font-medium' : 'text-[#444] hover:text-[#888]'
+            }`}
         >
           {opt.label}
         </button>
@@ -161,26 +158,30 @@ export function Settings(): JSX.Element {
 
       {/* Tabs */}
       <div className="flex items-center gap-0 px-6 border-b border-[#141414] flex-shrink-0">
-        {(['connections', 'general'] as const).map((tab) => (
+        {([
+          { id: 'connections', label: 'Connections' },
+          { id: 'preferences', label: 'Preferences' },
+        ]).map((tab) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             style={{
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: '10px',
               fontWeight: 500,
               textTransform: 'uppercase',
               letterSpacing: '0.12em',
-              color: activeTab === tab ? '#ffffff' : '#555',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeTab === tab ? '2px solid #fff' : '2px solid transparent',
-              padding: '12px 20px',
+              color: activeTab === tab.id ? '#000000' : '#888888',
+              background: activeTab === tab.id ? '#ffffff' : 'transparent',
+              border: activeTab === tab.id ? '1px solid #000000' : '1px solid #888888',
+              padding: '8px 16px',
               cursor: 'pointer',
               transition: 'all 150ms ease',
+              borderRadius: 0,
+              marginRight: '4px',
             }}
           >
-            {tab}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -239,7 +240,7 @@ export function Settings(): JSX.Element {
                 TORCH uses browser automation to post — no API keys needed.
                 Just make sure you are logged into these platforms in your browser.
               </p>
-              
+
               {SOCIAL_PLATFORMS.map((platform) => {
                 const connected = socialConnected[platform.key] || false
                 return (
@@ -265,7 +266,7 @@ export function Settings(): JSX.Element {
                   </div>
                 )
               })}
-              
+
               {/* Playwright status */}
               <div className="mt-4 p-4 border border-[#181818] bg-[#060606]">
                 {playwrightInstalled === true ? (
@@ -299,7 +300,7 @@ export function Settings(): JSX.Element {
         {/* ══════════════════════════════════════════════════════════════
            TAB: GENERAL
            ══════════════════════════════════════════════════════════════ */}
-        {activeTab === 'general' && (
+        {activeTab === 'preferences' && (
           <>
             {/* Voice */}
             <div>
