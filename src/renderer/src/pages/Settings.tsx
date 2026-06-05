@@ -247,7 +247,7 @@ export function Settings(): JSX.Element {
                   <div key={platform.key} className="flex items-center justify-between py-3.5 border-b border-[#0e0e0e]">
                     <div>
                       <div className="text-[13px] text-[#ccc]">{platform.name}</div>
-                      <div className="text-[11px] text-[#333] mt-0.5 font-mono">Playwright automation</div>
+                      <div className="text-[11px] text-[#333] mt-0.5 font-mono">Login-based access</div>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
