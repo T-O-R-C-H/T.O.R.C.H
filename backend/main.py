@@ -46,11 +46,19 @@ async def lifespan(app: FastAPI):
     # Create data directory
     os.makedirs(settings.data_dir, exist_ok=True)
 
+    # Check Playwright/Chromium
     try:
         from playwright.async_api import async_playwright
-        logger.info("Playwright: available")
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                await browser.close()
+            logger.info("Playwright: ready (Chromium found)")
+        except Exception as e:
+            logger.warning(f"Playwright: library found but browser not ready — {e}")
+            logger.warning("Run: playwright install chromium")
     except ImportError:
-        logger.warning("Playwright not installed — run: playwright install chromium")
+        logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
 
     yield
 
