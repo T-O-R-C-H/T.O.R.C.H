@@ -166,53 +166,66 @@ def _format_size(size_bytes: int) -> str:
 
 def find_file_fuzzy(name: str, path: str = "~") -> dict:
     """
-    Search for a file with fuzzy matching.
+    Search for a file with fuzzy matching when exact match fails.
     Returns: { "found": str|None, "suggestions": list[str], "exact": bool }
     """
     import difflib
+    from pathlib import Path
 
     search_path = Path(path).expanduser().resolve()
     all_files = []
+    
+    # Clean input name
+    search_name = name.lower().strip()
+    search_stem = Path(search_name).stem.lower()
 
     try:
         for root, dirs, files in os.walk(search_path):
+            # Skip hidden and system directories
             dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
                 'node_modules', '__pycache__', '.git', 'venv', '.venv',
-                'Windows', 'Program Files', '$Recycle.Bin'
+                'Windows', 'Program Files', '$Recycle.Bin', 'AppData'
             )]
             for f in files:
-                all_files.append(os.path.join(root, f))
-                if len(all_files) > 2000:
+                full_path = os.path.join(root, f)
+                all_files.append(full_path)
+                if len(all_files) > 5000:  # Increased limit for better results
                     break
+            if len(all_files) > 5000:
+                break
     except PermissionError:
         pass
 
-    # Exact match first
-    name_lower = name.lower().replace('.', '').replace(' ', '')
-    exact_matches = [f for f in all_files if name.lower() in os.path.basename(f).lower()]
-
+    # 1. Check for exact substring matches first (case-insensitive)
+    exact_matches = [f for f in all_files if search_name in os.path.basename(f).lower()]
+    
     if exact_matches:
+        # Sort by length to find the most "exact" one (shorter names often better matches)
+        exact_matches.sort(key=lambda x: len(os.path.basename(x)))
         return {
             "found": exact_matches[0],
             "suggestions": exact_matches[:3],
             "exact": True
         }
 
-    # Fuzzy match — extract just filenames for comparison
-    filenames = [os.path.basename(f) for f in all_files]
-
-    # Try stripping extension and matching core name
-    name_core = name.lower().replace('.docx', '').replace('.pdf', '').replace('.docs', '').replace('.doc', '').replace(' ', '')
-
+    # 2. Fuzzy match using difflib
     fuzzy_matches = []
-    for i, fname in enumerate(filenames):
-        fname_core = fname.lower().replace('.docx', '').replace('.pdf', '').replace('.doc', '').replace(' ', '')
-        # Check if the digits/letters in name_core appear in fname_core
-        ratio = difflib.SequenceMatcher(None, name_core, fname_core).ratio()
-        if ratio > 0.5:
-            fuzzy_matches.append((ratio, all_files[i]))
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        fstem = Path(fname).stem.lower()
+        
+        # Compare stems (filenames without extensions)
+        ratio = difflib.SequenceMatcher(None, search_stem, fstem).ratio()
+        
+        # Also check if search_stem is a substring of fstem or vice versa
+        if search_stem in fstem or fstem in search_stem:
+            ratio = max(ratio, 0.8)
+            
+        if ratio > 0.6:
+            fuzzy_matches.append((ratio, fpath))
 
-    fuzzy_matches.sort(reverse=True)
+    # Sort by ratio (highest first)
+    fuzzy_matches.sort(key=lambda x: x[0], reverse=True)
     top_matches = [f for _, f in fuzzy_matches[:3]]
 
     return {
