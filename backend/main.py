@@ -122,9 +122,10 @@ async def get_settings():
 
 @app.post("/api/settings")
 async def update_settings(data: dict):
-    """Update settings and persist to .env."""
+    """Update settings and persist to .env in the root directory."""
     import os
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    # .env should be in the root (parent of backend)
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     
     # Update in memory
     for key, value in data.items():
@@ -138,8 +139,10 @@ async def update_settings(data: dict):
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    env_vars[k] = v
+                    parts = line.split("=", 1)
+                    if len(parts) == 2:
+                        k, v = parts
+                        env_vars[k] = v
                     
     # Map pydantic field names to env vars
     mapping = {
@@ -147,7 +150,14 @@ async def update_settings(data: dict):
         "gemini_model": "GEMINI_MODEL",
         "gmail_address": "GMAIL_ADDRESS",
         "gmail_app_password": "GMAIL_APP_PASSWORD",
-        "wake_word": "WAKE_WORD"
+        "gmail_smtp_host": "GMAIL_SMTP_HOST",
+        "gmail_smtp_port": "GMAIL_SMTP_PORT",
+        "gmail_imap_host": "GMAIL_IMAP_HOST",
+        "wake_word": "WAKE_WORD",
+        "wake_word_sensitivity": "WAKE_WORD_SENSITIVITY",
+        "whisper_model_size": "WHISPER_MODEL_SIZE",
+        "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
+        "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
     }
     
     for key, value in data.items():
@@ -155,10 +165,16 @@ async def update_settings(data: dict):
             env_vars[mapping[key]] = str(value)
             
     # Write back
-    with open(env_path, "w") as f:
-        f.write("# TORCH Environment\n")
-        for k, v in env_vars.items():
-            f.write(f"{k}={v}\n")
+    try:
+        with open(env_path, "w") as f:
+            f.write("# TORCH Environment Variables\n")
+            f.write("# Generated/Updated via Settings UI\n\n")
+            for k, v in sorted(env_vars.items()):
+                f.write(f"{k}={v}\n")
+        logger.info(f"Settings persisted to {env_path}")
+    except Exception as e:
+        logger.error(f"Failed to write .env file: {e}")
+        return {"status": "error", "message": str(e)}
             
     return {"status": "updated"}
 
