@@ -5,7 +5,7 @@ import { useTorchStore } from '../store/torchStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useEffect } from 'react'
 import { handleDemoCommand, handleDemoApproval, handleDemoCancel } from '../demo/demoAgent'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
@@ -14,6 +14,7 @@ export function Command(): JSX.Element {
   const showSettingsKeyBanner = useTorchStore((s) => s.showSettingsKeyBanner)
   const { sendCommand, sendApproval } = useWebSocket()
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     if (!demoMode) {
@@ -56,6 +57,15 @@ export function Command(): JSX.Element {
       }, 500)
     }
   }
+
+  useEffect(() => {
+    if (location.state?.runCommand) {
+      const commandToRun = location.state.runCommand
+      // Clear location state immediately to prevent infinite runs on route/view updates
+      navigate(location.pathname, { replace: true, state: {} })
+      handleSend(commandToRun)
+    }
+  }, [location.state])
 
   const handleApprove = (messageId: string, stepId: string): void => {
     if (demoMode) {

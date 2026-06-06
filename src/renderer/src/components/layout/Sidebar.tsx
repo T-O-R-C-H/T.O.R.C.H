@@ -20,7 +20,8 @@ import {
   IconMonitor, 
   IconChart, 
   IconTerminal, 
-  IconSettings 
+  IconSettings,
+  IconSparkles
 } from '../icons'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -42,6 +43,7 @@ const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   monitor: IconMonitor,
   chart: IconChart,
   terminal: IconTerminal,
+  skills: IconSparkles,
 }
 
 interface NavItem {
@@ -56,7 +58,8 @@ interface NavItem {
 const mainItems: NavItem[] = [
   { path: '/', icon: 'chat', label: 'Chat', indicator: 'green' },
   { path: '/today', icon: 'today', label: 'Today', indicator: 'green' },
-  { path: '/history', icon: 'history', label: 'History' }
+  { path: '/history', icon: 'history', label: 'History' },
+  { path: '/skills', icon: 'skills', label: 'Skills' }
 ]
 
 const workItems: NavItem[] = [

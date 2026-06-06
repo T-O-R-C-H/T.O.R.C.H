@@ -89,6 +89,48 @@ async def plan_command(user_command: str, context: Optional[List[Dict]] = None) 
         List of step dictionaries with tool, label, args, requires_approval
     """
     try:
+        import re
+        # 1. Detect: "Save this as a skill called [Name]"
+        save_match = re.search(r"save this as a skill called (.+)", user_command, re.IGNORECASE)
+        if save_match:
+            skill_name = save_match.group(1).strip().strip('\'"')
+            from memory.storage import db
+            # Get the previous command from the tasks database
+            tasks = db.get_tasks(limit=1)
+            if not tasks:
+                return [{
+                    "tool": "error",
+                    "label": "No previous command found to save as a skill",
+                    "args": {},
+                    "requires_approval": False,
+                    "error": "No previous command found in history."
+                }]
+            last_cmd = tasks[0]["command"]
+            return [{
+                "tool": "save_skill",
+                "label": f"Saving skill '{skill_name}'",
+                "args": {"name": skill_name, "command": last_cmd},
+                "requires_approval": False,
+            }]
+
+        # 2. Detect: "Run [Name]"
+        if user_command.lower().startswith("run "):
+            skill_name = user_command[4:].strip().strip('\'"')
+            from memory.storage import db
+            with db._connect() as conn:
+                row = conn.execute(
+                    "SELECT id, command FROM skills WHERE LOWER(name) = LOWER(?)",
+                    (skill_name,)
+                ).fetchone()
+            if row:
+                skill_id = row["id"]
+                stored_command = row["command"]
+                # Increment run count
+                from skills import run_skill
+                run_skill(skill_id)
+                # Recursively plan the stored command
+                return await plan_command(stored_command, context)
+
         from google import genai
 
         if not settings.gemini_api_key:

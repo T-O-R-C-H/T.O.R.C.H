@@ -25,7 +25,7 @@ VALID_TOOLS = {
     "type_text", "screenshot", "analyse_screen", "search_web",
     "download_file", "open_app", "post_social", "send_message",
     "run_terminal", "move_file", "delete_file", "create_folder",
-    "zip_files", "error",
+    "zip_files", "error", "save_skill",
 }
 
 

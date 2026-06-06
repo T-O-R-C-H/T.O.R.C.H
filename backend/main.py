@@ -187,6 +187,31 @@ async def update_settings(data: dict):
     return {"status": "updated"}
 
 
+@app.get("/api/skills")
+async def api_get_skills():
+    """Get all saved skills."""
+    import skills
+    return skills.get_skills()
+
+
+@app.post("/api/skills/{skill_id}/run")
+async def api_run_skill(skill_id: str):
+    """Run a skill (increment run_count and return the command)."""
+    import skills
+    command = skills.run_skill(skill_id)
+    if not command:
+        return {"status": "error", "message": "Skill not found"}
+    return {"status": "success", "command": command}
+
+
+@app.delete("/api/skills/{skill_id}")
+async def api_delete_skill(skill_id: str):
+    """Delete a skill permanently."""
+    import skills
+    skills.delete_skill(skill_id)
+    return {"status": "success"}
+
+
 @app.get("/api/metrics")
 async def get_metrics():
     """Get real metrics from SQLite database."""
