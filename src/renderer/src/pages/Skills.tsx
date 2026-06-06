@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconPlay as Play, IconX as Delete, IconSparkles as Sparkles, IconLoader as Loader } from '../components/icons'
+import { IconPlay as Play, IconX as Delete, IconSparkles as Sparkles, IconLoader as Loader, IconAdd as Add } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 
 interface Skill {
@@ -15,6 +15,9 @@ export function Skills(): JSX.Element {
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newCommand, setNewCommand] = useState('')
   const navigate = useNavigate()
   const demoMode = useTorchStore((s) => s.demoMode)
 
@@ -110,6 +113,54 @@ export function Skills(): JSX.Element {
     }
   }
 
+  const handleCreateSkill = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+
+    if (!newName.trim() || !newCommand.trim()) {
+      alert('Name and command cannot be empty')
+      return
+    }
+
+    if (demoMode) {
+      const newSkill: Skill = {
+        id: `demo-${Date.now()}`,
+        name: newName.trim(),
+        command: newCommand.trim(),
+        created_at: new Date().toISOString(),
+        run_count: 0
+      }
+      setSkills((prev) => [newSkill, ...prev])
+      setNewName('')
+      setNewCommand('')
+      setShowAddForm(false)
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/skills', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: newName.trim(),
+          command: newCommand.trim()
+        })
+      })
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.detail || 'Failed to create skill')
+      }
+      const createdSkill = await response.json()
+      setSkills((prev) => [createdSkill, ...prev])
+      setNewName('')
+      setNewCommand('')
+      setShowAddForm(false)
+    } catch (err: any) {
+      alert(err.message || 'Error creating skill')
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col h-full page-enter overflow-y-auto bg-black text-white">
       {/* Header */}
@@ -120,10 +171,52 @@ export function Skills(): JSX.Element {
             {skills.length} saved
           </span>
         </div>
+        <button
+          onClick={(): void => setShowAddForm(!showAddForm)}
+          className="btn-secondary text-[10px] px-4 py-1.5 flex items-center gap-1.5"
+        >
+          {showAddForm ? <Delete size={10} /> : <Add size={10} />}
+          <span>{showAddForm ? 'Cancel' : 'New Skill'}</span>
+        </button>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 p-6">
+        {showAddForm && (
+          <form onSubmit={handleCreateSkill} className="mb-6 p-5 border border-[#181818] bg-[#050505] space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-[#444] font-mono uppercase tracking-wider">Skill Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Morning Briefing"
+                  value={newName}
+                  onChange={(e): void => setNewName(e.target.value)}
+                  className="bg-black border border-[#181818] text-white text-[12px] px-3 py-2 w-full focus:border-[#444]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-[#444] font-mono uppercase tracking-wider">Command</label>
+                <input
+                  type="text"
+                  placeholder="e.g. check my emails and summarize today's news"
+                  value={newCommand}
+                  onChange={(e): void => setNewCommand(e.target.value)}
+                  className="bg-black border border-[#181818] text-white text-[12px] px-3 py-2 w-full focus:border-[#444]"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                className="btn-primary text-[10px] px-5 py-1.5"
+              >
+                Create
+              </button>
+            </div>
+          </form>
+        )}
+
         {loading ? (
           <div className="flex flex-col items-center justify-center h-[300px]">
             <Loader size={24} className="spinner text-[#666] mb-2" />

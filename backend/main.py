@@ -11,7 +11,7 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add backend to path
@@ -194,14 +194,36 @@ async def api_get_skills():
     return skills.get_skills()
 
 
+@app.post("/api/skills")
+async def api_create_skill(data: dict):
+    """Create a new skill."""
+    name = data.get("name")
+    command = data.get("command")
+
+    if not name or not str(name).strip():
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    if not command or not str(command).strip():
+        raise HTTPException(status_code=400, detail="Command cannot be empty")
+
+    import skills
+    skill_id = skills.save_skill(name, command)
+    new_skill = skills.get_skill(skill_id)
+    return new_skill
+
+
 @app.post("/api/skills/{skill_id}/run")
 async def api_run_skill(skill_id: str):
     """Run a skill (increment run_count and return the command)."""
     import skills
     command = skills.run_skill(skill_id)
     if not command:
-        return {"status": "error", "message": "Skill not found"}
-    return {"status": "success", "command": command}
+        raise HTTPException(status_code=404, detail="Skill not found")
+    updated_skill = skills.get_skill(skill_id)
+    return {
+        "status": "success",
+        "command": command,
+        "skill": updated_skill
+    }
 
 
 @app.delete("/api/skills/{skill_id}")
@@ -209,7 +231,7 @@ async def api_delete_skill(skill_id: str):
     """Delete a skill permanently."""
     import skills
     skills.delete_skill(skill_id)
-    return {"status": "success"}
+    return {"deleted": True}
 
 
 @app.get("/api/metrics")

@@ -27,6 +27,16 @@ def get_skills() -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_skill(skill_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a single skill by ID."""
+    with db._connect() as conn:
+        row = conn.execute(
+            "SELECT id, name, command, created_at, run_count FROM skills WHERE id = ?",
+            (skill_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def run_skill(skill_id: str) -> Optional[str]:
     """Increment run_count and return the skill's command."""
     with db._connect() as conn:
