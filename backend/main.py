@@ -86,7 +86,7 @@ app.add_middleware(
 
 
 @app.get("/api/status")
-async def get_status():
+async def get_status() -> dict[str, str | bool | int]:
     """Get TORCH backend status."""
     return {
         "status": "running",
@@ -115,9 +115,20 @@ async def system_check():
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
+    active_provider = None
+    if settings.gemini_api_key:
+        active_provider = "gemini"
+    elif settings.openai_api_key:
+        active_provider = "openai"
+    elif settings.anthropic_api_key:
+        active_provider = "anthropic"
+
     return {
         "gemini_model": settings.gemini_model,
         "gemini_configured": bool(settings.gemini_api_key),
+        "openai_configured": bool(settings.openai_api_key),
+        "anthropic_configured": bool(settings.anthropic_api_key),
+        "active_provider": active_provider,
         "gmail_configured": bool(settings.gmail_address),
         "gmail_address": settings.gmail_address,
         "wake_word": settings.wake_word,
@@ -156,6 +167,8 @@ async def update_settings(data: dict):
     mapping = {
         "gemini_api_key": "GEMINI_API_KEY",
         "gemini_model": "GEMINI_MODEL",
+        "openai_api_key": "OPENAI_API_KEY",
+        "anthropic_api_key": "ANTHROPIC_API_KEY",
         "gmail_address": "GMAIL_ADDRESS",
         "gmail_app_password": "GMAIL_APP_PASSWORD",
         "gmail_smtp_host": "GMAIL_SMTP_HOST",
@@ -294,7 +307,16 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket, client_id)
 
     await ws_manager.send_terminal_line("WebSocket connected to TORCH backend", "success", client_id)
-    await ws_manager.send_terminal_line(f"Gemini: {'configured' if settings.gemini_api_key else 'not configured'}", "info", client_id)
+    active_provider = None
+    if settings.gemini_api_key:
+        active_provider = "Gemini"
+    elif settings.openai_api_key:
+        active_provider = "OpenAI"
+    elif settings.anthropic_api_key:
+        active_provider = "Anthropic"
+
+    provider_msg = f"Provider: {active_provider}" if active_provider else "No AI provider configured"
+    await ws_manager.send_terminal_line(provider_msg, "info", client_id)
     await ws_manager.send_terminal_line("Ready — awaiting commands", "success", client_id)
     
     # Send initial metrics on connect
@@ -349,9 +371,13 @@ async def process_command(command: str, client_id: str) -> None:
         await ws_manager.send_status("processing", client_id)
         await ws_manager.send_terminal_line(f"Processing: {command[:80]}", "info", client_id)
 
+        # Get conversation context
+        from agent.context import ConversationContext
+        context = ConversationContext.get_context(client_id)
+
         # 2. Plan with Gemini
         await ws_manager.send_terminal_line("Planning execution steps via Gemini...", "info", client_id)
-        raw_steps = await plan_command(command)
+        raw_steps = await plan_command(command, context=context)
 
         # 3. Validate plan
         validated_steps = validate_plan(raw_steps)
@@ -373,7 +399,15 @@ async def process_command(command: str, client_id: str) -> None:
 
         # 5. Execute plan
         message_id = response_msg["id"]
-        await executor.execute_plan(message_id, validated_steps, client_id)
+        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+
+        # Save exchange to context
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=natural_response,
+            step_results=executed_steps
+        )
 
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
@@ -419,8 +453,12 @@ async def process_overlay_command(command: str, client_id: str) -> None:
     try:
         await ws_manager.send_overlay_event(status="processing", client_id=client_id)
 
+        # Get conversation context
+        from agent.context import ConversationContext
+        context = ConversationContext.get_context(client_id)
+
         # Plan and get simple response
-        raw_steps = await plan_command(command)
+        raw_steps = await plan_command(command, context=context)
         validated_steps = validate_plan(raw_steps)
 
         # For overlay, provide a brief response
@@ -439,7 +477,15 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         response_msg = create_response_message(f"Executing: {command}", validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         message_id = response_msg["id"]
-        await executor.execute_plan(message_id, validated_steps, client_id)
+        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+
+        # Save exchange to context
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=reply,
+            step_results=executed_steps
+        )
 
     except Exception as e:
         await ws_manager.send_overlay_event(
