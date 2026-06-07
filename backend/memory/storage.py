@@ -160,6 +160,35 @@ class TorchDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    # ─── Metrics ───
+
+    def get_stats_for_date(self, date_prefix: str) -> Dict[str, Any]:
+        """Fetch counts and action sums for a specific date prefix (YYYY-MM-DD)."""
+        with self._connect() as conn:
+            # Completed tasks count
+            completed = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status = 'completed' AND created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchone()[0]
+            
+            # Total tasks count (attempts)
+            total = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchone()[0]
+            
+            # Sum of actions (step counts)
+            actions = 0
+            rows = conn.execute(
+                "SELECT steps_json FROM tasks WHERE status = 'completed' AND created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchall()
+            for row in rows:
+                steps = json.loads(row["steps_json"]) if row["steps_json"] else []
+                actions += len(steps)
+                    
+            return {"completed": completed, "total": total, "actions": actions}
+
     # ─── Clear ───
 
     def clear_all(self) -> None:

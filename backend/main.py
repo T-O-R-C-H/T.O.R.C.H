@@ -191,25 +191,43 @@ async def update_settings(data: dict):
 async def get_metrics():
     """Get real metrics from SQLite database."""
     from memory.storage import db
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
-    today = datetime.now().date().isoformat()
-    tasks = db.get_tasks(limit=200)
+    now = datetime.now()
+    today_str = now.date().isoformat()
+    yesterday_str = (now - timedelta(days=1)).date().isoformat()
 
-    tasks_today = sum(1 for t in tasks if t.get("created_at", "").startswith(today))
-    tasks_total = len(tasks)
-    completed = sum(1 for t in tasks if t.get("status") == "completed")
-    success_rate = round((completed / tasks_total * 100) if tasks_total > 0 else 99)
+    today_stats = db.get_stats_for_date(today_str)
+    yesterday_stats = db.get_stats_for_date(yesterday_str)
+
+    # Calculations
+    tasks_today = today_stats["completed"]
+    tasks_yesterday = yesterday_stats["completed"]
+    
+    time_saved = round(tasks_today * 8 / 60, 2)
+    time_saved_yesterday = round(tasks_yesterday * 8 / 60, 2)
+    
+    actions_today = today_stats["actions"]
+    actions_yesterday = yesterday_stats["actions"]
+    
+    # Success Rate (today's performance)
+    success_rate = 100
+    if today_stats["total"] > 0:
+        success_rate = round((tasks_today / today_stats["total"]) * 100)
+        
+    success_rate_yesterday = 100
+    if yesterday_stats["total"] > 0:
+        success_rate_yesterday = round((tasks_yesterday / yesterday_stats["total"]) * 100)
 
     return {
         "tasksCompleted": tasks_today,
-        "tasksDelta": max(0, tasks_today - 5),
-        "timeSaved": round(tasks_today * 0.13, 1),
-        "timeDelta": 0.8,
-        "actionsExecuted": tasks_today * 3,
-        "actionsDelta": tasks_today,
+        "tasksDelta": tasks_today - tasks_yesterday,
+        "timeSaved": time_saved,
+        "timeDelta": round(time_saved - time_saved_yesterday, 2),
+        "actionsExecuted": actions_today,
+        "actionsDelta": actions_today - actions_yesterday,
         "successRate": success_rate,
-        "successDelta": 2
+        "successDelta": success_rate - success_rate_yesterday
     }
 
 
