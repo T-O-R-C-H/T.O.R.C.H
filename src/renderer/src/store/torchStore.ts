@@ -43,6 +43,13 @@ export interface TerminalLine {
   content: string
   type: 'info' | 'success' | 'error' | 'warning' | 'hitl'
 }
+export interface Skill {
+  id: string
+  name: string
+  command: string
+  created_at: string
+  run_count: number
+}
 
 export interface TorchState {
   // Agent
@@ -104,6 +111,11 @@ export interface TorchState {
   // Warning banner
   showSettingsKeyBanner: boolean
   setShowSettingsKeyBanner: (show: boolean) => void
+
+  // Skills
+  skills: Skill[]
+  setSkills: (skills: Skill[]) => void
+  fetchSkills: () => Promise<void>
 }
 
 export const useTorchStore = create<TorchState>((set) => ({
@@ -197,5 +209,41 @@ export const useTorchStore = create<TorchState>((set) => ({
 
   // Warning banner
   showSettingsKeyBanner: false,
-  setShowSettingsKeyBanner: (show): void => set({ showSettingsKeyBanner: show })
+  setShowSettingsKeyBanner: (show): void => set({ showSettingsKeyBanner: show }),
+
+  // Skills
+  skills: [],
+  setSkills: (skills): void => set({ skills }),
+  fetchSkills: async (): Promise<void> => {
+    const demoMode = useTorchStore.getState().demoMode
+    if (demoMode) {
+      const demoSkills: Skill[] = [
+        {
+          id: 'demo-1',
+          name: 'Morning Briefing',
+          command: 'Read recent emails, search the web for tech news, and output a summary',
+          created_at: new Date().toISOString(),
+          run_count: 5
+        },
+        {
+          id: 'demo-2',
+          name: 'Clean Downloads',
+          command: 'Delete all temporary files from my downloads folder',
+          created_at: new Date().toISOString(),
+          run_count: 2
+        }
+      ]
+      set({ skills: demoSkills })
+      return
+    }
+    try {
+      const response = await fetch('http://localhost:8000/api/skills')
+      if (response.ok) {
+        const data = await response.json()
+        set({ skills: data })
+      }
+    } catch (err) {
+      console.error('Error fetching skills:', err)
+    }
+  }
 }))

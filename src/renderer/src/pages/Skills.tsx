@@ -12,7 +12,8 @@ interface Skill {
 }
 
 export function Skills(): JSX.Element {
-  const [skills, setSkills] = useState<Skill[]>([])
+  const skills = useTorchStore((s) => s.skills)
+  const fetchSkills = useTorchStore((s) => s.fetchSkills)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -21,37 +22,10 @@ export function Skills(): JSX.Element {
   const navigate = useNavigate()
   const demoMode = useTorchStore((s) => s.demoMode)
 
-  const fetchSkills = async (): Promise<void> => {
+  const loadSkills = async (): Promise<void> => {
     try {
-      if (demoMode) {
-        // Fallback for demo mode
-        const demoSkills: Skill[] = [
-          {
-            id: 'demo-1',
-            name: 'Morning Briefing',
-            command: 'Read recent emails, search the web for tech news, and output a summary',
-            created_at: new Date().toISOString(),
-            run_count: 5
-          },
-          {
-            id: 'demo-2',
-            name: 'Clean Downloads',
-            command: 'Delete all temporary files from my downloads folder',
-            created_at: new Date().toISOString(),
-            run_count: 2
-          }
-        ]
-        setSkills(demoSkills)
-        setLoading(false)
-        return
-      }
-
-      const response = await fetch('http://localhost:8000/api/skills')
-      if (!response.ok) {
-        throw new Error('Failed to load skills')
-      }
-      const data = await response.json()
-      setSkills(data)
+      setLoading(true)
+      await fetchSkills()
       setError(null)
     } catch (err: any) {
       setError(err.message || 'Error fetching skills')
@@ -61,12 +35,12 @@ export function Skills(): JSX.Element {
   }
 
   useEffect(() => {
-    fetchSkills()
+    loadSkills()
   }, [demoMode])
 
   const handleRunSkill = async (skill: Skill): Promise<void> => {
     if (demoMode) {
-      navigate('/', { state: { runCommand: skill.command } })
+      navigate('/chat', { state: { runCommand: skill.command } })
       return
     }
 
@@ -79,7 +53,9 @@ export function Skills(): JSX.Element {
       }
       const data = await response.json()
       if (data.status === 'success') {
-        navigate('/', { state: { runCommand: data.command } })
+        // Fetch updated skills to sync run count across views
+        await fetchSkills()
+        navigate('/chat', { state: { runCommand: data.command } })
       } else {
         throw new Error(data.message || 'Error running skill')
       }
@@ -92,7 +68,7 @@ export function Skills(): JSX.Element {
     e.stopPropagation() // Prevent triggering the card click (run command)
     
     if (demoMode) {
-      setSkills((prev) => prev.filter((s) => s.id !== skillId))
+      useTorchStore.setState({ skills: skills.filter((s) => s.id !== skillId) })
       return
     }
 
@@ -107,7 +83,7 @@ export function Skills(): JSX.Element {
       if (!response.ok) {
         throw new Error('Failed to delete skill')
       }
-      setSkills((prev) => prev.filter((s) => s.id !== skillId))
+      await fetchSkills()
     } catch (err: any) {
       alert(err.message || 'Error deleting skill')
     }
@@ -129,7 +105,7 @@ export function Skills(): JSX.Element {
         created_at: new Date().toISOString(),
         run_count: 0
       }
-      setSkills((prev) => [newSkill, ...prev])
+      useTorchStore.setState({ skills: [newSkill, ...skills] })
       setNewName('')
       setNewCommand('')
       setShowAddForm(false)
@@ -151,8 +127,7 @@ export function Skills(): JSX.Element {
         const errData = await response.json()
         throw new Error(errData.detail || 'Failed to create skill')
       }
-      const createdSkill = await response.json()
-      setSkills((prev) => [createdSkill, ...prev])
+      await fetchSkills()
       setNewName('')
       setNewCommand('')
       setShowAddForm(false)

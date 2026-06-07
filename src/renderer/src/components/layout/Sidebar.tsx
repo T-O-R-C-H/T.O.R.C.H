@@ -1,5 +1,6 @@
-import { NavLink } from 'react-router-dom'
-import { useTorchStore } from '../../store/torchStore'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useTorchStore, type Skill } from '../../store/torchStore'
 import { TorchLogo } from '../ui/TorchLogo'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -68,12 +69,7 @@ const workItems: NavItem[] = [
   { path: '/follow-ups', icon: 'followups', label: 'Follow-ups', badge: 2 }
 ]
 
-const shortcutItems: NavItem[] = [
-  { path: '/action/check-emails', icon: 'shortcut', label: 'Check my emails', indicator: 'green' },
-  { path: '/action/post-update', icon: 'shortcut', label: 'Post an update', indicator: 'yellow' },
-  { path: '/action/find-file', icon: 'shortcut', label: 'Find a file', indicator: 'green' },
-  { path: '/action/add', icon: 'plus', label: 'Add shortcut', isAction: true }
-]
+
 
 const activityItems: NavItem[] = [
   { path: '/tools/clipboard', icon: 'clipboard', label: 'Clipboard', badge: 12 },
@@ -143,6 +139,90 @@ function NavList({ items, title }: { items: NavItem[], title?: string }) {
 }
 
 export function Sidebar(): JSX.Element {
+  const skills = useTorchStore((s) => s.skills)
+  const fetchSkills = useTorchStore((s) => s.fetchSkills)
+  const demoMode = useTorchStore((s) => s.demoMode)
+  const navigate = useNavigate()
+
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [shortcutName, setShortcutName] = useState('')
+  const [shortcutCommand, setShortcutCommand] = useState('')
+
+  useEffect(() => {
+    fetchSkills()
+  }, [demoMode])
+
+  const handleShortcutClick = async (shortcut: Skill | { name: string; command: string }): Promise<void> => {
+    if ('id' in shortcut && !shortcut.id.startsWith('demo') && !demoMode) {
+      try {
+        const response = await fetch(`http://localhost:8000/api/skills/${shortcut.id}/run`, {
+          method: 'POST'
+        })
+        if (response.ok) {
+          await fetchSkills()
+        }
+      } catch (err) {
+        console.error('Error running shortcut:', err)
+      }
+    }
+    navigate('/chat', { state: { runCommand: shortcut.command } })
+  }
+
+  const handleSaveShortcut = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault()
+    if (!shortcutName.trim() || !shortcutCommand.trim()) {
+      alert('Name and command cannot be empty')
+      return
+    }
+
+    if (demoMode) {
+      const newSkill: Skill = {
+        id: `demo-${Date.now()}`,
+        name: shortcutName.trim(),
+        command: shortcutCommand.trim(),
+        created_at: new Date().toISOString(),
+        run_count: 0
+      }
+      useTorchStore.setState({ skills: [newSkill, ...skills] })
+      setShortcutName('')
+      setShortcutCommand('')
+      setShowAddForm(false)
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/skills', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: shortcutName.trim(),
+          command: shortcutCommand.trim()
+        })
+      })
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.detail || 'Failed to create skill')
+      }
+      await fetchSkills()
+      setShortcutName('')
+      setShortcutCommand('')
+      setShowAddForm(false)
+    } catch (err: any) {
+      alert(err.message || 'Error saving shortcut')
+    }
+  }
+
+  const hasSkills = skills.length > 0
+  const displayedShortcuts = hasSkills
+    ? skills.slice(0, 5)
+    : [
+        { name: 'Check my emails', command: 'Check my emails' },
+        { name: 'Post an update', command: 'Post an update' },
+        { name: 'Find a file', command: 'Find a file' }
+      ]
+
   return (
     <div style={{
       width: '260px',
@@ -205,7 +285,106 @@ export function Sidebar(): JSX.Element {
       }}>
         <NavList items={mainItems} />
         <NavList title="WORK" items={workItems} />
-        <NavList title="SHORTCUTS" items={shortcutItems} />
+        
+        {/* SHORTCUTS */}
+        <div style={{ marginBottom: '16px' }}>
+          <div className="sidebar-section-label">SHORTCUTS</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {displayedShortcuts.map((shortcut) => (
+              <button
+                key={'id' in shortcut ? shortcut.id : shortcut.name}
+                onClick={(): Promise<void> => handleShortcutClick(shortcut)}
+                className="sidebar-nav-item"
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer'
+                }}
+              >
+                <span>{shortcut.name}</span>
+                <span style={{ fontSize: '8px', color: '#555' }}>▶</span>
+              </button>
+            ))}
+
+            {/* See all (only if more than 5 skills) */}
+            {skills.length > 5 && (
+              <NavLink
+                to="/skills"
+                className="sidebar-nav-item"
+                style={{ color: '#888' }}
+              >
+                <IconSparkles />
+                <span>See all</span>
+              </NavLink>
+            )}
+
+            {/* Add shortcut button */}
+            <button
+              onClick={(): void => setShowAddForm(!showAddForm)}
+              className="sidebar-nav-item"
+              style={{
+                width: '100%',
+                background: 'transparent',
+                border: 'none',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                color: '#888',
+                cursor: 'pointer'
+              }}
+            >
+              <IconAdd />
+              <span>Add shortcut</span>
+            </button>
+
+            {/* Add shortcut inline form */}
+            {showAddForm && (
+              <form onSubmit={handleSaveShortcut} style={{ padding: '8px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Shortcut Name"
+                  value={shortcutName}
+                  onChange={(e): void => setShortcutName(e.target.value)}
+                  style={{
+                    background: '#0a0a0a',
+                    border: '1px solid #1a1a1a',
+                    color: '#fff',
+                    fontSize: '11px',
+                    padding: '6px 10px',
+                    width: '100%'
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Command"
+                  value={shortcutCommand}
+                  onChange={(e): void => setShortcutCommand(e.target.value)}
+                  style={{
+                    background: '#0a0a0a',
+                    border: '1px solid #1a1a1a',
+                    color: '#fff',
+                    fontSize: '11px',
+                    padding: '6px 10px',
+                    width: '100%'
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  style={{ padding: '4px 10px', fontSize: '10px', justifyContent: 'center' }}
+                >
+                  Save
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
         <NavList title="ACTIVITY" items={activityItems} />
       </div>
 

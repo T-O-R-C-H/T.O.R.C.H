@@ -1,6 +1,5 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { useTorchStore } from '../../store/torchStore'
-import { useWebSocket } from '../../hooks/useWebSocket'
 
 /* ─── ICONS ─── */
 function IconArrowUp(): JSX.Element {
@@ -23,17 +22,6 @@ function IconMic(): JSX.Element {
   )
 }
 
-function TorchSymbol(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 32 32" fill="none">
-      <rect x="12" y="19" width="8" height="11" rx="0" fill="#ffffff" />
-      <ellipse cx="16" cy="12" rx="4.5" ry="7" fill="#ffffff" />
-      <ellipse cx="16" cy="11" rx="3" ry="5" fill="#000000" />
-      <ellipse cx="16" cy="10" rx="1.5" ry="3" fill="#ffffff" />
-      <path d="M16 4 L14.5 8 L16 7 L17.5 8 Z" fill="#ffffff" />
-    </svg>
-  )
-}
 
 interface CommandInputProps {
   onSend: (command: string) => void

@@ -36,6 +36,7 @@ function AppLayout(): JSX.Element {
         <Topbar />
         <Routes>
           <Route path="/" element={<Command />} />
+          <Route path="/chat" element={<Command />} />
           <Route path="/terminal" element={<Terminal />} />
           <Route path="/screenwatch" element={<ScreenWatch />} />
           <Route path="/history" element={<History />} />
