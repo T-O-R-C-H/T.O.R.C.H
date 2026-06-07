@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTorchStore } from '../store/torchStore'
 
 import {
   IconKey as Key,

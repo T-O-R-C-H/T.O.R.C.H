@@ -14,6 +14,7 @@ import { Insights } from './pages/Insights'
 import { Tasks } from './pages/Tasks'
 import { Settings } from './pages/Settings'
 import { Onboarding } from './pages/Onboarding'
+import { Skills } from './pages/Skills'
 import { WebSearch } from './pages/tools/WebSearch'
 import { Files } from './pages/tools/Files'
 import { Messaging } from './pages/tools/Messaging'
@@ -35,6 +36,7 @@ function AppLayout(): JSX.Element {
         <Topbar />
         <Routes>
           <Route path="/" element={<Command />} />
+          <Route path="/chat" element={<Command />} />
           <Route path="/terminal" element={<Terminal />} />
           <Route path="/screenwatch" element={<ScreenWatch />} />
           <Route path="/history" element={<History />} />
@@ -42,6 +44,7 @@ function AppLayout(): JSX.Element {
           <Route path="/insights" element={<Insights />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/skills" element={<Skills />} />
           <Route path="/tools/search" element={<WebSearch />} />
           <Route path="/tools/files" element={<Files />} />
           <Route path="/tools/messaging" element={<Messaging />} />

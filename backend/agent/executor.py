@@ -73,6 +73,13 @@ class Executor:
             except ImportError as e:
                 logger.warning(f"Could not load module {module_path}: {e}")
 
+        # Load skill tools
+        try:
+            import skills
+            self._tool_registry["save_skill"] = skills.save_skill
+        except Exception as e:
+            logger.warning(f"Could not load skills module: {e}")
+
         logger.info(f"Loaded {len(self._tool_registry)} tools")
 
     async def execute_plan(

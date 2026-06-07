@@ -1,4 +1,3 @@
-import { IconLoader, IconCheck, IconAlertTriangle, IconCircle } from '../icons'
 import type { Step } from '../../store/torchStore'
 import { ResultRenderer } from './ResultRenderer'
 
@@ -13,7 +12,6 @@ export function StepList({ steps }: StepListProps): JSX.Element {
         const isDone = step.status === 'done'
         const isActive = step.status === 'active'
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'
-        const isPending = step.status === 'pending'
 
         return (
           <div
@@ -27,7 +25,7 @@ export function StepList({ steps }: StepListProps): JSX.Element {
             }}
           >
             {/* Step Row */}
-            <div style={{ display: 'flex', itemsCenter: 'flex-start', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
               <div style={{
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: '11px',
