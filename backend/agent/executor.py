@@ -13,6 +13,28 @@ from config.settings import settings
 
 logger = logging.getLogger("torch.executor")
 
+NON_BLOCKING_FAILURE_TOOLS = {"screenshot", "analyse_screen"}
+NON_RETRYABLE_ERROR_MARKERS = (
+    "authentication failed",
+    "unauthorized",
+    "permission denied",
+    "cancelled",
+    "canceled",
+    "file not found",
+    "no such file",
+    "no files matching",
+)
+RETRYABLE_ERROR_MARKERS = (
+    "timeout",
+    "timed out",
+    "connection refused",
+    "connection reset",
+    "network",
+    "temporarily unavailable",
+    "element not found",
+    "smtp",
+)
+
 
 class Executor:
     """Sequential step executor with HITL pause/resume capability."""
@@ -144,6 +166,7 @@ class Executor:
                 )
 
                 result_str = str(result) if result is not None else "Done"
+                result_recorded = False
 
                 if tool_name == "find_file" and result_str.startswith("No files matching"):
                     try:
@@ -159,12 +182,61 @@ class Executor:
                             )
                             # Use first suggestion as the result for next steps
                             results.append(fuzzy["suggestions"][0])
+                            result_recorded = True
                         else:
+                            error_msg = (
+                                f"No exact match found for '{resolved_args.get('name')}'. "
+                                "I could not find a safe file match to continue."
+                            )
+                            step["status"] = "failed"
+                            step["error"] = error_msg
+                            results.append("")
+                            await ws_manager.send_step_update(
+                                message_id, step_id, "failed",
+                                error=error_msg[:200],
+                                client_id=client_id,
+                            )
+                            await ws_manager.send_terminal_line(
+                                f"Blocking failure: {error_msg}", "error", client_id
+                            )
+                            # Send blocking failure explanation to chat
+                            step_num = i + 1
+                            completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
+                            await ws_manager.send_agent_response(
+                                {
+                                    "role": "assistant",
+                                    "content": (
+                                        f"Step {step_num} failed after 2 attempts: {error_msg}. "
+                                        f"{completed_range}."
+                                    ),
+                                },
+                                client_id,
+                            )
+                            break
+                    except Exception as e:
+                        error_msg = str(e)[:200]
+                        step["status"] = "failed"
+                        step["error"] = error_msg
+                        results.append("")
+                        await ws_manager.send_step_update(
+                            message_id, step_id, "failed",
+                            error=error_msg,
+                            client_id=client_id,
+                        )
+                        await ws_manager.send_terminal_line(
+                            f"Blocking failure: {error_msg}", "error", client_id
+                        )
+                        break
+                    else:
+                        if step["status"] == "failed":
+                            break
+                        if not result_recorded:
                             results.append(result_str)
-                    except Exception:
-                        results.append(result_str)
                 else:
                     results.append(result_str)
+
+                if step["status"] == "failed":
+                    break
 
                 step["status"] = "done"
                 step["result"] = result_str
@@ -194,6 +266,35 @@ class Executor:
                 )
 
                 logger.error(f"Step {step_id} failed: {e}", exc_info=True)
+
+                if tool_name in NON_BLOCKING_FAILURE_TOOLS:
+                    await ws_manager.send_terminal_line(
+                        f"Continuing after non-blocking failure: {step['label']}",
+                        "warning",
+                        client_id,
+                    )
+                    continue
+
+                # Send failure summary to chat with exact format
+                step_num = i + 1
+                completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
+                chat_failure_msg = (
+                    f"Step {step_num} failed after 2 attempts: {error_msg}. "
+                    f"{completed_range}."
+                )
+                await ws_manager.send_agent_response(
+                    {
+                        "role": "assistant",
+                        "content": chat_failure_msg,
+                    },
+                    client_id,
+                )
+                await ws_manager.send_terminal_line(
+                    f"Step {step_num} failed after retry handling. Stopping task so I do not continue with unsafe inputs.",
+                    "error",
+                    client_id,
+                )
+                break
 
         await ws_manager.send_status("idle", client_id)
         return steps
@@ -227,7 +328,7 @@ class Executor:
                 )
             except Exception as e:
                 last_error = e
-                if attempt >= max_attempts:
+                if not self._is_retryable_error(e) or attempt >= max_attempts:
                     break
 
                 logger.warning(
@@ -238,7 +339,7 @@ class Executor:
                     e,
                 )
                 await ws_manager.send_terminal_line(
-                    f"Retrying {tool_name} ({attempt + 1}/{max_attempts})...",
+                    "Step failed, retrying in 2 seconds...",
                     "warning",
                     client_id,
                 )
@@ -248,6 +349,15 @@ class Executor:
             raise last_error
 
         return None
+
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Retry transient errors, but never retry destructive or user/auth failures."""
+        message = str(error).lower()
+        if "element not found" in message:
+            return True
+        if any(marker in message for marker in NON_RETRYABLE_ERROR_MARKERS):
+            return False
+        return any(marker in message for marker in RETRYABLE_ERROR_MARKERS)
 
     async def _wait_for_approval(self, step_id: str, timeout: float = 300) -> str:
         """Wait for HITL approval with timeout (default 5 minutes)."""
