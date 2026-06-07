@@ -54,6 +54,7 @@ CRITICAL RULES:
 5. Be specific in your labels — the user sees these in real-time.
 6. Use the minimum number of steps needed.
 7. If you need to find information before acting, add a search/read step first.
+8. Resolve pronouns like 'it', 'that', or references like 'the file', 'the PDF', 'the folder' from recent conversation context (provided under 'Conversation context'). For instance, if a file search in a previous turn successfully returned a path (shown in 'Execution steps & outcomes'), use that path when the user refers to it in the next command.
 
 FILE MATCHING RULES:
 - When searching for files, always use find_file tool first
@@ -92,10 +93,38 @@ class GeminiProvider(LLMProvider):
             # Build message contents
             contents = system + "\n\nUser command: " + user_command
             if context:
-                ctx_text = "\n".join(
-                    f"{'User' if m.get('role') == 'user' else 'TORCH'}: {m.get('content', '')}"
-                    for m in context[-10:]
-                )
+                ctx_parts = []
+                for ex in context:
+                    user_cmd = ex.get("user_command", "")
+                    reply = ex.get("reply_summary", "")
+                    step_res = ex.get("step_results", [])
+                    
+                    # Format step results into a readable string
+                    step_details = []
+                    for idx, step in enumerate(step_res):
+                        tool = step.get("tool", "unknown")
+                        label = step.get("label", "")
+                        status = step.get("status", "unknown")
+                        res = step.get("result", "")
+                        err = step.get("error", "")
+                        
+                        detail = f"  - Step {idx}: {label} (tool: {tool}) -> {status}"
+                        if status == "done" and res:
+                            detail += f", result: {res}"
+                        elif status == "failed" and err:
+                            detail += f", error: {err}"
+                        step_details.append(detail)
+                    
+                    steps_text = "\n".join(step_details)
+                    
+                    exchange_str = (
+                        f"User command: {user_cmd}\n"
+                        f"TORCH response: {reply}\n"
+                        f"Execution steps & outcomes:\n{steps_text}"
+                    )
+                    ctx_parts.append(exchange_str)
+                
+                ctx_text = "\n\n".join(ctx_parts)
                 contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
             # Call Gemini

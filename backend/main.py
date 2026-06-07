@@ -371,9 +371,13 @@ async def process_command(command: str, client_id: str) -> None:
         await ws_manager.send_status("processing", client_id)
         await ws_manager.send_terminal_line(f"Processing: {command[:80]}", "info", client_id)
 
+        # Get conversation context
+        from agent.context import ConversationContext
+        context = ConversationContext.get_context(client_id)
+
         # 2. Plan with Gemini
         await ws_manager.send_terminal_line("Planning execution steps via Gemini...", "info", client_id)
-        raw_steps = await plan_command(command)
+        raw_steps = await plan_command(command, context=context)
 
         # 3. Validate plan
         validated_steps = validate_plan(raw_steps)
@@ -395,7 +399,15 @@ async def process_command(command: str, client_id: str) -> None:
 
         # 5. Execute plan
         message_id = response_msg["id"]
-        await executor.execute_plan(message_id, validated_steps, client_id)
+        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+
+        # Save exchange to context
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=natural_response,
+            step_results=executed_steps
+        )
 
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
@@ -441,8 +453,12 @@ async def process_overlay_command(command: str, client_id: str) -> None:
     try:
         await ws_manager.send_overlay_event(status="processing", client_id=client_id)
 
+        # Get conversation context
+        from agent.context import ConversationContext
+        context = ConversationContext.get_context(client_id)
+
         # Plan and get simple response
-        raw_steps = await plan_command(command)
+        raw_steps = await plan_command(command, context=context)
         validated_steps = validate_plan(raw_steps)
 
         # For overlay, provide a brief response
@@ -461,7 +477,15 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         response_msg = create_response_message(f"Executing: {command}", validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         message_id = response_msg["id"]
-        await executor.execute_plan(message_id, validated_steps, client_id)
+        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+
+        # Save exchange to context
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=reply,
+            step_results=executed_steps
+        )
 
     except Exception as e:
         await ws_manager.send_overlay_event(

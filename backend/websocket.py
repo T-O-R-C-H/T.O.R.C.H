@@ -31,6 +31,12 @@ class ConnectionManager:
         async with self._lock:
             self.active_connections.pop(client_id, None)
         logger.info(f"Client disconnected: {client_id}")
+        try:
+            from agent.context import ConversationContext
+            ConversationContext.clear_context(client_id)
+        except Exception as e:
+            logger.error(f"Failed to clear conversation context on disconnect for {client_id}: {e}")
+
 
     async def send_message(self, data: dict, client_id: str = "main") -> None:
         """Send a JSON message to a specific client."""
