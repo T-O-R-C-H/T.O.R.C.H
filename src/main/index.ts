@@ -8,8 +8,57 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let backendProcess: ChildProcess | null = null
+let backendHealthTimer: NodeJS.Timeout | null = null
+let backendRestartTimer: NodeJS.Timeout | null = null
+let backendStopping = false
+let backendRestarting = false
+let backendFailedChecks = 0
+
+const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVAL_MS'] ?? 10000)
+const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
+const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
+const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
+
+type BackendHealth = {
+  status: 'starting' | 'running' | 'stopped' | 'unhealthy' | 'restarting'
+  pid: number | null
+  lastCheckedAt: number | null
+  failureCount: number
+  error?: string
+}
+
+let backendHealth: BackendHealth = {
+  status: 'stopped',
+  pid: null,
+  lastCheckedAt: null,
+  failureCount: 0
+}
+
+function publishBackendHealth(update: Partial<BackendHealth>): void {
+  backendHealth = {
+    ...backendHealth,
+    ...update,
+    pid: backendProcess?.pid ?? null
+  }
+
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('backend:health', backendHealth)
+  }
+}
 
 function startBackend(): void {
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer)
+    backendRestartTimer = null
+  }
+
+  if (backendProcess) {
+    console.log('[TORCH] Backend already running')
+    return
+  }
+
+  backendStopping = false
+
   // In dev, __dirname is in out/main, so go up 2 levels to project root, then into backend
   // In production, backend is bundled next to the app
   const projectRoot = is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
@@ -23,7 +72,18 @@ function startBackend(): void {
   backendProcess = spawn(pythonExe, ['main.py'], {
     cwd: backendDir,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env }
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      TORCH_RELOAD: 'false'
+    }
+  })
+
+  publishBackendHealth({
+    status: 'starting',
+    lastCheckedAt: Date.now(),
+    failureCount: 0,
+    error: undefined
   })
 
   backendProcess.stdout?.on('data', (data: Buffer) => {
@@ -37,15 +97,143 @@ function startBackend(): void {
   backendProcess.on('exit', (code) => {
     console.log(`[TORCH] Backend exited with code ${code}`)
     backendProcess = null
+    publishBackendHealth({
+      status: backendRestarting ? 'restarting' : 'stopped',
+      lastCheckedAt: Date.now(),
+      failureCount: backendFailedChecks
+    })
+
+    if (!backendStopping && !backendRestarting) {
+      scheduleBackendRestart('backend process exited unexpectedly')
+    }
   })
+
+  backendProcess.on('error', (error) => {
+    console.error('[TORCH] Backend process error:', error)
+    publishBackendHealth({
+      status: 'unhealthy',
+      lastCheckedAt: Date.now(),
+      failureCount: backendFailedChecks,
+      error: error.message
+    })
+  })
+
+  startBackendHealthMonitor()
 }
 
 function stopBackend(): void {
+  backendStopping = true
+  stopBackendHealthMonitor()
+
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer)
+    backendRestartTimer = null
+  }
+
+  backendRestarting = false
+
   if (backendProcess) {
     console.log('[TORCH] Stopping backend...')
     backendProcess.kill()
     backendProcess = null
   }
+
+  backendFailedChecks = 0
+  publishBackendHealth({
+    status: 'stopped',
+    lastCheckedAt: Date.now(),
+    failureCount: 0,
+    error: undefined
+  })
+}
+
+function startBackendHealthMonitor(): void {
+  if (backendHealthTimer) {
+    return
+  }
+
+  void checkBackendHealth()
+  backendHealthTimer = setInterval(() => {
+    void checkBackendHealth()
+  }, backendHealthIntervalMs)
+}
+
+function stopBackendHealthMonitor(): void {
+  if (backendHealthTimer) {
+    clearInterval(backendHealthTimer)
+    backendHealthTimer = null
+  }
+}
+
+async function checkBackendHealth(): Promise<void> {
+  if (!backendProcess || backendStopping) {
+    return
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
+
+  try {
+    const response = await fetch('http://127.0.0.1:8000/api/status', {
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      throw new Error(`Health check returned ${response.status}`)
+    }
+
+    backendFailedChecks = 0
+    publishBackendHealth({
+      status: 'running',
+      lastCheckedAt: Date.now(),
+      failureCount: 0,
+      error: undefined
+    })
+  } catch (error) {
+    backendFailedChecks += 1
+    const message = error instanceof Error ? error.message : 'Unknown backend health check error'
+
+    publishBackendHealth({
+      status: 'unhealthy',
+      lastCheckedAt: Date.now(),
+      failureCount: backendFailedChecks,
+      error: message
+    })
+
+    if (backendFailedChecks >= backendMaxFailedChecks) {
+      scheduleBackendRestart(message)
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function scheduleBackendRestart(reason: string): void {
+  if (backendRestarting || backendStopping) {
+    return
+  }
+
+  backendRestarting = true
+  stopBackendHealthMonitor()
+  publishBackendHealth({
+    status: 'restarting',
+    lastCheckedAt: Date.now(),
+    failureCount: backendFailedChecks,
+    error: reason
+  })
+
+  const processToStop = backendProcess
+  if (processToStop) {
+    processToStop.kill()
+    backendProcess = null
+  }
+
+  backendRestartTimer = setTimeout(() => {
+    backendRestartTimer = null
+    backendFailedChecks = 0
+    backendRestarting = false
+    startBackend()
+  }, backendRestartDelayMs)
 }
 
 function createMainWindow(): void {
@@ -224,6 +412,8 @@ app.whenReady().then(() => {
   ipcMain.on('shell:openExternal', (_, url: string) => {
     shell.openExternal(url)
   })
+
+  ipcMain.handle('backend:getHealth', () => backendHealth)
 
   createMainWindow()
   createOverlayWindow()

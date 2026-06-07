@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
+type BackendHealth = {
+  status: 'starting' | 'running' | 'stopped' | 'unhealthy' | 'restarting'
+  pid: number | null
+  lastCheckedAt: number | null
+  failureCount: number
+  error?: string
+}
+
 // TORCH API exposed to renderer
 const torchAPI = {
   // Window controls
@@ -14,6 +22,15 @@ const torchAPI = {
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
+
+  // Backend health
+  getBackendHealth: (): Promise<BackendHealth> => ipcRenderer.invoke('backend:getHealth'),
+  onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void): void => {
+    ipcRenderer.on('backend:health', callback)
+  },
+  onBackendStatus: (callback: (status: 'online' | 'offline') => void): void => {
+    ipcRenderer.on('backend:status', (_e, status: 'online' | 'offline') => callback(status))
+  },
 
   // Event listeners
   onOverlayActivate: (callback: () => void): void => {
@@ -29,6 +46,12 @@ const torchAPI = {
   },
   removeScreenWatchToggle: (): void => {
     ipcRenderer.removeAllListeners('screenwatch:toggle')
+  },
+  removeBackendHealth: (): void => {
+    ipcRenderer.removeAllListeners('backend:health')
+  },
+  removeBackendStatus: (): void => {
+    ipcRenderer.removeAllListeners('backend:status')
   }
 }
 
@@ -40,8 +63,11 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore
-  window.electron = electronAPI
-  // @ts-ignore
-  window.torchAPI = torchAPI
+  const currentWindow = window as unknown as {
+    electron: typeof electronAPI
+    torchAPI: typeof torchAPI
+  }
+
+  currentWindow.electron = electronAPI
+  currentWindow.torchAPI = torchAPI
 }

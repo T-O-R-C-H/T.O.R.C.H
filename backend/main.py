@@ -365,10 +365,13 @@ async def process_overlay_command(command: str, client_id: str) -> None:
 
 if __name__ == "__main__":
     import uvicorn
+
+    reload_enabled = os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
+
     uvicorn.run(
         "main:app",
         host=settings.host,
         port=settings.port,
-        reload=True,
+        reload=reload_enabled,
         log_level="info",
     )

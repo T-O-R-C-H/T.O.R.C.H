@@ -30,6 +30,15 @@ class TorchSettings(BaseSettings):
     screen_watch_enabled: bool = Field(default=False, alias="SCREEN_WATCH_ENABLED")
     screen_watch_interval: int = Field(default=30, alias="SCREEN_WATCH_INTERVAL")
 
+    # Agent retry handling
+    agent_retry_enabled: bool = Field(default=True, alias="TORCH_AGENT_RETRY_ENABLED")
+    agent_retry_attempts: int = Field(default=2, alias="TORCH_AGENT_RETRY_ATTEMPTS")
+    agent_retry_delay_seconds: float = Field(default=0.5, alias="TORCH_AGENT_RETRY_DELAY_SECONDS")
+    agent_retry_tools: str = Field(
+        default="find_file,list_directory,read_pdf,read_word,read_excel,read_inbox,open_browser,search_web,download_file,screenshot,analyse_screen",
+        alias="TORCH_AGENT_RETRY_TOOLS",
+    )
+
     # Server
     host: str = Field(default="0.0.0.0", alias="TORCH_HOST")
     port: int = Field(default=8000, alias="TORCH_PORT")
