@@ -238,26 +238,50 @@ async def api_delete_skill(skill_id: str):
 async def get_metrics():
     """Get real metrics from SQLite database."""
     from memory.storage import db
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
-    today = datetime.now().date().isoformat()
-    tasks = db.get_tasks(limit=200)
+    now = datetime.now()
+    today_str = now.date().isoformat()
+    yesterday_str = (now - timedelta(days=1)).date().isoformat()
 
-    tasks_today = sum(1 for t in tasks if t.get("created_at", "").startswith(today))
-    tasks_total = len(tasks)
-    completed = sum(1 for t in tasks if t.get("status") == "completed")
-    success_rate = round((completed / tasks_total * 100) if tasks_total > 0 else 99)
+    today_stats = db.get_stats_for_date(today_str)
+    yesterday_stats = db.get_stats_for_date(yesterday_str)
+
+    # Calculations
+    tasks_today = today_stats["completed"]
+    tasks_yesterday = yesterday_stats["completed"]
+    
+    time_saved = round(tasks_today * 8 / 60, 2)
+    time_saved_yesterday = round(tasks_yesterday * 8 / 60, 2)
+    
+    actions_today = today_stats["actions"]
+    actions_yesterday = yesterday_stats["actions"]
+    
+    # Success Rate (today's performance)
+    success_rate = 100
+    if today_stats["total"] > 0:
+        success_rate = round((tasks_today / today_stats["total"]) * 100)
+        
+    success_rate_yesterday = 100
+    if yesterday_stats["total"] > 0:
+        success_rate_yesterday = round((tasks_yesterday / yesterday_stats["total"]) * 100)
 
     return {
         "tasksCompleted": tasks_today,
-        "tasksDelta": max(0, tasks_today - 5),
-        "timeSaved": round(tasks_today * 0.13, 1),
-        "timeDelta": 0.8,
-        "actionsExecuted": tasks_today * 3,
-        "actionsDelta": tasks_today,
+        "tasksDelta": tasks_today - tasks_yesterday,
+        "timeSaved": time_saved,
+        "timeDelta": round(time_saved - time_saved_yesterday, 2),
+        "actionsExecuted": actions_today,
+        "actionsDelta": actions_today - actions_yesterday,
         "successRate": success_rate,
-        "successDelta": 2
+        "successDelta": success_rate - success_rate_yesterday
     }
+
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """Get real metrics from SQLite database."""
+    return await get_current_metrics()
 
 
 # ─── WEBSOCKET ───
@@ -272,6 +296,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.send_terminal_line("WebSocket connected to TORCH backend", "success", client_id)
     await ws_manager.send_terminal_line(f"Gemini: {'configured' if settings.gemini_api_key else 'not configured'}", "info", client_id)
     await ws_manager.send_terminal_line("Ready — awaiting commands", "success", client_id)
+    
+    # Send initial metrics on connect
+    try:
+        metrics_data = await get_current_metrics()
+        await ws_manager.send_metrics(metrics_data, client_id)
+    except Exception as e:
+        logger.warning(f"Failed to send initial metrics on connect: {e}")
 
     try:
         while True:
@@ -350,15 +381,25 @@ async def process_command(command: str, client_id: str) -> None:
         # Update metrics after task completion
         try:
             from memory.storage import db
-            db.save_task(command, validated_steps, "completed", 0)
+            db.save_task(command, validated_steps, "completed")
             db.log_command(command)
-            metrics_data = await get_metrics()
+            metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as e:
             logger.warning(f"Metrics update failed: {e}")
 
     except Exception as e:
         logger.error(f"Command processing failed: {e}", exc_info=True)
+        
+        # Record failure in database for accurate success rate metrics
+        try:
+            from memory.storage import db
+            db.save_task(command, [], "failed") # Duration is 0 for failed tasks
+            metrics_data = await get_current_metrics()
+            await ws_manager.send_metrics(metrics_data, client_id)
+        except Exception as db_err:
+            logger.warning(f"Failed to log task failure: {db_err}")
+
         await ws_manager.send_status("idle", client_id)
         await ws_manager.send_terminal_line(f"Error: {e}", "error", client_id)
 

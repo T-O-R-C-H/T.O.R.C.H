@@ -37,6 +37,7 @@ class TorchDatabase:
         except Exception as e:
             logger.error(f"Failed to initialize database from schema.sql: {e}")
             # Fallback inline schema in case file read fails
+            # Matches the 8 tables required in Issue 02
             with self._connect() as conn:
                 conn.executescript("""
                     CREATE TABLE IF NOT EXISTS tasks (
@@ -45,14 +46,18 @@ class TorchDatabase:
                         status TEXT,
                         steps_json TEXT,
                         duration_ms INTEGER,
-                        created_at TEXT DEFAULT (datetime('now')),
+                        created_at TEXT,
                         completed_at TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS steps (
+                        id TEXT PRIMARY KEY, task_id TEXT, tool TEXT, label TEXT, 
+                        status TEXT, result TEXT, error TEXT, created_at TEXT
                     );
                     CREATE TABLE IF NOT EXISTS habits (
                         id TEXT PRIMARY KEY,
                         command TEXT,
                         count INTEGER DEFAULT 1,
-                        last_used TEXT DEFAULT (datetime('now')),
+                        last_used TEXT,
                         hour_of_day INTEGER,
                         day_of_week TEXT
                     );
@@ -64,6 +69,22 @@ class TorchDatabase:
                         interaction_count INTEGER DEFAULT 0,
                         last_interaction TEXT
                     );
+                    CREATE TABLE IF NOT EXISTS files_accessed (
+                        id TEXT PRIMARY KEY, filepath TEXT, action TEXT, 
+                        access_count INTEGER DEFAULT 0, last_accessed TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS notifications (
+                        id TEXT PRIMARY KEY, type TEXT, title TEXT, 
+                        message TEXT, dismissed INTEGER DEFAULT 0, created_at TEXT
+                    );
+                    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                        id TEXT PRIMARY KEY, command TEXT, cron_expression TEXT, 
+                        last_run TEXT, next_run TEXT, active INTEGER DEFAULT 1
+                    );
+                    CREATE TABLE IF NOT EXISTS skills (
+                        id TEXT PRIMARY KEY, name TEXT, command TEXT, 
+                        created_at TEXT, run_count INTEGER DEFAULT 0
+                    );
                 """)
 
     def _connect(self) -> sqlite3.Connection:
@@ -73,12 +94,13 @@ class TorchDatabase:
 
     # ─── Tasks ───
 
-    def save_task(self, command: str, steps: List[Dict], status: str, duration_ms: int) -> str:
+    def save_task(self, command: str, steps: List[Dict], status: str, duration_ms: int = 0) -> str:
         task_id = str(uuid.uuid4())
+        now = datetime.now().isoformat()
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO tasks (id, command, status, steps_json, duration_ms, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (task_id, command, status, json.dumps(steps), duration_ms, datetime.now().isoformat()),
+                "INSERT INTO tasks (id, command, status, steps_json, duration_ms, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (task_id, command, status, json.dumps(steps), duration_ms, now, now),
             )
         return task_id
 
@@ -159,6 +181,35 @@ class TorchDatabase:
                 "SELECT * FROM contacts ORDER BY interaction_count DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ─── Metrics ───
+
+    def get_stats_for_date(self, date_prefix: str) -> Dict[str, Any]:
+        """Fetch counts and action sums for a specific date prefix (YYYY-MM-DD)."""
+        with self._connect() as conn:
+            # Completed tasks count
+            completed = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status = 'completed' AND created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchone()[0]
+            
+            # Total tasks count (attempts)
+            total = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchone()[0]
+            
+            # Sum of actions (step counts)
+            actions = 0
+            rows = conn.execute(
+                "SELECT steps_json FROM tasks WHERE status = 'completed' AND created_at LIKE ?",
+                (f"{date_prefix}%",)
+            ).fetchall()
+            for row in rows:
+                steps = json.loads(row["steps_json"]) if row["steps_json"] else []
+                actions += len(steps)
+                    
+            return {"completed": completed, "total": total, "actions": actions}
 
     # ─── Clear ───
 
