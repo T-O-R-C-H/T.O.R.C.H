@@ -231,6 +231,12 @@ async def get_metrics():
     }
 
 
+@app.get("/api/metrics")
+async def get_metrics():
+    """Get real metrics from SQLite database."""
+    return await get_current_metrics()
+
+
 # ─── WEBSOCKET ───
 
 
@@ -243,6 +249,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.send_terminal_line("WebSocket connected to TORCH backend", "success", client_id)
     await ws_manager.send_terminal_line(f"Gemini: {'configured' if settings.gemini_api_key else 'not configured'}", "info", client_id)
     await ws_manager.send_terminal_line("Ready — awaiting commands", "success", client_id)
+    
+    # Send initial metrics on connect
+    try:
+        metrics_data = await get_current_metrics()
+        await ws_manager.send_metrics(metrics_data, client_id)
+    except Exception as e:
+        logger.warning(f"Failed to send initial metrics on connect: {e}")
 
     try:
         while True:
@@ -323,7 +336,7 @@ async def process_command(command: str, client_id: str) -> None:
             from memory.storage import db
             db.save_task(command, validated_steps, "completed")
             db.log_command(command)
-            metrics_data = await get_metrics()
+            metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as e:
             logger.warning(f"Metrics update failed: {e}")
@@ -334,8 +347,8 @@ async def process_command(command: str, client_id: str) -> None:
         # Record failure in database for accurate success rate metrics
         try:
             from memory.storage import db
-            db.save_task(command, [], "failed")
-            metrics_data = await get_metrics()
+            db.save_task(command, [], "failed") # Duration is 0 for failed tasks
+            metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as db_err:
             logger.warning(f"Failed to log task failure: {db_err}")
