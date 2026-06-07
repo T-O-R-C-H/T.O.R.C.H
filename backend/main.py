@@ -321,7 +321,7 @@ async def process_command(command: str, client_id: str) -> None:
         # Update metrics after task completion
         try:
             from memory.storage import db
-            db.save_task(command, validated_steps, "completed", 0)
+            db.save_task(command, validated_steps, "completed")
             db.log_command(command)
             metrics_data = await get_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
@@ -330,6 +330,16 @@ async def process_command(command: str, client_id: str) -> None:
 
     except Exception as e:
         logger.error(f"Command processing failed: {e}", exc_info=True)
+        
+        # Record failure in database for accurate success rate metrics
+        try:
+            from memory.storage import db
+            db.save_task(command, [], "failed")
+            metrics_data = await get_metrics()
+            await ws_manager.send_metrics(metrics_data, client_id)
+        except Exception as db_err:
+            logger.warning(f"Failed to log task failure: {db_err}")
+
         await ws_manager.send_status("idle", client_id)
         await ws_manager.send_terminal_line(f"Error: {e}", "error", client_id)
 
