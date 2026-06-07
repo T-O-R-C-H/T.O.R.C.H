@@ -25,11 +25,6 @@ import {
   IconSparkles
 } from '../icons'
 
-/* ═══════════════════════════════════════════════════════════════
-   TORCH SIDEBAR — v2 Redesign
-   260px · #000 · sharp · desktop-native density
-   ═══════════════════════════════════════════════════════════════ */
-
 /* ─── ICON MAP ─── */
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   chat: IconMessage,
