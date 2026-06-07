@@ -86,7 +86,7 @@ app.add_middleware(
 
 
 @app.get("/api/status")
-async def get_status():
+async def get_status() -> dict[str, str | bool | int]:
     """Get TORCH backend status."""
     return {
         "status": "running",
@@ -115,9 +115,20 @@ async def system_check():
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
+    active_provider = None
+    if settings.gemini_api_key:
+        active_provider = "gemini"
+    elif settings.openai_api_key:
+        active_provider = "openai"
+    elif settings.anthropic_api_key:
+        active_provider = "anthropic"
+
     return {
         "gemini_model": settings.gemini_model,
         "gemini_configured": bool(settings.gemini_api_key),
+        "openai_configured": bool(settings.openai_api_key),
+        "anthropic_configured": bool(settings.anthropic_api_key),
+        "active_provider": active_provider,
         "gmail_configured": bool(settings.gmail_address),
         "gmail_address": settings.gmail_address,
         "wake_word": settings.wake_word,
@@ -156,6 +167,8 @@ async def update_settings(data: dict):
     mapping = {
         "gemini_api_key": "GEMINI_API_KEY",
         "gemini_model": "GEMINI_MODEL",
+        "openai_api_key": "OPENAI_API_KEY",
+        "anthropic_api_key": "ANTHROPIC_API_KEY",
         "gmail_address": "GMAIL_ADDRESS",
         "gmail_app_password": "GMAIL_APP_PASSWORD",
         "gmail_smtp_host": "GMAIL_SMTP_HOST",
@@ -294,7 +307,16 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket, client_id)
 
     await ws_manager.send_terminal_line("WebSocket connected to TORCH backend", "success", client_id)
-    await ws_manager.send_terminal_line(f"Gemini: {'configured' if settings.gemini_api_key else 'not configured'}", "info", client_id)
+    active_provider = None
+    if settings.gemini_api_key:
+        active_provider = "Gemini"
+    elif settings.openai_api_key:
+        active_provider = "OpenAI"
+    elif settings.anthropic_api_key:
+        active_provider = "Anthropic"
+
+    provider_msg = f"Provider: {active_provider}" if active_provider else "No AI provider configured"
+    await ws_manager.send_terminal_line(provider_msg, "info", client_id)
     await ws_manager.send_terminal_line("Ready — awaiting commands", "success", client_id)
     
     # Send initial metrics on connect
