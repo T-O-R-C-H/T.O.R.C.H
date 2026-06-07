@@ -9,6 +9,7 @@ import importlib
 from typing import List, Dict, Any, Optional, Callable
 
 from websocket import manager as ws_manager
+from config.settings import settings
 
 logger = logging.getLogger("torch.executor")
 
@@ -135,13 +136,12 @@ class Executor:
                 if not tool_func:
                     raise ValueError(f"Tool not registered: {tool_name}")
 
-                # Call tool (support both sync and async)
-                if asyncio.iscoroutinefunction(tool_func):
-                    result = await tool_func(**resolved_args)
-                else:
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: tool_func(**resolved_args)
-                    )
+                result = await self._execute_tool_with_retry(
+                    tool_name,
+                    tool_func,
+                    resolved_args,
+                    client_id,
+                )
 
                 result_str = str(result) if result is not None else "Done"
 
@@ -197,6 +197,57 @@ class Executor:
 
         await ws_manager.send_status("idle", client_id)
         return steps
+
+    async def _execute_tool_with_retry(
+        self,
+        tool_name: str,
+        tool_func: Callable,
+        resolved_args: Dict[str, Any],
+        client_id: str,
+    ) -> Any:
+        """Execute a tool, retrying only tools configured as retry-safe."""
+        retryable_tools = {
+            name.strip()
+            for name in settings.agent_retry_tools.split(",")
+            if name.strip()
+        }
+        max_attempts = 1
+        if settings.agent_retry_enabled and tool_name in retryable_tools:
+            max_attempts = max(1, settings.agent_retry_attempts)
+
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                if asyncio.iscoroutinefunction(tool_func):
+                    return await tool_func(**resolved_args)
+
+                return await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: tool_func(**resolved_args)
+                )
+            except Exception as e:
+                last_error = e
+                if attempt >= max_attempts:
+                    break
+
+                logger.warning(
+                    "Tool %s failed on attempt %s/%s: %s",
+                    tool_name,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+                await ws_manager.send_terminal_line(
+                    f"Retrying {tool_name} ({attempt + 1}/{max_attempts})...",
+                    "warning",
+                    client_id,
+                )
+                await asyncio.sleep(max(0, settings.agent_retry_delay_seconds))
+
+        if last_error:
+            raise last_error
+
+        return None
 
     async def _wait_for_approval(self, step_id: str, timeout: float = 300) -> str:
         """Wait for HITL approval with timeout (default 5 minutes)."""

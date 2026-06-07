@@ -1,4 +1,6 @@
 # T.O.R.C.H
+![CI](https://github.com/Muyideen-js/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)
+
 ### *Thinking, Observing, Reasoning, Creating & Handling*
 
 > Your personal AI agent that gives you complete control over your PC and online life through voice and text commands.
