@@ -10,7 +10,7 @@ from agent.brain import plan_command
 from agent.providers import get_provider
 from agent.providers.gemini_provider import GeminiProvider
 from agent.providers.openai_provider import OpenAIProvider
-from agent.providers.anthropic_provider import AnthropicProvider
+from agent.providers import AnthropicProvider
 
 async def test_providers():
     print("--- Testing LLM Provider Abstraction ---")
@@ -38,30 +38,42 @@ async def test_providers():
 
         # Case 2: OpenAI Key configured (Switching provider)
         settings.openai_api_key = "dummy_openai_key"
-        provider = get_provider()
-        assert isinstance(provider, OpenAIProvider), f"Expected OpenAIProvider, got {type(provider)}"
-        print("[PASS] get_provider() returns OpenAIProvider when only OpenAI key is set.")
-
-        res = await plan_command("Find Sales.pdf")
-        assert len(res) == 1
-        assert res[0]["tool"] == "error"
-        assert "Selected provider not implemented" in res[0]["label"]
-        assert "OpenAI provider is not yet implemented" in res[0]["error"]
-        print("[PASS] plan_command returns error step when OpenAIProvider throws NotImplementedError.")
+        from agent.providers.openai_provider import HAS_OPENAI
+        if not HAS_OPENAI:
+            try:
+                get_provider()
+                assert False, "Expected ImportError when openai SDK is missing"
+            except ImportError as e:
+                assert "Install openai package to use OpenAI" in str(e)
+                print("[PASS] get_provider() raised expected ImportError when openai SDK is missing.")
+        else:
+            provider = get_provider()
+            assert isinstance(provider, OpenAIProvider), f"Expected OpenAIProvider, got {type(provider)}"
+            print("[PASS] get_provider() returns OpenAIProvider when only OpenAI key is set.")
+            res = await plan_command("Find Sales.pdf")
+            assert len(res) == 1
+            assert res[0]["tool"] == "error"
+            print("[PASS] plan_command returns error step (e.g. auth failed) with dummy key.")
 
         # Case 3: Anthropic Key configured (Switching provider)
         settings.openai_api_key = ""
         settings.anthropic_api_key = "dummy_anthropic_key"
-        provider = get_provider()
-        assert isinstance(provider, AnthropicProvider), f"Expected AnthropicProvider, got {type(provider)}"
-        print("[PASS] get_provider() returns AnthropicProvider when only Anthropic key is set.")
-
-        res = await plan_command("Find Sales.pdf")
-        assert len(res) == 1
-        assert res[0]["tool"] == "error"
-        assert "Selected provider not implemented" in res[0]["label"]
-        assert "Anthropic provider is not yet implemented" in res[0]["error"]
-        print("[PASS] plan_command returns error step when AnthropicProvider throws NotImplementedError.")
+        from agent.providers.claude_provider import HAS_ANTHROPIC
+        if not HAS_ANTHROPIC:
+            try:
+                get_provider()
+                assert False, "Expected ImportError when anthropic SDK is missing"
+            except ImportError as e:
+                assert "Install anthropic package to use Claude" in str(e)
+                print("[PASS] get_provider() raised expected ImportError when anthropic SDK is missing.")
+        else:
+            provider = get_provider()
+            assert isinstance(provider, AnthropicProvider), f"Expected AnthropicProvider, got {type(provider)}"
+            print("[PASS] get_provider() returns AnthropicProvider when only Anthropic key is set.")
+            res = await plan_command("Find Sales.pdf")
+            assert len(res) == 1
+            assert res[0]["tool"] == "error"
+            print("[PASS] plan_command returns error step (e.g. auth failed) with dummy key.")
 
         # Case 4: Gemini Key configured (Success / Original behavior)
         if orig_gemini_key:
