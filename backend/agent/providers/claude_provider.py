@@ -1,10 +1,10 @@
 """
-OpenAI LLM Provider Stub for TORCH.
+Claude LLM Provider Stub for TORCH.
 
 To activate this provider:
-1. Install the OpenAI Python SDK:
-   pip install openai>=1.0.0 (or uncomment in requirements.txt)
-2. Add your OpenAI API key in Settings / .env file under OPENAI_API_KEY.
+1. Install the Anthropic Python SDK:
+   pip install anthropic>=0.18.0 (or uncomment in requirements.txt)
+2. Add your Anthropic API key in Settings / .env file under ANTHROPIC_API_KEY.
 """
 
 import json
@@ -14,27 +14,27 @@ from typing import List, Dict, Any, Optional
 from agent.providers.base import LLMProvider
 from agent.providers.gemini_provider import AVAILABLE_TOOLS, SYSTEM_PROMPT
 
-logger = logging.getLogger("torch.providers.openai")
+logger = logging.getLogger("torch.providers.claude")
 
-# Dynamic import check for optional openai dependency
+# Dynamic import check for optional anthropic dependency
 try:
-    import openai
-    HAS_OPENAI = True
+    import anthropic
+    HAS_ANTHROPIC = True
 except ImportError:
-    HAS_OPENAI = False
+    HAS_ANTHROPIC = False
 
 
-class OpenAIProvider(LLMProvider):
+class ClaudeProvider(LLMProvider):
     """
-    OpenAI LLM provider implementing the LLMProvider interface.
+    Claude LLM provider implementing the LLMProvider interface.
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o"):
-        if not HAS_OPENAI:
-            raise ImportError("Install openai package to use OpenAI")
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-6"):
+        if not HAS_ANTHROPIC:
+            raise ImportError("Install anthropic package to use Claude")
         self.api_key = api_key
         self.model = model
-        self.client = openai.OpenAI(api_key=self.api_key)
+        self.client = anthropic.Anthropic(api_key=self.api_key)
 
     async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
         try:
@@ -84,18 +84,18 @@ class OpenAIProvider(LLMProvider):
                 ctx_text = "\n\n".join(ctx_parts)
                 contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
-            # Call OpenAI GPT-4o
-            response = self.client.chat.completions.create(
+            # Call Anthropic Claude
+            response = self.client.messages.create(
                 model=self.model,
+                max_tokens=4096,
+                temperature=0.1,
                 messages=[
                     {"role": "user", "content": contents}
                 ],
-                temperature=0.1,
-                max_tokens=4096,
             )
 
             # Parse response
-            text = response.choices[0].message.content.strip()
+            text = response.content[0].text.strip()
             # Remove markdown code fences if present
             if text.startswith("```"):
                 text = text.split("\n", 1)[1]
@@ -122,7 +122,7 @@ class OpenAIProvider(LLMProvider):
             return validated
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.error(f"Failed to parse Claude response as JSON: {e}")
             return [{
                 "tool": "error",
                 "label": "Failed to parse AI response",
@@ -131,18 +131,19 @@ class OpenAIProvider(LLMProvider):
                 "error": str(e),
             }]
         except Exception as e:
-            logger.error(f"OpenAI planning failed: {e}")
+            logger.error(f"Claude planning failed: {e}")
             raise e
 
     async def generate_text(self, prompt: str) -> str:
         try:
-            response = self.client.chat.completions.create(
+            response = self.client.messages.create(
                 model=self.model,
+                max_tokens=4096,
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
             )
-            return response.choices[0].message.content
+            return response.content[0].text
         except Exception as e:
-            logger.error(f"OpenAI generate_text failed: {e}")
+            logger.error(f"Claude generate_text failed: {e}")
             raise e
