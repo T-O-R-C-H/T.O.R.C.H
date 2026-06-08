@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import MagicMock, AsyncMock
 
 # Add backend directory to path
-backend_path = "/Users/ebukasmac/Desktop/Personal_Projects/Collabs/T.O.R.C.H/backend"
+backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, backend_path)
 
 from agent.context import ConversationContext
