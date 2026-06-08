@@ -95,9 +95,13 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      // Auto‑scroll only if user is already near the bottom (within 100px)
+      if (scrollHeight - (scrollTop + clientHeight) < 100) {
+        scrollRef.current.scrollTop = scrollHeight;
+      }
     }
-  }, [messages, agentStatus])
+  }, [messages, agentStatus]);
 
   if (messages.length === 0) {
     return (
@@ -184,39 +188,25 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
         ))}
 
         {/* System Execution Stream */}
-        {(agentStatus === 'processing' || agentStatus === 'executing') && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fade-in 200ms ease-out' }}>
-            <div style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '12px',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }}>
-              <span style={{ color: '#fff' }}>[•••]</span>
-              <span style={{ color: '#fff' }}>
-                {agentStatus === 'processing' ? 'planning execution path' : 'executing task sequence'}
-              </span>
+        {          {(agentStatus === 'processing' || agentStatus === 'executing') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fade-in 200ms ease-out' }}>
               <div style={{
-                width: '6px',
-                height: '6px',
-                background: '#fff',
-                animation: 'pulse-dot 1s infinite'
-              }} />
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '12px',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0s' }} />
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.15s' }} />
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.3s' }} />
+                </div>
+                <span>{agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}</span>
+              </div>
             </div>
-            {/* Terminal Feed Stub for loading state */}
-            <div style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '11px',
-              lineHeight: 1.8,
-              color: '#4f4f4f',
-              paddingLeft: '32px'
-            }}>
-              [{new Date().toLocaleTimeString('en-US', { hour12: false })}] System sequence engaged...
-            </div>
-          </div>
-        )}
+          )}}
       </div>
     </div>
   )
