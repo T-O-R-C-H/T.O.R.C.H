@@ -7,7 +7,7 @@ import {
   IconFolder, 
   IconList 
 } from '../icons'
-import { Message } from './Message'
+import { Message } from './Message';
 import { useTorchStore } from '../../store/torchStore'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -31,7 +31,6 @@ interface ChatAreaProps {
   onSend?: (command: string) => void
 }
 
-
 function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClick: () => void }): JSX.Element {
   const [hovered, setHovered] = useState(false)
   const Icon = s.icon
@@ -54,6 +53,7 @@ function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClic
         transition: 'all 160ms ease',
         textAlign: 'left',
         width: '100%',
+        borderRadius: '0px',
       }}
     >
       <div style={{ color: hovered ? '#fff' : '#666', transition: 'color 160ms ease', flexShrink: 0 }}>
@@ -183,37 +183,35 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
           />
         ))}
 
-        {/* System Execution Stream */}
+        {/* Dynamic Execution Tracking Indicator */}
         {(agentStatus === 'processing' || agentStatus === 'executing') && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', animation: 'fade-in 200ms ease-out' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }} className="message-enter">
+            {/* TORCH Message Bubble with zero border-radius containing bouncing squares */}
             <div style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '12px',
-              color: '#fff',
               display: 'flex',
               alignItems: 'center',
-              gap: '12px'
+              gap: '6px',
+              backgroundColor: '#050505',
+              border: '1px solid #141414',
+              padding: '12px 16px',
+              height: '40px',
+              borderRadius: '0px'
             }}>
-              <span style={{ color: '#fff' }}>[•••]</span>
-              <span style={{ color: '#fff' }}>
-                {agentStatus === 'processing' ? 'planning execution path' : 'executing task sequence'}
-              </span>
-              <div style={{
-                width: '6px',
-                height: '6px',
-                background: '#fff',
-                animation: 'pulse-dot 1s infinite'
-              }} />
+              <div className="typing-square" />
+              <div className="typing-square" />
+              <div className="typing-square" />
             </div>
-            {/* Terminal Feed Stub for loading state */}
+
+            {/* JetBrains Mono 9px Status Indicator Text Node */}
             <div style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '11px',
-              lineHeight: 1.8,
-              color: '#4f4f4f',
-              paddingLeft: '32px'
+              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+              fontSize: '9px',
+              fontWeight: 400,
+              color: 'var(--color-torch-text-secondary)',
+              paddingLeft: '4px',
+              textTransform: 'none'
             }}>
-              [{new Date().toLocaleTimeString('en-US', { hour12: false })}] System sequence engaged...
+              {agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}
             </div>
           </div>
         )}
