@@ -95,9 +95,13 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      // Auto‑scroll only if user is already near the bottom (within 100px)
+      if (scrollHeight - (scrollTop + clientHeight) < 100) {
+        scrollRef.current.scrollTop = scrollHeight;
+      }
     }
-  }, [messages, agentStatus])
+  }, [messages, agentStatus]);
 
   if (messages.length === 0) {
     return (
@@ -183,38 +187,26 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
           />
         ))}
 
-        {/* Dynamic Execution Tracking Indicator */}
-        {(agentStatus === 'processing' || agentStatus === 'executing') && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }} className="message-enter">
-            {/* TORCH Message Bubble with zero border-radius containing bouncing squares */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#050505',
-              border: '1px solid #141414',
-              padding: '12px 16px',
-              height: '40px',
-              borderRadius: '0px'
-            }}>
-              <div className="typing-square" />
-              <div className="typing-square" />
-              <div className="typing-square" />
+        {/* System Execution Stream */}
+        {          {(agentStatus === 'processing' || agentStatus === 'executing') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fade-in 200ms ease-out' }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '12px',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0s' }} />
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.15s' }} />
+                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.3s' }} />
+                </div>
+                <span>{agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}</span>
+              </div>
             </div>
-
-            {/* JetBrains Mono 9px Status Indicator Text Node */}
-            <div style={{
-              fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-              fontSize: '9px',
-              fontWeight: 400,
-              color: 'var(--color-torch-text-secondary)',
-              paddingLeft: '4px',
-              textTransform: 'none'
-            }}>
-              {agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}
-            </div>
-          </div>
-        )}
+          )}}
       </div>
     </div>
   )

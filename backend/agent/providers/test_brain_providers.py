@@ -3,7 +3,7 @@ import os
 import asyncio
 
 # Add backend directory to sys.path
-sys.path.insert(0, "/Users/ebukasmac/Desktop/Personal_Projects/Collabs/T.O.R.C.H/backend")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from config.settings import settings
 from agent.brain import plan_command

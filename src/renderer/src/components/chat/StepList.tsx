@@ -1,8 +1,40 @@
 import type { Step } from '../../store/torchStore'
-import { ResultRenderer } from './ResultRenderer'
 
 interface StepListProps {
   steps: Step[]
+}
+
+/**
+ * Parses raw tool / terminal results to extract a clean single-line preview.
+ * Skips lines composed entirely of symbols/dashes, clamps to 120 chars, and prefixes a block symbol.
+ */
+function formatStepResult(result: string | undefined): { text: string; hasOverflow: boolean } {
+  if (!result) return { text: '', hasOverflow: false };
+
+  const lines = result.split(/\r?\n/);
+  let targetLine = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Skip empty lines or cosmetic divider artifacts (dashes, equals signs, whitespace)
+    if (!trimmed || /^[-=\s]+$/.test(trimmed)) {
+      continue;
+    }
+    
+    targetLine = trimmed;
+    break;
+  }
+
+  if (!targetLine) return { text: '', hasOverflow: false };
+
+  const hasOverflow = targetLine.length > 120;
+  const truncated = hasOverflow ? `${targetLine.substring(0, 120)}...` : targetLine;
+  
+  return { 
+    text: `■ ${truncated}`, 
+    hasOverflow 
+  };
 }
 
 export function StepList({ steps }: StepListProps): JSX.Element {
@@ -12,6 +44,9 @@ export function StepList({ steps }: StepListProps): JSX.Element {
         const isDone = step.status === 'done'
         const isActive = step.status === 'active'
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'
+
+        // Clean preview processing for standard successful terminal operations
+        const { text: previewText, hasOverflow } = formatStepResult(step.result);
 
         return (
           <div
@@ -49,13 +84,37 @@ export function StepList({ steps }: StepListProps): JSX.Element {
               </div>
             </div>
 
-            {/* Smart Result Display */}
-            {step.result && !isFailed && (
-              <ResultRenderer result={step.result} />
+            {/* Clean One-Line Terminal Preview (Only shown when not failed) */}
+            {step.result && !isFailed && previewText && (
+              <div style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <div style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '9px',
+                  color: '#2a2a2a',
+                  lineHeight: '1.4',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-all'
+                }}>
+                  {previewText}
+                </div>
+                
+                {/* Secondary overflow direction anchor */}
+                {hasOverflow && (
+                  <div style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '8px',
+                    color: '#2a2a2a',
+                    opacity: 0.6,
+                    lineHeight: '1.2'
+                  }}>
+                    see full output in Terminal
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* Error or Active stub */}
-            {(step.error || (isActive && !step.result)) && (
+            {/* Error or Active stub (Errors bypass all truncation filters and show in full) */}
+            {(step.error || isFailed || (isActive && !step.result)) && (
               <div style={{
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: '10px',
@@ -66,9 +125,18 @@ export function StepList({ steps }: StepListProps): JSX.Element {
                 wordBreak: 'break-all'
               }}>
                 {isActive && !step.result && !step.error && `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] executing operation...`}
+                
+                {/* Fallback inline error message node */}
                 {step.error && (
                   <div style={{ marginTop: '2px', borderLeft: '1px solid #333', paddingLeft: '8px' }}>
                     [{new Date().toLocaleTimeString('en-US', { hour12: false })}] ERROR: {step.error}
+                  </div>
+                )}
+
+                {/* Full unchecked fallback stream rendering for failed actions lacking step.error maps */}
+                {!step.error && isFailed && step.result && (
+                  <div style={{ marginTop: '2px', borderLeft: '1px solid #888', paddingLeft: '8px', color: '#888' }}>
+                    {step.result}
                   </div>
                 )}
               </div>

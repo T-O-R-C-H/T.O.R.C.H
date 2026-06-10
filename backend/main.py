@@ -383,14 +383,14 @@ async def process_command(command: str, client_id: str) -> None:
         validated_steps = validate_plan(raw_steps)
 
         # 4. Create response message and send to frontend
-        step_labels = [s["label"] for s in validated_steps[:2]]
-        if len(step_labels) == 1:
+        step_labels = [s["label"] for s in validated_steps]
+        if len(step_labels) == 0:
+            natural_response = "I am not sure how to help with that. Try rephrasing."
+        elif len(step_labels) == 1:
             natural_response = f"On it. {step_labels[0]}."
-        elif len(step_labels) >= 2:
-            natural_response = f"Got it. Here's my plan:"
         else:
-            natural_response = "Working on it."
-
+            natural_response = "Got it. Here is my plan:"
+        
         response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         await ws_manager.send_terminal_line(
@@ -474,7 +474,7 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         await ws_manager.send_overlay_event(status="speaking", reply=reply, client_id=client_id)
 
         # Execute in background
-        response_msg = create_response_message(f"Executing: {command}", validated_steps)
+        response_msg = create_response_message(reply, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         message_id = response_msg["id"]
         executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
