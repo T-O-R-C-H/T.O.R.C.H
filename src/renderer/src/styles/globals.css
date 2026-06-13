@@ -410,6 +410,21 @@ input::placeholder, textarea::placeholder { color: #333; }
 .progress-dot.active { background: #fff; }
 .progress-dot.completed { background: #888; }
 
+/* Typing indicator bounce animation */
+@keyframes bounce-square {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.typing-square {
+  width: 6px;
+  height: 6px;
+  background: #fff;
+  animation: bounce-square 0.6s infinite ease-in-out;
+}
+.typing-square:nth-child(1) { animation-delay: 0s; }
+.typing-square:nth-child(2) { animation-delay: 0.15s; }
+.typing-square:nth-child(3) { animation-delay: 0.30s; }
+
 /* Overlay */
 .overlay-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 50; }
 
@@ -439,3 +454,8 @@ input::placeholder, textarea::placeholder { color: #333; }
 /* Row hover effect for lists */
 .row-hover { transition: background 120ms ease; }
 .row-hover:hover { background: #060606; }
+
+@keyframes torch-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}

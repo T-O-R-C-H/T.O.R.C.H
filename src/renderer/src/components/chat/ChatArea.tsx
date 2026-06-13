@@ -7,7 +7,7 @@ import {
   IconFolder, 
   IconList 
 } from '../icons'
-import { Message } from './Message'
+import { Message } from './Message';
 import { useTorchStore } from '../../store/torchStore'
 
 /* ═══════════════════════════════════════════════════════════════
@@ -31,7 +31,6 @@ interface ChatAreaProps {
   onSend?: (command: string) => void
 }
 
-
 function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClick: () => void }): JSX.Element {
   const [hovered, setHovered] = useState(false)
   const Icon = s.icon
@@ -54,6 +53,7 @@ function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClic
         transition: 'all 160ms ease',
         textAlign: 'left',
         width: '100%',
+        borderRadius: '0px',
       }}
     >
       <div style={{ color: hovered ? '#fff' : '#666', transition: 'color 160ms ease', flexShrink: 0 }}>
