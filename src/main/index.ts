@@ -13,6 +13,7 @@ let backendRestartTimer: NodeJS.Timeout | null = null
 let backendStopping = false
 let backendRestarting = false
 let backendFailedChecks = 0
+let backendStartTime = 0
 
 const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVAL_MS'] ?? 10000)
 const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
@@ -58,6 +59,7 @@ function startBackend(): void {
   }
 
   backendStopping = false
+  backendStartTime = Date.now()
 
   // In dev, __dirname is in out/main, so go up 2 levels to project root, then into backend
   // In production, backend is bundled next to the app
@@ -152,7 +154,6 @@ function startBackendHealthMonitor(): void {
     return
   }
 
-  void checkBackendHealth()
   backendHealthTimer = setInterval(() => {
     void checkBackendHealth()
   }, backendHealthIntervalMs)
@@ -192,6 +193,7 @@ async function checkBackendHealth(): Promise<void> {
   } catch (error) {
     backendFailedChecks += 1
     const message = error instanceof Error ? error.message : 'Unknown backend health check error'
+    console.error(`[TORCH] Backend health check failed (${backendFailedChecks}/${backendMaxFailedChecks}): ${message}`)
 
     publishBackendHealth({
       status: 'unhealthy',
@@ -201,7 +203,14 @@ async function checkBackendHealth(): Promise<void> {
     })
 
     if (backendFailedChecks >= backendMaxFailedChecks) {
-      scheduleBackendRestart(message)
+      const startupGracePeriodMs = 60000 // 60s grace period for cold start
+      const isStillStarting = backendHealth.status === 'starting' && (Date.now() - backendStartTime < startupGracePeriodMs)
+      if (isStillStarting) {
+        console.log(`[TORCH] Backend is still starting (elapsed: ${Math.round((Date.now() - backendStartTime) / 1000)}s). Skipping restart.`)
+      } else {
+        console.log(`[TORCH] Max failed checks reached. Restarting backend...`)
+        scheduleBackendRestart(message)
+      }
     }
   } finally {
     clearTimeout(timeout)
@@ -213,6 +222,7 @@ function scheduleBackendRestart(reason: string): void {
     return
   }
 
+  console.log(`[TORCH] Scheduling backend restart. Reason: ${reason}`)
   backendRestarting = true
   stopBackendHealthMonitor()
   publishBackendHealth({
@@ -261,8 +271,14 @@ function createMainWindow(): void {
     mainWindow?.webContents.setZoomLevel(0)
   })
 
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[Electron] Main window failed to load:', errorCode, errorDescription)
+  })
+
   mainWindow.on('ready-to-show', () => {
+    console.log('[Electron] ready-to-show event fired! Showing main window.')
     mainWindow?.show()
+    mainWindow?.focus()
   })
 
   mainWindow.on('close', (e) => {
@@ -278,6 +294,7 @@ function createMainWindow(): void {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }

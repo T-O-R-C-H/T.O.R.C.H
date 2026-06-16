@@ -247,8 +247,7 @@ async def api_delete_skill(skill_id: str):
     return {"deleted": True}
 
 
-@app.get("/api/metrics")
-async def get_metrics():
+async def get_current_metrics():
     """Get real metrics from SQLite database."""
     from memory.storage import db
     from datetime import datetime, timedelta

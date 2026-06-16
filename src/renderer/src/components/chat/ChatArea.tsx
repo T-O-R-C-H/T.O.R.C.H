@@ -188,7 +188,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
         ))}
 
         {/* System Execution Stream */}
-        {          {(agentStatus === 'processing' || agentStatus === 'executing') && (
+        {(agentStatus === 'processing' || agentStatus === 'executing') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fade-in 200ms ease-out' }}>
               <div style={{
                 fontFamily: "'JetBrains Mono', monospace",
@@ -206,7 +206,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
                 <span>{agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}</span>
               </div>
             </div>
-          )}}
+          )}
       </div>
     </div>
   )
