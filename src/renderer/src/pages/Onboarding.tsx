@@ -1,322 +1,403 @@
-import { useState } from 'react'
-import { IconExternalLink as ExternalLink, IconMic as Mic, IconArrowRight as ArrowRight, IconArrowLeft as ArrowLeft, IconCheck as Check, IconLoader } from '../components/icons'
+import { useState, useEffect } from 'react'
+import { 
+  IconArrowRight as ArrowRight, 
+  IconCheck as Check, 
+  IconLoader as Loader,
+  IconFile as FileIcon,
+  IconMail as MailIcon,
+  IconMonitor as AppIcon
+} from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { TorchOrb } from '../components/overlay/TorchOrb'
 
-const steps = ['splash', 'gemini', 'gmail', 'voice', 'startup', 'done'] as const
-type OnboardingStep = (typeof steps)[number]
+const ONBOARDING_STEPS = ['welcome', 'name', 'permissions', 'first_task', 'closing'] as const
+type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
 
 export function Onboarding(): JSX.Element {
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('splash')
-  const [geminiKey, setGeminiKey] = useState('')
-  const [gmailAddress, setGmailAddress] = useState('')
-  const [gmailPassword, setGmailPassword] = useState('')
-  const [launchOnLogin, setLaunchOnLogin] = useState(true)
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome')
+  const [userName, setUserName] = useState(() => localStorage.getItem('torch_user_name') || '')
+  const [nameError, setNameError] = useState<string | null>(null)
+  
+  // Permissions
+  const [allowFiles, setAllowFiles] = useState(true)
+  const [allowApps, setAllowApps] = useState(true)
+  const [allowEmail, setAllowEmail] = useState(false)
+
+  // First Task Simulation
+  const [taskStarted, setTaskStarted] = useState(false)
+  const [simulatedSteps, setSimulatedSteps] = useState<Array<{ label: string; status: 'pending' | 'active' | 'done' }>>([])
+  const [taskRecap, setTaskRecap] = useState<string | null>(null)
+  const [taskComplete, setTaskComplete] = useState(false)
+
   const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
-  const setDemoMode = useTorchStore((s) => s.setDemoMode)
   const setShowSettingsKeyBanner = useTorchStore((s) => s.setShowSettingsKeyBanner)
-  const [splashDone, setSplashDone] = useState(false)
 
-  // Loading and error states for backend persistence
-  const [loading, setLoading] = useState(false)
-  const [backendError, setBackendError] = useState<string | null>(null)
-
-  const currentIndex = steps.indexOf(currentStep)
-
-  const goNext = async (): Promise<void> => {
-    // If error is already showing, allow bypass on second click
-    if (backendError) {
-      setBackendError(null)
-      if (currentIndex < steps.length - 1) {
-        setCurrentStep(steps[currentIndex + 1])
-      }
-      return
+  // Validate name in real-time
+  const validateName = (val: string): boolean => {
+    const trimmed = val.trim()
+    if (!trimmed) {
+      setNameError('Name cannot be empty.')
+      return false
+    }
+    if (trimmed.length > 50) {
+      setNameError('Name must be 50 characters or less.')
+      return false
+    }
+    // Reject HTML/scripts or suspicious characters like brackets or scripts
+    const scriptOrHtmlPattern = /<[^>]*>|[{}()[\]]/
+    if (scriptOrHtmlPattern.test(trimmed)) {
+      setNameError('Please enter a standard name without symbols or code.')
+      return false
+    }
+    // Simple check: allow alphanumeric, spaces, hyphens, and apostrophes
+    const validNamePattern = /^[a-zA-Z0-9\s'\-]+$/
+    if (!validNamePattern.test(trimmed)) {
+      setNameError('Please use only letters, numbers, spaces, hyphens, or apostrophes.')
+      return false
     }
 
-    // Save Gemini key to backend when leaving step 1
-    if (currentStep === 'gemini' && geminiKey.trim()) {
-      setLoading(true)
-      try {
-        const res = await fetch('http://localhost:8000/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gemini_api_key: geminiKey })
-        })
-        if (!res.ok) throw new Error('Save failed')
-        setBackendError(null)
-      } catch {
-        setLoading(false)
-        setBackendError('Backend not running')
-        return
-      }
-      setLoading(false)
-    }
+    setNameError(null)
+    return true
+  }
 
-    // Save Gmail credentials when leaving step 2
-    if (currentStep === 'gmail' && gmailAddress.trim()) {
-      setLoading(true)
-      try {
-        const res = await fetch('http://localhost:8000/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gmail_address: gmailAddress,
-            gmail_app_password: gmailPassword
-          })
-        })
-        if (!res.ok) throw new Error('Save failed')
-        setBackendError(null)
-      } catch {
-        setLoading(false)
-        setBackendError('Backend not running')
-        return
-      }
-      setLoading(false)
+  // Effect to validate name when it changes
+  useEffect(() => {
+    if (currentStep === 'name') {
+      validateName(userName)
     }
+  }, [userName, currentStep])
 
-    if (currentIndex < steps.length - 1) {
-      setCurrentStep(steps[currentIndex + 1])
+  const handleNext = (): void => {
+    if (currentStep === 'welcome') {
+      setCurrentStep('name')
+    } else if (currentStep === 'name') {
+      if (validateName(userName)) {
+        localStorage.setItem('torch_user_name', userName.trim())
+        setCurrentStep('permissions')
+      }
+    } else if (currentStep === 'permissions') {
+      setCurrentStep('first_task')
+    } else if (currentStep === 'first_task') {
+      setCurrentStep('closing')
     }
   }
 
-  const goBack = (): void => {
-    setBackendError(null)
-    if (currentIndex > 1) {
-      setCurrentStep(steps[currentIndex - 1])
+  const handleBack = (): void => {
+    if (currentStep === 'name') {
+      setCurrentStep('welcome')
+    } else if (currentStep === 'permissions') {
+      setCurrentStep('name')
+    } else if (currentStep === 'first_task') {
+      setCurrentStep('permissions')
+      // Reset task simulation
+      setTaskStarted(false)
+      setSimulatedSteps([])
+      setTaskRecap(null)
+      setTaskComplete(false)
     }
   }
 
-  const finish = async (): Promise<void> => {
-    // Check if Gemini is configured on the backend
+  const startFirstTaskSimulation = (): void => {
+    setTaskStarted(true)
+    setSimulatedSteps([
+      { label: 'Looking for report.pdf...', status: 'active' },
+      { label: 'Summarizing document contents...', status: 'pending' }
+    ])
+
+    setTimeout(() => {
+      setSimulatedSteps([
+        { label: 'Found report.pdf in Documents.', status: 'done' },
+        { label: 'Reading report.pdf...', status: 'active' }
+      ])
+    }, 1500)
+
+    setTimeout(() => {
+      setSimulatedSteps([
+        { label: 'Found report.pdf in Documents.', status: 'done' },
+        { label: 'Summarized document contents.', status: 'done' }
+      ])
+      setTaskRecap('Done! I found your document and summarized it.')
+      setTaskComplete(true)
+    }, 3200)
+  }
+
+  const handleFinish = async (): Promise<void> => {
     try {
-      const res = await fetch('http://localhost:8000/api/settings')
-      const data = await res.json()
-      if (!data.gemini_configured) {
-        setShowSettingsKeyBanner(true)
-      }
+      // Connect to local settings to see if it defaults correctly
+      await fetch('http://localhost:8000/api/settings')
+      setShowSettingsKeyBanner(false)
     } catch {
-      // Backend offline — show warning banner
       setShowSettingsKeyBanner(true)
     }
+    // Set onboarding complete
     setOnboardingComplete(true)
   }
 
-  const startDemoMode = (): void => {
-    setDemoMode(true)
-    setShowSettingsKeyBanner(true)
-    setOnboardingComplete(true)
-  }
-
-  // Auto-advance splash
-  if (currentStep === 'splash' && !splashDone) {
-    setTimeout(() => setSplashDone(true), 2400)
-    setTimeout(() => setCurrentStep('gemini'), 3000)
-  }
 
   return (
-    <div className="w-full h-full bg-[#000] flex flex-col items-center justify-center relative">
-      {/* Splash */}
-      {currentStep === 'splash' && (
-        <div className="flex flex-col items-center splash-enter">
-          <TorchOrb isActive size={64} />
-          <h1 className="text-[28px] font-semibold tracking-[-1px] mt-6 fade-in">TORCH</h1>
-          <p className="text-[11px] text-[#444] mt-2 tracking-[0.15em] font-mono fade-in-delay">
-            Thinking, Observing, Reasoning, Creating &amp; Handling
-          </p>
-        </div>
-      )}
+    <div className="w-full h-full bg-[#000] flex flex-col items-center justify-center relative overflow-hidden select-none">
+      {/* Background radial glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#0b0a16_0%,_#000000_70%)] pointer-events-none opacity-60" />
 
-      {/* Step: Gemini API Key */}
-      {currentStep === 'gemini' && (
-        <div className="flex flex-col items-center max-w-[420px] w-full px-8 page-enter">
-          <div className="label mb-6">STEP 1 OF 4</div>
-          <h2 className="heading-lg mb-2">Connect Gemini</h2>
-          <p className="text-[11px] text-[#666] mb-8 text-center">
-            TORCH uses Google Gemini as its AI brain. Get a free API key from AI Studio.
-          </p>
-          <input
-            type="password"
-            value={geminiKey}
-            onChange={(e) => setGeminiKey(e.target.value)}
-            placeholder="Enter your Gemini API key"
-            className="w-full text-[12px] mb-3"
-          />
-          {backendError && (
-            <div className="w-full mb-3 px-3 py-2 border border-[#ef4444]/30 bg-[#ef4444]/5">
-              <p className="text-[10px] text-[#ef4444] font-mono">{backendError}</p>
-            </div>
-          )}
-          <button
-            onClick={() => window.torchAPI?.openExternal('https://aistudio.google.com')}
-            className="flex items-center gap-2 mono-xs text-[#444] hover:text-[#666] transition-colors mb-8"
-          >
-            <ExternalLink size={10} />
-            Get key from aistudio.google.com
-          </button>
-        </div>
-      )}
-
-      {/* Step: Gmail */}
-      {currentStep === 'gmail' && (
-        <div className="flex flex-col items-center max-w-[420px] w-full px-8 page-enter">
-          <div className="label mb-6">STEP 2 OF 4</div>
-          <h2 className="heading-lg mb-2">Connect Gmail</h2>
-          <p className="text-[11px] text-[#666] mb-8 text-center">
-            Optional. Allows TORCH to send and read emails on your behalf.
-          </p>
-          <input
-            type="email"
-            value={gmailAddress}
-            onChange={(e) => setGmailAddress(e.target.value)}
-            placeholder="your.email@gmail.com"
-            className="w-full text-[12px] mb-3"
-          />
-          <input
-            type="password"
-            value={gmailPassword}
-            onChange={(e) => setGmailPassword(e.target.value)}
-            placeholder="App password"
-            className="w-full text-[12px] mb-3"
-          />
-          {backendError && (
-            <div className="w-full mb-3 px-3 py-2 border border-[#ef4444]/30 bg-[#ef4444]/5">
-              <p className="text-[10px] text-[#ef4444] font-mono">{backendError}</p>
-            </div>
-          )}
-          <button
-            onClick={() => window.torchAPI?.openExternal('https://myaccount.google.com/apppasswords')}
-            className="flex items-center gap-2 mono-xs text-[#444] hover:text-[#666] transition-colors mb-8"
-          >
-            <ExternalLink size={10} />
-            Generate app password
-          </button>
-        </div>
-      )}
-
-      {/* Step: Voice Test */}
-      {currentStep === 'voice' && (
-        <div className="flex flex-col items-center max-w-[420px] w-full px-8 page-enter">
-          <div className="label mb-6">STEP 3 OF 4</div>
-          <h2 className="heading-lg mb-2">Test Voice</h2>
-          <p className="text-[11px] text-[#666] mb-8 text-center">
-            Say "Hey TORCH" to test your microphone and wake word detection.
-          </p>
-          <div className="mb-8">
-            <TorchOrb isActive size={48} />
+      {/* Main Container with smooth fade-in animation */}
+      <div className="max-w-[480px] w-full px-8 flex flex-col items-center z-10 text-center animate-fade-in-up duration-300">
+        
+        {/* STEP 1: Welcome Screen */}
+        {currentStep === 'welcome' && (
+          <div className="page-enter flex flex-col items-center w-full">
+            <TorchOrb isActive size={72} />
+            <h1 className="text-[32px] font-semibold tracking-tight text-white mt-8 mb-4">Welcome to TORCH</h1>
+            <p className="text-[14px] leading-relaxed text-[#94a3b8] mb-8 font-sans max-w-[380px]">
+              TORCH is your personal AI assistant that automates tasks on your computer. 
+              No coding, no setup steps — just describe what you need in plain English.
+            </p>
+            <button 
+              onClick={handleNext}
+              className="px-8 py-3.5 bg-white text-black font-medium text-[13.5px] rounded-full hover:bg-neutral-200 active:scale-95 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-white/5"
+            >
+              Get Started
+              <ArrowRight size={14} />
+            </button>
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 border border-[#1c1c1c]">
-            <Mic size={12} className="text-[#444]" />
-            <span className="mono-xs text-[#444]">Say "Hey TORCH" to test</span>
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* Step: Startup */}
-      {currentStep === 'startup' && (
-        <div className="flex flex-col items-center max-w-[420px] w-full px-8 page-enter">
-          <div className="label mb-6">STEP 4 OF 4</div>
-          <h2 className="heading-lg mb-2">Preferences</h2>
-          <p className="text-[11px] text-[#666] mb-8 text-center">
-            Configure how TORCH starts and runs in the background.
-          </p>
-          <div className="w-full space-y-4">
-            <div className="flex items-center justify-between py-3 border-b border-[#0d0d0d]">
-              <span className="text-[12px] text-[#aaa]">Launch TORCH on login</span>
-              <button
-                onClick={() => setLaunchOnLogin(!launchOnLogin)}
-                className={`w-10 h-5 border flex items-center px-0.5 transition-colors duration-120 ${
-                  launchOnLogin ? 'bg-white border-white' : 'bg-transparent border-[#1c1c1c]'
+        {/* STEP 2: Name Capture */}
+        {currentStep === 'name' && (
+          <div className="page-enter flex flex-col items-center w-full">
+            <TorchOrb isActive={false} size={48} />
+            <h2 className="text-[24px] font-semibold text-white mt-6 mb-2">What should TORCH call you?</h2>
+            <p className="text-[13px] text-[#64748b] mb-8">Let's personalize your experience.</p>
+            
+            <input
+              type="text"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Enter your preferred name"
+              autoFocus
+              className={`w-full text-[14px] px-5 py-3.5 bg-[#0a0a0d] border ${
+                nameError ? 'border-red-500/40 focus:border-red-500' : 'border-[#1a1a24] focus:border-white'
+              } text-white rounded-xl focus:outline-none transition-colors mb-2 text-center font-medium`}
+            />
+
+            <div className="min-h-[20px] mb-8">
+              {nameError && (
+                <p className="text-[11.5px] text-[#f87171] font-sans font-medium">{nameError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-4">
+              <button 
+                onClick={handleBack}
+                className="px-6 py-3 bg-[#0d0d12] border border-[#1a1a24] text-[#94a3b8] text-[13px] rounded-full hover:text-white transition-colors cursor-pointer"
+              >
+                Back
+              </button>
+              <button 
+                onClick={handleNext}
+                disabled={!!nameError || !userName.trim()}
+                className={`px-8 py-3 font-semibold text-[13px] rounded-full flex items-center gap-2 cursor-pointer transition-all ${
+                  !!nameError || !userName.trim() 
+                    ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50' 
+                    : 'bg-white text-black hover:bg-neutral-200 active:scale-95 shadow-md shadow-white/5'
                 }`}
               >
-                <div className={`w-3.5 h-3.5 transition-all duration-120 ${
-                  launchOnLogin ? 'bg-black translate-x-[18px]' : 'bg-[#333] translate-x-0'
-                }`} />
+                Continue
+                <ArrowRight size={13} />
               </button>
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-[#0d0d0d]">
-              <span className="text-[12px] text-[#aaa]">Minimize to system tray</span>
-              <div className="badge-success px-2 py-1 mono-xs">always on</div>
+          </div>
+        )}
+
+        {/* STEP 3: Permissions */}
+        {currentStep === 'permissions' && (
+          <div className="page-enter flex flex-col items-center w-full">
+            <div className="text-[10px] tracking-[0.2em] font-mono text-[#475569] mb-4">STEP 1 OF 3</div>
+            <h2 className="text-[24px] font-semibold text-white mb-2">Enable Permissions</h2>
+            <p className="text-[12.5px] text-[#64748b] mb-6">
+              TORCH runs locally on your PC. Let's grant the permissions you need.
+            </p>
+
+            <div className="w-full bg-[#07070a]/60 border border-[#111119] rounded-2xl p-5 text-left mb-6 space-y-4">
+              {/* File Permission */}
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#111119]">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FileIcon size={14} className="text-[#38bdf8]" />
+                    <span className="text-[13px] font-medium text-white">Search &amp; Read Files</span>
+                  </div>
+                  <span className="text-[11px] text-[#475569] block mt-1">
+                    Required to locate and read spreadsheets, documents, or reports for tasks.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setAllowFiles(!allowFiles)}
+                  className={`w-10 h-5 border flex items-center px-0.5 rounded-full transition-colors shrink-0 ${
+                    allowFiles ? 'bg-white border-white' : 'bg-transparent border-[#27273a]'
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full transition-transform ${
+                    allowFiles ? 'bg-black translate-x-[20px]' : 'bg-[#475569] translate-x-0'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Apps Permission */}
+              <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#111119]">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <AppIcon size={14} className="text-[#a78bfa]" />
+                    <span className="text-[13px] font-medium text-white">Open Applications</span>
+                  </div>
+                  <span className="text-[11px] text-[#475569] block mt-1">
+                    Required to open programs like your browser, folders, or terminal.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setAllowApps(!allowApps)}
+                  className={`w-10 h-5 border flex items-center px-0.5 rounded-full transition-colors shrink-0 ${
+                    allowApps ? 'bg-white border-white' : 'bg-transparent border-[#27273a]'
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full transition-transform ${
+                    allowApps ? 'bg-black translate-x-[20px]' : 'bg-[#475569] translate-x-0'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Email Connection */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <MailIcon size={14} className="text-[#fb7185]" />
+                    <span className="text-[13px] font-medium text-white">Email Connection (Optional)</span>
+                  </div>
+                  <span className="text-[11px] text-[#475569] block mt-1">
+                    Required only if you want TORCH to compose or search your emails.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setAllowEmail(!allowEmail)}
+                  className={`w-10 h-5 border flex items-center px-0.5 rounded-full transition-colors shrink-0 ${
+                    allowEmail ? 'bg-white border-white' : 'bg-transparent border-[#27273a]'
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full transition-transform ${
+                    allowEmail ? 'bg-black translate-x-[20px]' : 'bg-[#475569] translate-x-0'
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-center">
+              <button 
+                onClick={handleBack}
+                className="px-6 py-3 bg-[#0d0d12] border border-[#1a1a24] text-[#94a3b8] text-[13px] rounded-full hover:text-white transition-colors cursor-pointer"
+              >
+                Back
+              </button>
+              <button 
+                onClick={handleNext}
+                className="px-8 py-3 bg-white text-black font-semibold text-[13px] rounded-full hover:bg-neutral-200 active:scale-95 transition-all shadow-md shadow-white/5 cursor-pointer"
+              >
+                Continue
+                <ArrowRight size={13} />
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Step: Done */}
-      {currentStep === 'done' && (
-        <div className="flex flex-col items-center max-w-[420px] w-full px-8 page-enter">
-          <div className="w-12 h-12 bg-white flex items-center justify-center mb-6">
-            <Check size={24} className="text-black" />
-          </div>
-          <h2 className="heading-lg mb-2">TORCH is ready</h2>
-          <p className="text-[11px] text-[#666] mb-8 text-center">
-            Say "Hey TORCH" anytime, even when minimized. Your AI agent is always listening.
-          </p>
-          <button onClick={finish} className="btn-primary px-8 py-3">
-            Launch TORCH
-          </button>
-        </div>
-      )}
+        {/* STEP 4: First Task Simulator */}
+        {currentStep === 'first_task' && (
+          <div className="page-enter flex flex-col items-center w-full">
+            <div className="text-[10px] tracking-[0.2em] font-mono text-[#475569] mb-4">STEP 2 OF 3</div>
+            <h2 className="text-[24px] font-semibold text-white mb-2">Try your first task</h2>
+            <p className="text-[12.5px] text-[#64748b] mb-6">
+              Let's see TORCH in action. Tap the card below to run a test search.
+            </p>
 
-      {/* Navigation — bottom */}
-      {currentStep !== 'splash' && currentStep !== 'done' && (
-        <div className="absolute bottom-12 flex flex-col items-center gap-6">
-          {/* Progress dots */}
-          <div className="flex items-center gap-2">
-            {steps.slice(1, -1).map((step, i) => (
-              <div
-                key={step}
-                className={`progress-dot ${
-                  steps.indexOf(currentStep) - 1 > i ? 'completed' :
-                  currentStep === step ? 'active' : ''
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* Buttons */}
-          <div className="flex items-center gap-3">
-            {currentIndex > 1 && (
-              <button onClick={goBack} className="btn-secondary flex items-center gap-2">
-                <ArrowLeft size={10} />
-                back
+            {!taskStarted ? (
+              <button
+                onClick={startFirstTaskSimulation}
+                className="w-full flex items-center gap-4 bg-[#0a0a0d] border border-[#1a1a24] hover:border-white/20 p-5 rounded-2xl cursor-pointer text-left transition-all active:scale-[0.99] group shadow-lg"
+              >
+                <div className="p-3 bg-[#38bdf8]/10 text-[#38bdf8] rounded-xl group-hover:scale-105 transition-transform">
+                  <FileIcon size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13.5px] font-medium text-white">Find my latest report</div>
+                  <div className="text-[11px] text-[#475569] mt-0.5 font-mono tracking-wider uppercase">SIMULATE SEARCH</div>
+                </div>
+                <ArrowRight size={16} className="text-[#475569] group-hover:translate-x-1 transition-transform" />
               </button>
+            ) : (
+              <div className="w-full bg-[#07070a]/80 border border-[#111119] rounded-2xl p-5 text-left mb-6 font-mono text-[12px] space-y-3.5 shadow-xl">
+                {simulatedSteps.map((step, idx) => (
+                  <div key={idx} className="flex items-center justify-between gap-3 animate-fade-in">
+                    <div className="flex items-center gap-2.5">
+                      {step.status === 'active' && <Loader size={12} className="text-white animate-spin" />}
+                      {step.status === 'done' && <Check size={12} className="text-emerald-400" />}
+                      {step.status === 'pending' && <div className="w-3 h-3 rounded-full border border-neutral-800" />}
+                      <span className={
+                        step.status === 'done' ? 'text-emerald-400/90' : 
+                        step.status === 'active' ? 'text-white font-medium' : 'text-[#475569]'
+                      }>
+                        {step.label}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+
+                {taskRecap && (
+                  <div className="mt-4 pt-4 border-t border-[#111119] text-[#e2e8f0] animate-fade-in leading-relaxed font-sans text-[13px]">
+                    {taskRecap}
+                  </div>
+                )}
+              </div>
             )}
-            <button
-              onClick={goNext}
-              disabled={loading}
-              className="btn-primary flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <IconLoader size={12} />
-                  saving...
-                </>
-              ) : (
-                <>
-                  {currentStep === 'startup' ? 'finish' : 'next'}
-                  <ArrowRight size={10} />
-                </>
+
+            <div className="flex gap-4 items-center mt-6">
+              {!taskStarted && (
+                <button 
+                  onClick={handleBack}
+                  className="px-6 py-3 bg-[#0d0d12] border border-[#1a1a24] text-[#94a3b8] text-[13px] rounded-full hover:text-white transition-colors cursor-pointer"
+                >
+                  Back
+                </button>
               )}
-            </button>
-            {currentStep !== 'startup' && (
-              <button onClick={goNext} className="mono-xs text-[#333] hover:text-[#666] transition-colors ml-2">
-                skip
-              </button>
-            )}
+              {taskComplete && (
+                <button 
+                  onClick={handleNext}
+                  className="px-8 py-3 bg-white text-black font-semibold text-[13px] rounded-full hover:bg-neutral-200 active:scale-95 transition-all shadow-md shadow-white/5 cursor-pointer animate-fade-in"
+                >
+                  Continue
+                  <ArrowRight size={13} />
+                </button>
+              )}
+            </div>
           </div>
+        )}
 
-          {/* Demo mode link — only on step 1 (gemini) */}
-          {currentStep === 'gemini' && (
-            <button
-              onClick={startDemoMode}
-              className="mono-xs text-[#333] hover:text-[#888] transition-colors mt-2"
-              style={{ letterSpacing: '0.08em' }}
+        {/* STEP 5: Closing screen */}
+        {currentStep === 'closing' && (
+          <div className="page-enter flex flex-col items-center w-full">
+            <div className="text-[10px] tracking-[0.2em] font-mono text-[#475569] mb-4">STEP 3 OF 3</div>
+            <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-white/10">
+              <Check size={26} className="text-black" />
+            </div>
+            <h2 className="text-[26px] font-semibold text-white mb-3">All set, {localStorage.getItem('torch_user_name')}!</h2>
+            <p className="text-[13.5px] leading-relaxed text-[#94a3b8] mb-8 font-sans max-w-[340px]">
+              TORCH is now configured and ready. You are in complete control of your computer automation.
+            </p>
+            <button 
+              onClick={handleFinish} 
+              className="px-10 py-4 bg-white text-black font-semibold text-[14px] rounded-full hover:bg-neutral-200 active:scale-95 transition-all cursor-pointer shadow-lg shadow-white/10"
             >
-              Try demo mode first →
+              Enter Command Center
             </button>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+      </div>
     </div>
   )
 }

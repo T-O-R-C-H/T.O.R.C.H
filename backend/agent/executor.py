@@ -99,27 +99,70 @@ class Executor:
         5. Store result for subsequent steps
         """
         results: List[str] = []
+        self._is_cancelled = False
 
         await ws_manager.send_status("executing", client_id)
 
+        from agent.step_phrasing import get_plain_phrase
+        from errors.plain_language import translate_error
+        from agent.rollback import rollback_manager
+
         for i, step in enumerate(steps):
+            if self._is_cancelled:
+                # Mark remaining steps as failed
+                for remaining_step in steps[i:]:
+                    remaining_step["status"] = "failed"
+                    remaining_step["error"] = "Task stopped by user"
+                    await ws_manager.send_step_update(
+                        message_id, remaining_step["id"], "failed",
+                        error="Task stopped by user",
+                        client_id=client_id,
+                    )
+                break
+
             step_id = step["id"]
             tool_name = step["tool"]
             args = step.get("args", {})
 
+            # Resolve step references in args (e.g., {{step_0_result}})
+            resolved_args = self._resolve_references(args, results)
+
+            # Update step label dynamically to present tense
+            plain_label = get_plain_phrase(tool_name, resolved_args, "active")
+            step["label"] = plain_label
+
             # Handle error steps
             if tool_name == "error":
                 step["status"] = "failed"
+                err_text = step.get("error", "Unknown error")
+                translated = translate_error(err_text)
+                translated_err = f"{translated['what_happened']} {translated['what_to_do']}"
+                step["error"] = translated_err
                 await ws_manager.send_step_update(
                     message_id, step_id, "failed",
-                    error=step.get("error", "Unknown error"),
+                    error=translated_err,
                     client_id=client_id,
                 )
                 await ws_manager.send_terminal_line(
-                    f"Error: {step.get('error', 'Unknown error')}", "error", client_id
+                    f"Error: {translated_err}", "error", client_id
+                )
+                
+                # Send failure summary to chat
+                step_num = i + 1
+                completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
+                chat_failure_msg = (
+                    f"Step {step_num} failed: {translated_err}. "
+                    f"{completed_range}."
+                )
+                await ws_manager.send_agent_response(
+                    {
+                        "role": "assistant",
+                        "content": chat_failure_msg,
+                    },
+                    client_id,
                 )
                 results.append("")
-                continue
+                break
 
             # Mark step as active
             step["status"] = "active"
@@ -140,7 +183,7 @@ class Executor:
                 # Wait for approval
                 approval = await self._wait_for_approval(step_id)
 
-                if approval == "cancel":
+                if self._is_cancelled or approval == "cancel":
                     step["status"] = "failed"
                     step["error"] = "Cancelled by user"
                     await ws_manager.send_step_update(
@@ -151,13 +194,22 @@ class Executor:
                     await ws_manager.send_terminal_line("Cancelled by user", "warning", client_id)
                     await ws_manager.send_status("idle", client_id)
                     results.append("")
+                    # Mark remaining steps as failed
+                    for remaining_step in steps[i+1:]:
+                        remaining_step["status"] = "failed"
+                        remaining_step["error"] = "Task stopped by user"
+                        await ws_manager.send_step_update(
+                            message_id, remaining_step["id"], "failed",
+                            error="Task stopped by user",
+                            client_id=client_id,
+                        )
                     break
 
                 await ws_manager.send_terminal_line("Approved ✓", "success", client_id)
                 await ws_manager.send_status("executing", client_id)
 
-            # Resolve step references in args (e.g., {{step_0_result}})
-            resolved_args = self._resolve_references(args, results)
+            # Register step for rollback before execution if reversible
+            rollback_manager.register_step(message_id, tool_name, resolved_args)
 
             # Execute the tool
             try:
@@ -195,16 +247,18 @@ class Executor:
                                 f"No exact match found for '{resolved_args.get('name')}'. "
                                 "I could not find a safe file match to continue."
                             )
+                            translated = translate_error(error_msg)
+                            plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
                             step["status"] = "failed"
-                            step["error"] = error_msg
+                            step["error"] = plain_err
                             results.append("")
                             await ws_manager.send_step_update(
                                 message_id, step_id, "failed",
-                                error=error_msg[:200],
+                                error=plain_err,
                                 client_id=client_id,
                             )
                             await ws_manager.send_terminal_line(
-                                f"Blocking failure: {error_msg}", "error", client_id
+                                f"Blocking failure: {plain_err}", "error", client_id
                             )
                             # Send blocking failure explanation to chat
                             step_num = i + 1
@@ -213,7 +267,7 @@ class Executor:
                                 {
                                     "role": "assistant",
                                     "content": (
-                                        f"Step {step_num} failed after 2 attempts: {error_msg}. "
+                                        f"Step {step_num} failed after 2 attempts: {plain_err}. "
                                         f"{completed_range}."
                                     ),
                                 },
@@ -221,17 +275,18 @@ class Executor:
                             )
                             break
                     except Exception as e:
-                        error_msg = str(e)[:200]
+                        translated = translate_error(str(e))
+                        plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
                         step["status"] = "failed"
-                        step["error"] = error_msg
+                        step["error"] = plain_err
                         results.append("")
                         await ws_manager.send_step_update(
                             message_id, step_id, "failed",
-                            error=error_msg,
+                            error=plain_err,
                             client_id=client_id,
                         )
                         await ws_manager.send_terminal_line(
-                            f"Blocking failure: {error_msg}", "error", client_id
+                            f"Blocking failure: {plain_err}", "error", client_id
                         )
                         break
                     else:
@@ -247,6 +302,7 @@ class Executor:
 
                 step["status"] = "done"
                 step["result"] = result_str
+                step["label"] = get_plain_phrase(tool_name, resolved_args, "done")
 
                 await ws_manager.send_step_update(
                     message_id, step_id, "done",
@@ -258,18 +314,19 @@ class Executor:
                 )
 
             except Exception as e:
-                error_msg = str(e)[:200]
+                translated = translate_error(str(e))
+                plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
                 step["status"] = "failed"
-                step["error"] = error_msg
+                step["error"] = plain_err
                 results.append("")
 
                 await ws_manager.send_step_update(
                     message_id, step_id, "failed",
-                    error=error_msg,
+                    error=plain_err,
                     client_id=client_id,
                 )
                 await ws_manager.send_terminal_line(
-                    f"✗ {step['label']}: {error_msg}", "error", client_id
+                    f"✗ {step['label']}: {plain_err}", "error", client_id
                 )
 
                 logger.error(f"Step {step_id} failed: {e}", exc_info=True)
@@ -286,7 +343,7 @@ class Executor:
                 step_num = i + 1
                 completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
                 chat_failure_msg = (
-                    f"Step {step_num} failed after 2 attempts: {error_msg}. "
+                    f"Step {step_num} failed after 2 attempts: {plain_err}. "
                     f"{completed_range}."
                 )
                 await ws_manager.send_agent_response(
@@ -304,6 +361,8 @@ class Executor:
                 break
 
         await ws_manager.send_status("idle", client_id)
+        # Schedule auto-cleanup of backups after 5 minutes
+        asyncio.create_task(rollback_manager.schedule_cleanup(message_id, 300))
         return steps
 
     async def _execute_tool_with_retry(

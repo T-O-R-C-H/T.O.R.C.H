@@ -7,6 +7,8 @@ export function useWebSocket(): {
   sendCommand: (command: string) => void
   sendApproval: (messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown) => void
   reconnect: () => void
+  sendStopCommand: () => void
+  sendUndoCommand: (messageId: string) => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<any>(undefined)
@@ -92,6 +94,22 @@ export function useWebSocket(): {
         store.setMetrics(data.metrics as Record<string, number>)
         break
       }
+      case 'task_completed_metadata': {
+        const { messageId, reversible } = data as { messageId: string; reversible: boolean }
+        store.updateMessage(messageId, { reversible, undoState: 'available' })
+        break
+      }
+      case 'undo_result': {
+        const { messageId, status, reversed, failed } = data as { messageId: string; status: string; reversed: string[]; failed: string[] }
+        const resultText = status === 'success'
+          ? `Undone successfully: ${reversed.join(', ')}`
+          : `Partial undo: ${reversed.join(', ')}. Could not reverse: ${failed.join(', ')}`
+        store.updateMessage(messageId, {
+          undoState: 'undone',
+          undoResult: resultText
+        })
+        break
+      }
     }
   }, [])
 
@@ -115,10 +133,22 @@ export function useWebSocket(): {
     }
   }, [])
 
+  const sendStopCommand = useCallback((): void => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'stop_task' }))
+    }
+  }, [])
+
+  const sendUndoCommand = useCallback((messageId: string): void => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'undo_task', messageId }))
+    }
+  }, [])
+
   const reconnect = useCallback((): void => {
     wsRef.current?.close()
     connect()
   }, [connect])
 
-  return { sendCommand, sendApproval, reconnect }
+  return { sendCommand, sendApproval, reconnect, sendStopCommand, sendUndoCommand }
 }

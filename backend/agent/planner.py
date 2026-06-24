@@ -9,7 +9,7 @@ from typing import List, Dict, Any
 
 logger = logging.getLogger("torch.planner")
 
-# Tools that always require HITL approval
+# Tools that always require HITL approval (HIDE-4)
 HITL_TOOLS = {
     "send_email",
     "post_social",
@@ -20,12 +20,12 @@ HITL_TOOLS = {
 
 # Tools that exist in the system
 VALID_TOOLS = {
-    "find_file", "read_pdf", "read_word", "read_excel",
+    "find_file", "find_file_fuzzy", "list_directory", "read_pdf", "read_word", "read_excel",
     "send_email", "read_inbox", "open_browser", "click",
     "type_text", "screenshot", "analyse_screen", "search_web",
     "download_file", "open_app", "post_social", "send_message",
     "run_terminal", "move_file", "delete_file", "create_folder",
-    "zip_files", "error", "save_skill",
+    "zip_files", "error", "save_skill", "respond",
 }
 
 
@@ -42,6 +42,7 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         List of validated step dictionaries ready for execution
     """
     validated_steps = []
+    from agent.step_phrasing import get_plain_phrase
 
     for i, step in enumerate(raw_steps):
         tool = step.get("tool", "unknown")
@@ -57,11 +58,14 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if tool in HITL_TOOLS:
             requires_approval = True
 
+        tool_args = step.get("args", {})
+        plain_label = get_plain_phrase(tool, tool_args, "pending")
+
         validated_step = {
             "id": str(uuid.uuid4()),
             "tool": tool,
-            "label": step.get("label", f"Step {i + 1}"),
-            "args": step.get("args", {}),
+            "label": plain_label,
+            "args": tool_args,
             "status": "pending",
             "requires_approval": requires_approval,
             "result": None,

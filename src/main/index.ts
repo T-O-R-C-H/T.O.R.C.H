@@ -271,7 +271,7 @@ function createMainWindow(): void {
     mainWindow?.webContents.setZoomLevel(0)
   })
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('[Electron] Main window failed to load:', errorCode, errorDescription)
   })
 

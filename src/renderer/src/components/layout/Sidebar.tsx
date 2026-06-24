@@ -390,12 +390,7 @@ export function Sidebar(): JSX.Element {
         padding: '12px 0',
         flexShrink: 0,
       }}>
-        <NavLink to="/terminal" className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}>
-          <IconTerminal />
-          <span>Terminal</span>
-        </NavLink>
-        
-        <div style={{ padding: '0 20px', marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {/* User info */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
@@ -410,7 +405,9 @@ export function Sidebar(): JSX.Element {
               <span style={{ fontFamily: "'Inter', sans-serif", fontSize: '11px', fontWeight: 600, color: '#666' }}>U</span>
             </div>
             <div>
-              <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '12px', fontWeight: 500, color: '#f5f5f5', lineHeight: 1 }}>User</div>
+              <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '12px', fontWeight: 500, color: '#f5f5f5', lineHeight: 1 }}>
+                {localStorage.getItem('torch_user_name') || 'User'}
+              </div>
             </div>
           </div>
 

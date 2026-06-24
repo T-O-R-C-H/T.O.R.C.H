@@ -22,6 +22,8 @@ from websocket import manager as ws_manager
 from agent.brain import plan_command
 from agent.planner import validate_plan, create_response_message
 from agent.executor import executor
+from errors.plain_language import translate_error
+from agent.rollback import rollback_manager
 
 # Configure logging
 logging.basicConfig(
@@ -88,10 +90,11 @@ app.add_middleware(
 @app.get("/api/status")
 async def get_status() -> dict[str, str | bool | int]:
     """Get TORCH backend status."""
+    is_gemini_configured = bool(settings.gemini_api_key and settings.gemini_api_key != "AIzaSyTrialCloudKeyPlaceholder")
     return {
         "status": "running",
         "version": "1.0.0",
-        "gemini_configured": bool(settings.gemini_api_key),
+        "gemini_configured": is_gemini_configured,
         "gmail_configured": bool(settings.gmail_address),
         "screen_watch": settings.screen_watch_enabled,
         "connections": len(ws_manager.active_connections),
@@ -115,8 +118,9 @@ async def system_check():
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
+    is_gemini_configured = bool(settings.gemini_api_key and settings.gemini_api_key != "AIzaSyTrialCloudKeyPlaceholder")
     active_provider = None
-    if settings.gemini_api_key:
+    if is_gemini_configured:
         active_provider = "gemini"
     elif settings.openai_api_key:
         active_provider = "openai"
@@ -125,7 +129,7 @@ async def get_settings():
 
     return {
         "gemini_model": settings.gemini_model,
-        "gemini_configured": bool(settings.gemini_api_key),
+        "gemini_configured": is_gemini_configured,
         "openai_configured": bool(settings.openai_api_key),
         "anthropic_configured": bool(settings.anthropic_api_key),
         "active_provider": active_provider,
@@ -354,6 +358,22 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         logger.info(f"HITL response: {step_id} → {action}")
         executor.submit_approval(step_id, action)
 
+    elif msg_type == "stop_task":
+        logger.info("Stop task received")
+        executor.stop_task()
+
+    elif msg_type == "undo_task":
+        message_id = message.get("messageId")
+        logger.info(f"Undo task received for message {message_id}")
+        res = rollback_manager.rollback(message_id)
+        await ws_manager.send_message({
+            "type": "undo_result",
+            "messageId": message_id,
+            "status": res["status"],
+            "reversed": res["reversed"],
+            "failed": res["failed"]
+        }, client_id)
+
     elif msg_type == "overlay_command":
         content = message.get("content", "")
         logger.info(f"Overlay command: {content[:80]}")
@@ -375,8 +395,23 @@ async def process_command(command: str, client_id: str) -> None:
         context = ConversationContext.get_context(client_id)
 
         # 2. Plan with Gemini
-        await ws_manager.send_terminal_line("Planning execution steps via Gemini...", "info", client_id)
+        await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
         raw_steps = await plan_command(command, context=context)
+
+        # Intercept respond tool for conversational replies (like greetings and clarifying questions)
+        respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
+        if respond_steps:
+            natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
+            response_msg = create_response_message(natural_response, [])
+            await ws_manager.send_agent_response(response_msg, client_id)
+            await ws_manager.send_status("idle", client_id)
+            ConversationContext.add_exchange(
+                client_id=client_id,
+                user_command=command,
+                reply_summary=natural_response,
+                step_results=[]
+            )
+            return
 
         # 3. Validate plan
         validated_steps = validate_plan(raw_steps)
@@ -385,10 +420,18 @@ async def process_command(command: str, client_id: str) -> None:
         step_labels = [s["label"] for s in validated_steps]
         if len(step_labels) == 0:
             natural_response = "I am not sure how to help with that. Try rephrasing."
-        elif len(step_labels) == 1:
-            natural_response = f"On it. {step_labels[0]}."
-        else:
-            natural_response = "Got it. Here is my plan:"
+            response_msg = create_response_message(natural_response, [])
+            await ws_manager.send_agent_response(response_msg, client_id)
+            await ws_manager.send_status("idle", client_id)
+            ConversationContext.add_exchange(
+                client_id=client_id,
+                user_command=command,
+                reply_summary=natural_response,
+                step_results=[]
+            )
+            return
+        
+        natural_response = "Got it. Here is my plan:" if len(step_labels) > 1 else f"On it. {step_labels[0]}."
         
         response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
@@ -400,6 +443,42 @@ async def process_command(command: str, client_id: str) -> None:
         message_id = response_msg["id"]
         executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
 
+        if executor._is_cancelled:
+            completed_count = sum(1 for s in executed_steps if s["status"] == "done")
+            cancelled_count = len(executed_steps) - completed_count
+            recap_sentence = f"I've stopped the task. Completed {completed_count} step(s) and cancelled the remaining {cancelled_count} step(s)."
+            await ws_manager.send_status("idle", client_id)
+            recap_msg = {
+                "id": str(uuid.uuid4()),
+                "role": "torch",
+                "content": recap_sentence,
+                "timestamp": __import__("time").time() * 1000,
+                "steps": executed_steps,
+            }
+            await ws_manager.send_agent_response(recap_msg, client_id)
+            return
+
+        # Check if execution failed
+        failed_steps = [s for s in executed_steps if s["status"] == "failed"]
+        if failed_steps:
+            # Save exchange to context
+            ConversationContext.add_exchange(
+                client_id=client_id,
+                user_command=command,
+                reply_summary="Task execution failed.",
+                step_results=executed_steps
+            )
+            # Log failure in database for accurate metrics
+            try:
+                from memory.storage import db
+                db.save_task(command, validated_steps, "failed")
+                metrics_data = await get_current_metrics()
+                await ws_manager.send_metrics(metrics_data, client_id)
+            except Exception as db_err:
+                logger.warning(f"Failed to log task failure: {db_err}")
+            await ws_manager.send_status("idle", client_id)
+            return
+
         # Save exchange to context
         ConversationContext.add_exchange(
             client_id=client_id,
@@ -410,6 +489,40 @@ async def process_command(command: str, client_id: str) -> None:
 
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
+
+        # Generate a one-sentence plain-language recap (ADD-5)
+        completed_steps = [s for s in executed_steps if s["status"] == "done"]
+        tools_used = {s["tool"] for s in completed_steps}
+        if "send_email" in tools_used:
+            recap_sentence = "Done! I've finished sending your email."
+        elif "read_inbox" in tools_used:
+            recap_sentence = "Done! I've checked your inbox for you."
+        elif "find_file" in tools_used or "find_file_fuzzy" in tools_used:
+            if "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
+                recap_sentence = "Done! I found your document and summarized it."
+            else:
+                recap_sentence = "Done! I found the file you were looking for."
+        elif "search_web" in tools_used:
+            recap_sentence = "Done! I've finished searching the web for you."
+        else:
+            recap_sentence = "Done! I completed the task successfully."
+
+        recap_msg = {
+            "id": str(uuid.uuid4()),
+            "role": "torch",
+            "content": recap_sentence,
+            "timestamp": __import__("time").time() * 1000,
+            "steps": [],
+        }
+        await ws_manager.send_agent_response(recap_msg, client_id)
+
+        # Notify if task is reversible
+        if rollback_manager.has_reversible_actions(message_id):
+            await ws_manager.send_message({
+                "type": "task_completed_metadata",
+                "messageId": message_id,
+                "reversible": True
+            }, client_id)
 
         # Update metrics after task completion
         try:
@@ -427,20 +540,23 @@ async def process_command(command: str, client_id: str) -> None:
         # Record failure in database for accurate success rate metrics
         try:
             from memory.storage import db
-            db.save_task(command, [], "failed") # Duration is 0 for failed tasks
+            db.save_task(command, [], "failed")
             metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as db_err:
             logger.warning(f"Failed to log task failure: {db_err}")
 
         await ws_manager.send_status("idle", client_id)
-        await ws_manager.send_terminal_line(f"Error: {e}", "error", client_id)
+        
+        translated = translate_error(str(e))
+        plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
+        await ws_manager.send_terminal_line(f"Error: {plain_err}", "error", client_id)
 
         # Send error message
         error_msg = {
             "id": str(uuid.uuid4()),
             "role": "torch",
-            "content": f"I encountered an error: {str(e)[:200]}",
+            "content": f"Sorry, {translated['what_happened'].lower()} {translated['what_to_do']}",
             "timestamp": __import__("time").time() * 1000,
             "steps": [],
         }
@@ -458,17 +574,23 @@ async def process_overlay_command(command: str, client_id: str) -> None:
 
         # Plan and get simple response
         raw_steps = await plan_command(command, context=context)
-        validated_steps = validate_plan(raw_steps)
 
-        # For overlay, provide a brief response
-        if validated_steps:
-            labels = [s["label"] for s in validated_steps]
-            reply = f"I'll {labels[0].lower()}"
-            if len(labels) > 1:
-                reply += f" and then {labels[1].lower()}"
-            reply += ". Working on it now."
+        # Intercept respond tool for conversational replies (like greetings)
+        respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
+        if respond_steps:
+            reply = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
+            validated_steps = []
         else:
-            reply = "I'm not sure how to help with that. Try asking differently."
+            validated_steps = validate_plan(raw_steps)
+            # For overlay, provide a brief response
+            if validated_steps:
+                labels = [s["label"] for s in validated_steps]
+                reply = f"I'll {labels[0].lower()}"
+                if len(labels) > 1:
+                    reply += f" and then {labels[1].lower()}"
+                reply += ". Working on it now."
+            else:
+                reply = "I'm not sure how to help with that. Try asking differently."
 
         await ws_manager.send_overlay_event(status="speaking", reply=reply, client_id=client_id)
 
@@ -487,9 +609,11 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         )
 
     except Exception as e:
+        translated = translate_error(str(e))
+        reply_err = f"Sorry, {translated['what_happened'].lower()} {translated['what_to_do']}"
         await ws_manager.send_overlay_event(
             status="speaking",
-            reply=f"Sorry, something went wrong: {str(e)[:100]}",
+            reply=reply_err[:100],
             client_id=client_id,
         )
 

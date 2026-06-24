@@ -24,6 +24,9 @@ export interface Message {
   timestamp: number
   steps?: Step[]
   isTyping?: boolean
+  reversible?: boolean
+  undoState?: 'available' | 'undone' | 'expired'
+  undoResult?: string
 }
 
 export interface Metrics {
@@ -152,16 +155,16 @@ export const useTorchStore = create<TorchState>((set) => ({
     })),
   clearMessages: (): void => set({ messages: [] }),
 
-  // Metrics (demo data for v1)
+  // Metrics (starts at 0 for new users)
   metrics: {
-    tasksCompleted: 47,
-    tasksDelta: 12,
-    timeSaved: 3.2,
-    timeDelta: 0.8,
-    actionsExecuted: 156,
-    actionsDelta: 34,
-    successRate: 94,
-    successDelta: 2
+    tasksCompleted: 0,
+    tasksDelta: 0,
+    timeSaved: 0.0,
+    timeDelta: 0.0,
+    actionsExecuted: 0,
+    actionsDelta: 0,
+    successRate: 100,
+    successDelta: 0
   },
   setMetrics: (updates): void =>
     set((state) => ({ metrics: { ...state.metrics, ...updates } })),
@@ -189,7 +192,7 @@ export const useTorchStore = create<TorchState>((set) => ({
   setWsConnected: (connected): void => set({ wsConnected: connected }),
 
   // Onboarding
-  onboardingComplete: localStorage.getItem('torch_onboarding_complete') !== 'false',
+  onboardingComplete: localStorage.getItem('torch_onboarding_complete') === 'true',
   setOnboardingComplete: (complete): void => {
     localStorage.setItem('torch_onboarding_complete', String(complete))
     set({ onboardingComplete: complete })

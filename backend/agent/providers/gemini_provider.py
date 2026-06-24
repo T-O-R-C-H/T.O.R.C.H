@@ -9,6 +9,7 @@ logger = logging.getLogger("torch.providers.gemini")
 
 # Tool definitions for Gemini
 AVAILABLE_TOOLS = [
+    {"name": "respond", "description": "Reply conversationally to the user (greetings, questions, chitchat, explanations — NO tool execution needed)", "params": ["message"]},
     {"name": "find_file", "description": "Search for a file by name on the filesystem", "params": ["name", "path"]},
     {"name": "find_file_fuzzy", "description": "Search for a file with fuzzy matching when exact name is unknown", "params": ["name", "path"]},
     {"name": "list_directory", "description": "List all files and folders in a directory", "params": ["path"]},
@@ -17,13 +18,13 @@ AVAILABLE_TOOLS = [
     {"name": "read_excel", "description": "Extract data from an Excel spreadsheet", "params": ["filepath"]},
     {"name": "send_email", "description": "Send an email via Gmail SMTP", "params": ["to", "subject", "body", "attachment"], "hitl": True},
     {"name": "read_inbox", "description": "Read recent emails from Gmail inbox", "params": ["count"]},
-    {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"]},
+    {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"], "hitl": True},
     {"name": "click", "description": "Click at a screen position", "params": ["x", "y"]},
     {"name": "type_text", "description": "Type text using keyboard", "params": ["text"]},
     {"name": "screenshot", "description": "Take a screenshot of the screen", "params": []},
     {"name": "analyse_screen", "description": "Analyze the current screen content using AI vision", "params": []},
-    {"name": "search_web", "description": "Search the web and return results", "params": ["query"]},
-    {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"]},
+    {"name": "search_web", "description": "Search the web and return results", "params": ["query"], "hitl": True},
+    {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
     {"name": "post_social", "description": "Post content to a social media platform", "params": ["platform", "message", "image"], "hitl": True},
     {"name": "send_message", "description": "Send a message on a messaging platform", "params": ["platform", "contact", "message"], "hitl": True},
@@ -34,43 +35,68 @@ AVAILABLE_TOOLS = [
     {"name": "zip_files", "description": "Compress files into a zip archive", "params": ["files", "output"]},
 ]
 
+# Simple conversational phrases that should NEVER trigger tool calls
+CONVERSATIONAL_PATTERNS = [
+    r"^(hey|hi|hello|sup|yo|howdy|hiya|what'?s up|wassup|greetings)\b",
+    r"^how are you",
+    r"^(good morning|good afternoon|good evening|good night)",
+    r"^(thanks|thank you|ty|thx|cheers)",
+    r"^(ok|okay|cool|got it|got you|understood|sure|alright|sounds good)",
+    r"^(bye|goodbye|see you|cya|later)",
+    r"^(nice|great|awesome|perfect|wonderful|excellent|amazing|fantastic)",
+    r"^what (can|could) you do",
+    r"^who are you",
+    r"^what are you",
+    r"^help$",
+]
+
 SYSTEM_PROMPT = """You are TORCH, a powerful AI agent that controls the user's computer.
 You can search files, send emails, browse the web, control the mouse and keyboard,
 take screenshots, analyze screen content, post on social media, and execute system commands.
 
-The user is currently running on a **Windows Operating System**. 
-When using the 'run_terminal' tool, you MUST use Windows CMD or PowerShell commands (e.g., use 'dir' instead of 'ls').
-
-When the user gives you a command, break it down into a sequence of tool calls.
+The user is currently running on a **Windows Operating System**.
+When using the 'run_terminal' tool, you MUST use Windows CMD or PowerShell commands (e.g., 'dir' instead of 'ls').
 
 Available tools:
 {tools}
 
-CRITICAL RULES:
-1. Always return a valid JSON array of steps.
-2. Each step must have: "tool" (tool name), "label" (human-readable description), "args" (dict of arguments).
-3. Steps are executed sequentially. Each step can reference results from previous steps.
-4. For irreversible actions (send_email, post_social, send_message, delete_file), set "requires_approval": true.
-5. Be specific in your labels — the user sees these in real-time.
-6. Use the minimum number of steps needed.
-7. If you need to find information before acting, add a search/read step first.
-8. Resolve pronouns like 'it', 'that', or references like 'the file', 'the PDF', 'the folder' from recent conversation context (provided under 'Conversation context'). For instance, if a file search in a previous turn successfully returned a path (shown in 'Execution steps & outcomes'), use that path when the user refers to it in the next command.
+━━━ CRITICAL APPROVAL RULES ━━━
+requires_approval: true MUST ONLY be set for these exact 7 tools:
+  - send_email    (sends a real email — cannot be undone)
+  - post_social   (posts publicly on social media — cannot be undone)
+  - send_message  (sends a message to a real person — cannot be undone)
+  - delete_file   (permanently deletes a file — cannot be undone)
+  - search_web    (searches the web / accesses internet)
+  - open_browser  (opens web browser / accesses internet)
+  - download_file (downloads a file from internet)
 
-FILE MATCHING RULES:
-- When searching for files, always use find_file tool first
-- If the exact filename is not found, use find_file_fuzzy to get suggestions
-- If fuzzy matches are found, include them in your response:
-  "I couldn't find '[original name]' exactly. I found '[suggestion]' — is that what you meant?"
-- Never silently fail on file searches — always report what was found or suggest alternatives
-- Common user mistakes: wrong extension (.docs instead of .docx), reversed words, missing numbers
+ALL OTHER TOOLS must have requires_approval: false — including:
+  - read_inbox, find_file, screenshot, open_app,
+    move_file, create_folder, zip_files, run_terminal, analyse_screen, respond
 
-Respond ONLY with a JSON array. No markdown, no explanation, just the JSON.
+NEVER set requires_approval: true on any tool not in the list of 7 above.
 
-Example response:
+━━━ CONVERSATIONAL RESPONSES ━━━
+For greetings (hey, hi, hello), small talk, "what can you do?", "who are you?",
+thanks, or any message that does NOT require computer actions, use ONLY the 'respond' tool:
+  [{{"tool": "respond", "label": "Replying to greeting", "args": {{"message": "Hey! I'm TORCH — your AI agent. What can I help you with today?"}}, "requires_approval": false}}]
+
+━━━ GENERAL RULES ━━━
+1. Return a valid JSON array of steps. No markdown, no explanation.
+2. Each step: {{"tool": "...", "label": "...", "args": {{}}, "requires_approval": false}}
+3. Steps run sequentially. Reference prior results with {{{{step_0_result}}}}, {{{{step_1_result}}}}, etc.
+4. Be specific and human-friendly in labels.
+5. Use minimum steps needed.
+
+FILE RULES:
+- Always try find_file first, then find_file_fuzzy if not found.
+- Never silently fail — always report what was found.
+
+Example for a real task:
 [
-  {{"tool": "find_file", "label": "Searching for Sales.pdf in Documents", "args": {{"name": "Sales.pdf", "path": "~/Documents"}}, "requires_approval": false}},
-  {{"tool": "read_pdf", "label": "Extracting text from Sales.pdf", "args": {{"filepath": "{{{{step_0_result}}}}"}}, "requires_approval": false}},
-  {{"tool": "send_email", "label": "Sending summary to john@company.com", "args": {{"to": "john@company.com", "subject": "Sales Report Summary", "body": "{{{{step_1_result}}}}"}}, "requires_approval": true}}
+  {{"tool": "find_file", "label": "Searching for Sales.pdf", "args": {{"name": "Sales.pdf", "path": "~/Documents"}}, "requires_approval": false}},
+  {{"tool": "read_pdf", "label": "Reading Sales.pdf", "args": {{"filepath": "{{{{step_0_result}}}}"}}, "requires_approval": false}},
+  {{"tool": "send_email", "label": "Emailing summary to john@company.com", "args": {{"to": "john@company.com", "subject": "Sales Summary", "body": "{{{{step_1_result}}}}"}}, "requires_approval": true}}
 ]
 """
 
@@ -80,6 +106,27 @@ class GeminiProvider(LLMProvider):
         self.client = genai.Client(api_key=self.api_key)
 
     async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+        # Trial Cloud Fallback (ADD-6)
+        if self.api_key == "AIzaSyTrialCloudKeyPlaceholder":
+            cmd = user_command.lower()
+            if "file" in cmd or "find" in cmd:
+                return [
+                    {"tool": "find_file", "label": "Looking for files", "args": {"name": "report.pdf"}, "requires_approval": False},
+                    {"tool": "read_pdf", "label": "Reading document", "args": {"filepath": "report.pdf"}, "requires_approval": False}
+                ]
+            elif "email" in cmd or "inbox" in cmd:
+                return [
+                    {"tool": "read_inbox", "label": "Checking your inbox", "args": {"count": 3}, "requires_approval": False}
+                ]
+            elif "search" in cmd or "web" in cmd:
+                return [
+                    {"tool": "search_web", "label": "Searching the web", "args": {"query": user_command}, "requires_approval": False}
+                ]
+            else:
+                return [
+                    {"tool": "respond", "label": "Replying", "args": {"message": f"I'm running in cloud trial mode. You asked me to: '{user_command}'. Add your own API key in Settings to run custom tasks!"}, "requires_approval": False}
+                ]
+
         try:
             # Build tools description
             tools_desc = "\n".join(

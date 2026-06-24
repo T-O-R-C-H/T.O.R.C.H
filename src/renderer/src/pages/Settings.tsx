@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
 
 import {
@@ -11,6 +12,7 @@ import {
   IconDatabase as Database,
   IconExternalLink as ExternalLink,
   IconShare as Share2,
+  IconTerminal as Terminal,
 } from '../components/icons'
 
 
@@ -56,6 +58,8 @@ const SOCIAL_PLATFORMS = [
 
 export function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState("connections");
+  const navigate = useNavigate();
+  const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
 
   const [geminiKey, setGeminiKey] = useState('')
   const [gmailAddress, setGmailAddress] = useState('')
@@ -200,7 +204,7 @@ export function Settings(): JSX.Element {
                 <Key size={13} className="text-[#555]" />
                 <span className="t-label">API CONFIGURATION</span>
               </div>
-              <SettingRow label="Gemini API Key" description="Powers all AI reasoning — get yours at aistudio.google.com">
+              <SettingRow label="AI Connection Key" description="Powers all AI reasoning — get your key to start">
                 <input
                   type="password"
                   value={geminiKey}
@@ -372,10 +376,35 @@ export function Settings(): JSX.Element {
                 <Database size={13} className="text-[#555]" />
                 <span className="t-label">DATA MANAGEMENT</span>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 font-mono">
                 <button className="btn-secondary text-[10px]">Clear memory</button>
                 <button className="btn-secondary text-[10px]">Export history</button>
                 <button className="btn-danger text-[10px]">Reset all habits</button>
+              </div>
+            </div>
+
+            {/* Developer Tools */}
+            <div className="pt-6 border-t border-[#0e0e0e]">
+              <div className="flex items-center gap-2.5 mb-4">
+                <Terminal size={13} className="text-[#555]" />
+                <span className="t-label">DEVELOPER TOOLS</span>
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => navigate('/terminal')} 
+                  className="btn-secondary text-[10px] px-4 py-2 flex items-center gap-2 font-mono"
+                >
+                  Open Activity Log
+                </button>
+                <button 
+                  onClick={() => {
+                    setOnboardingComplete(false);
+                    navigate('/');
+                  }} 
+                  className="btn-secondary text-[10px] px-4 py-2 flex items-center gap-2 font-mono"
+                >
+                  Replay Intro
+                </button>
               </div>
             </div>
 

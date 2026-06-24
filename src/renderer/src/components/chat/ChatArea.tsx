@@ -2,9 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { 
   IconFile, 
   IconMail, 
-  IconGlobe, 
-  IconBrowser, 
-  IconFolder, 
   IconList 
 } from '../icons'
 import { Message } from './Message';
@@ -16,12 +13,9 @@ import { useTorchStore } from '../../store/torchStore'
    ═══════════════════════════════════════════════════════════════ */
 
 const promptSuggestions = [
-  { icon: IconFile, title: "Find and summarize my latest report", desc: "FILESYSTEM • SUMMARIZATION" },
-  { icon: IconMail, title: "Draft a reply to my last email", desc: "GMAIL • GENERATION" },
-  { icon: IconGlobe, title: "Search web for latest AI news", desc: "BROWSER • RESEARCH" },
-  { icon: IconBrowser, title: "Open browser and research competitors", desc: "AUTOMATION • ANALYSIS" },
-  { icon: IconFolder, title: "Analyse today's downloads folder", desc: "FILESYSTEM • CLEANUP" },
-  { icon: IconList, title: "Prepare client delivery workflow", desc: "PLANNING • TASKS" }
+  { icon: IconFile, title: "Find a file", desc: "Just describe it — TORCH searches your computer for you" },
+  { icon: IconMail, title: "Check my emails", desc: "TORCH will look at your inbox and tell you what matters" },
+  { icon: IconList, title: "Summarise a document", desc: "Point TORCH at any file and get the short version" }
 ]
 
 interface ChatAreaProps {
@@ -44,31 +38,33 @@ function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClic
         display: 'flex',
         alignItems: 'center',
         gap: '16px',
-        height: '56px',
-        background: hovered ? '#080808' : '#050505',
-        border: `1px solid ${hovered ? '#242424' : '#141414'}`,
-        padding: '0 20px',
+        height: '64px',
+        background: hovered ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.01)',
+        border: `1px solid ${hovered ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)'}`,
+        padding: '0 24px',
         cursor: 'pointer',
-        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
-        transition: 'all 160ms ease',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow: hovered ? '0 8px 20px -6px rgba(0, 0, 0, 0.5), 0 0 12px 1px rgba(255, 255, 255, 0.02)' : 'none',
+        transition: 'all 240ms cubic-bezier(0.16, 1, 0.3, 1)',
         textAlign: 'left',
         width: '100%',
-        borderRadius: '0px',
+        borderRadius: '12px',
       }}
     >
-      <div style={{ color: hovered ? '#fff' : '#666', transition: 'color 160ms ease', flexShrink: 0 }}>
-        <Icon size={18} />
+      <div style={{ color: hovered ? '#ffffff' : '#888899', transition: 'color 200ms ease', flexShrink: 0 }}>
+        <Icon size={20} />
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' }}>
         <div style={{
           fontFamily: "'Inter', sans-serif",
-          fontSize: '13px',
+          fontSize: '13.5px',
           fontWeight: 500,
-          color: '#ffffff',
+          color: hovered ? '#ffffff' : '#e2e8f0',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          lineHeight: 1,
+          lineHeight: 1.2,
+          transition: 'color 200ms ease',
         }}>
           {s.title}
         </div>
@@ -76,8 +72,8 @@ function SuggestionCard({ s, onClick }: { s: typeof promptSuggestions[0]; onClic
           fontFamily: "'JetBrains Mono', monospace",
           fontSize: '9px',
           fontWeight: 500,
-          color: '#5a5a5a',
-          letterSpacing: '0.06em',
+          color: hovered ? 'rgba(255, 255, 255, 0.4)' : '#64748b',
+          letterSpacing: '0.08em',
           textTransform: 'uppercase',
           lineHeight: 1,
         }}>
@@ -95,11 +91,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
 
   useEffect(() => {
     if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-      // Auto‑scroll only if user is already near the bottom (within 100px)
-      if (scrollHeight - (scrollTop + clientHeight) < 100) {
-        scrollRef.current.scrollTop = scrollHeight;
-      }
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, agentStatus]);
 
@@ -112,45 +104,46 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
         alignItems: 'center',
         justifyContent: 'center',
         padding: '40px',
-        backgroundColor: '#000',
-        animation: 'fade-in-up 400ms ease-out',
+        background: 'radial-gradient(circle at top, #0e0d1b 0%, #030206 60%, #000000 100%)',
+        animation: 'fade-in-up 500ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}>
         <style>{`
           @keyframes fade-in-up {
-            0% { opacity: 0; transform: translateY(10px); }
+            0% { opacity: 0; transform: translateY(16px); }
             100% { opacity: 1; transform: translateY(0); }
           }
         `}</style>
         
         <h1 style={{
           fontFamily: "'Inter', sans-serif",
-          fontSize: '28px',
-          fontWeight: 600,
-          color: '#ffffff',
+          fontSize: '32px',
+          fontWeight: 700,
+          backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #94a3b8 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
           letterSpacing: '-0.04em',
-          margin: '0 0 12px 0',
-          lineHeight: 1,
+          margin: '0 0 8px 0',
+          lineHeight: 1.1,
         }}>
           COMMAND CENTER
         </h1>
         
         <p style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '11px',
-          fontWeight: 500,
-          color: '#5a5a5a',
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          margin: '0 0 48px 0',
+          fontFamily: "'Inter', sans-serif",
+          fontSize: '13px',
+          fontWeight: 400,
+          color: '#64748b',
+          margin: '0 0 40px 0',
+          letterSpacing: '-0.01em',
         }}>
-          Autonomous AI system ready for execution.
+          How can I help you automate your workspace today?
         </p>
 
         {/* Suggestion Grid */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: '12px',
+          gap: '16px',
           width: '100%',
           maxWidth: '760px',
         }}>
@@ -168,7 +161,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       style={{
         flex: 1,
         overflowY: 'auto',
-        backgroundColor: '#000',
+        background: 'radial-gradient(circle at top, #090812 0%, #020204 100%)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -189,24 +182,31 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
 
         {/* System Execution Stream */}
         {(agentStatus === 'processing' || agentStatus === 'executing') && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fade-in 200ms ease-out' }}>
-              <div style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: '12px',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0s' }} />
-                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.15s' }} />
-                  <div style={{ width: '6px', height: '6px', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.3s' }} />
-                </div>
-                <span>{agentStatus === 'processing' ? 'planning with Gemini...' : 'running task...'}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fade-in 200ms ease-out' }}>
+            <div style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '13px',
+              color: '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              padding: '10px 16px',
+              alignSelf: 'flex-start',
+              borderRadius: '20px',
+            }}>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0s' }} />
+                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.15s' }} />
+                <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff', animation: 'bounce 1s infinite', animationDelay: '0.3s' }} />
               </div>
+              <span style={{ fontSize: '12px', fontWeight: 500 }}>
+                {agentStatus === 'processing' ? 'Thinking...' : 'Running operations...'}
+              </span>
             </div>
-          )}
+          </div>
+        )}
       </div>
     </div>
   )

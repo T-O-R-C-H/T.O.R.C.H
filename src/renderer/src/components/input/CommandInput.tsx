@@ -1,5 +1,6 @@
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { useTorchStore } from '../../store/torchStore'
+import { useWebSocket } from '../../hooks/useWebSocket'
 
 /* ─── ICONS ─── */
 function IconArrowUp(): JSX.Element {
@@ -33,6 +34,8 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
   const inputMode = useTorchStore((s) => s.inputMode)
   const agentStatus = useTorchStore((s) => s.agentStatus)
   const wsConnected = useTorchStore((s) => s.wsConnected)
+  const demoMode = useTorchStore((s) => s.demoMode)
+  const { sendStopCommand } = useWebSocket()
 
   const handleSend = (): void => {
     const trimmed = text.trim()
@@ -77,6 +80,46 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
         flexDirection: 'column',
         minHeight: '60px',
       }}>
+        {/* Stop Task Row (ADD-3) */}
+        {isProcessing && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(239, 68, 68, 0.08)',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
+            padding: '8px 16px',
+          }}>
+            <span style={{ fontSize: '11px', color: '#fca5a5', fontFamily: "'Inter', sans-serif" }}>
+              Task is running...
+            </span>
+            <button
+              onClick={() => {
+                if (demoMode) {
+                  useTorchStore.getState().setAgentStatus('idle')
+                } else {
+                  sendStopCommand()
+                }
+              }}
+              style={{
+                background: '#ef4444',
+                color: '#ffffff',
+                border: 'none',
+                padding: '4px 12px',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontFamily: "'Inter', sans-serif",
+                transition: 'background 150ms ease',
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#dc2626' }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#ef4444' }}
+            >
+              Stop Task
+            </button>
+          </div>
+        )}
         {/* TOP ROW: Mode Tabs & Status */}
         <div style={{
           display: 'flex',
@@ -117,7 +160,7 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
             color: '#4a4a4a',
             paddingRight: '4px',
           }}>
-            {wsConnected ? 'CONNECTED TO GEMINI' : 'LOCAL MODEL ACTIVE'}
+            {wsConnected ? 'ONLINE MODE' : 'LOCAL MODE'}
           </div>
         </div>
 

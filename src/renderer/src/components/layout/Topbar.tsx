@@ -50,7 +50,7 @@ const pageTitles: Record<string, string> = {
 }
 
 /* ─── Status pill component ─── */
-function StatusPill({ children, dot }: { children: React.ReactNode; dot?: boolean }): JSX.Element {
+function StatusPill({ children, dot, dotColor = '#fff' }: { children: React.ReactNode; dot?: boolean; dotColor?: string }): JSX.Element {
   return (
     <div style={{
       height: '28px',
@@ -71,7 +71,8 @@ function StatusPill({ children, dot }: { children: React.ReactNode; dot?: boolea
         <div style={{
           width: '5px',
           height: '5px',
-          background: '#fff',
+          background: dotColor,
+          borderRadius: '50%',
           animation: 'pulse-dot 1.5s ease-in-out infinite',
           flexShrink: 0,
         }} />
@@ -114,12 +115,12 @@ export function Topbar(): JSX.Element {
 
   const pageTitle = pageTitles[location.pathname] || 'TORCH'
 
-  const agentLabel = agentStatus === 'idle' ? 'IDLE' :
-    agentStatus === 'listening' ? 'LISTENING' :
-    agentStatus === 'processing' ? 'THINKING' :
-    agentStatus === 'executing' ? 'ACTIVE' :
-    agentStatus === 'speaking' ? 'SPEAKING' :
-    agentStatus === 'awaiting_approval' ? 'AWAITING' : (agentStatus as string).toUpperCase()
+  const agentLabel = agentStatus === 'idle' ? 'Ready' :
+    agentStatus === 'listening' ? 'Listening...' :
+    agentStatus === 'processing' ? 'Thinking...' :
+    agentStatus === 'executing' ? 'Working...' :
+    agentStatus === 'speaking' ? 'Speaking...' :
+    agentStatus === 'awaiting_approval' ? 'Awaiting Approval' : (agentStatus as string).toUpperCase()
 
   const isActive = agentStatus !== 'idle'
 
@@ -165,16 +166,16 @@ export function Topbar(): JSX.Element {
       {/* ─── RIGHT: Status pills + window controls ─── */}
       <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* Status pills */}
-        <StatusPill dot={isActive}>
-          AGENT: {agentLabel}
+        <StatusPill dot={isActive} dotColor={agentStatus === 'awaiting_approval' ? '#f59e0b' : '#fff'}>
+          {agentLabel}
         </StatusPill>
 
         <StatusPill>
-          LOCAL MODE
+          Private
         </StatusPill>
 
-        <StatusPill dot={wsConnected}>
-          {wsConnected ? 'CONNECTED' : 'OFFLINE'}
+        <StatusPill dot={true} dotColor={wsConnected ? '#10b981' : '#f59e0b'}>
+          {wsConnected ? 'Online' : 'Reconnecting...'}
         </StatusPill>
 
         {/* Separator */}
