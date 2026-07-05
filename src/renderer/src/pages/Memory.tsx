@@ -36,33 +36,25 @@ export function Memory(): JSX.Element {
   const maxCount = Math.max(...demoCommands.map((c) => c.count))
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <h1 className="t-page-title">Memory</h1>
-        <span className="t-mono-xs text-[#333] border border-[#181818] px-2.5 py-1">habit learning</span>
-      </div>
-
-      {/* Grid */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="grid grid-cols-2 gap-px bg-[#0e0e0e]">
-          {/* Frequent commands */}
-          <div className="bg-[#000] p-6">
+    <div className="page-shell page-enter">
+      <div className="page-shell__body p-0">
+        <div className="stat-grid grid-cols-2">
+          <div className="stat-cell">
             <div className="flex items-center gap-2.5 mb-5">
-              <Command size={13} className="text-[#555]" />
-              <span className="t-label">FREQUENT COMMANDS</span>
+              <Command size={13} className="text-[var(--color-torch-text-tertiary)]" />
+              <span className="t-label">Frequent commands</span>
             </div>
             <div className="space-y-4">
               {demoCommands.map((cmd, i) => (
                 <div key={i}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[13px] text-[#bbb]">{cmd.command}</span>
-                    <span className="t-mono-xs text-[#444]">{cmd.count}</span>
+                    <span className="text-[13px] text-[var(--color-torch-text)]">{cmd.command}</span>
+                    <span className="t-mono-xs">{cmd.count}</span>
                   </div>
-                  <div className="w-full h-[3px] bg-[#0e0e0e]">
+                  <div className="progress-bar">
                     <div
-                      className="h-full bg-white transition-all duration-700"
-                      style={{ width: `${(cmd.count / maxCount) * 100}%`, opacity: 0.15 + (cmd.count / maxCount) * 0.85 }}
+                      className="progress-bar__fill"
+                      style={{ width: `${(cmd.count / maxCount) * 100}%`, opacity: 0.25 + (cmd.count / maxCount) * 0.75 }}
                     />
                   </div>
                 </div>
@@ -70,52 +62,49 @@ export function Memory(): JSX.Element {
             </div>
           </div>
 
-          {/* Frequent contacts */}
-          <div className="bg-[#000] p-6">
+          <div className="stat-cell">
             <div className="flex items-center gap-2.5 mb-5">
-              <User size={13} className="text-[#555]" />
-              <span className="t-label">FREQUENT CONTACTS</span>
+              <User size={13} className="text-[var(--color-torch-text-tertiary)]" />
+              <span className="t-label">Frequent contacts</span>
             </div>
-            <div className="space-y-0">
+            <div>
               {demoContacts.map((contact, i) => (
-                <div key={i} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
-                  <span className="text-[13px] text-[#bbb] font-mono">{contact.name}</span>
-                  <span className="t-mono-xs text-[#444]">{contact.count} interactions</span>
+                <div key={i} className="setting-row" style={{ padding: '12px 0' }}>
+                  <span className="text-[13px] font-mono text-[var(--color-torch-text)]">{contact.name}</span>
+                  <span className="t-mono-xs">{contact.count} interactions</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Frequent files */}
-          <div className="bg-[#000] p-6">
+          <div className="stat-cell">
             <div className="flex items-center gap-2.5 mb-5">
-              <FolderOpen size={13} className="text-[#555]" />
-              <span className="t-label">FREQUENT FILES</span>
+              <FolderOpen size={13} className="text-[var(--color-torch-text-tertiary)]" />
+              <span className="t-label">Frequent files</span>
             </div>
-            <div className="space-y-0">
+            <div>
               {demoFiles.map((file, i) => (
-                <div key={i} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
-                  <span className="text-[12px] text-[#777] font-mono truncate max-w-[70%]">{file.path}</span>
-                  <span className="t-mono-xs text-[#444]">{file.count}×</span>
+                <div key={i} className="setting-row" style={{ padding: '12px 0' }}>
+                  <span className="text-[12px] font-mono truncate max-w-[70%] text-[var(--color-torch-text-secondary)]">{file.path}</span>
+                  <span className="t-mono-xs">{file.count}×</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Daily patterns */}
-          <div className="bg-[#000] p-6">
+          <div className="stat-cell">
             <div className="flex items-center gap-2.5 mb-5">
-              <BarChart3 size={13} className="text-[#555]" />
-              <span className="t-label">DAILY PATTERNS</span>
+              <BarChart3 size={13} className="text-[var(--color-torch-text-tertiary)]" />
+              <span className="t-label">Daily patterns</span>
             </div>
-            <div className="space-y-0">
+            <div>
               {demoHabits.map((habit) => (
-                <div key={habit.id} className="flex items-center justify-between py-3 border-b border-[#0e0e0e] last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[13px] text-[#bbb]">{habit.action}</span>
-                    <span className="t-mono-xs text-[#333] border border-[#181818] px-1.5 py-0.5">@ {habit.timeOfDay}</span>
+                <div key={habit.id} className="setting-row" style={{ padding: '12px 0' }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-[13px] text-[var(--color-torch-text)]">{habit.action}</span>
+                    <span className="pill-count">@ {habit.timeOfDay}</span>
                   </div>
-                  <span className="t-mono-xs text-[#444]">{habit.frequency}×/week</span>
+                  <span className="t-mono-xs">{habit.frequency}×/week</span>
                 </div>
               ))}
             </div>

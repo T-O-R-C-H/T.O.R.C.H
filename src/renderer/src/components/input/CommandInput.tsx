@@ -1,250 +1,255 @@
-import { useState, useRef, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+
 import { useTorchStore } from '../../store/torchStore'
+
 import { useWebSocket } from '../../hooks/useWebSocket'
 
-/* ─── ICONS ─── */
-function IconArrowUp(): JSX.Element {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="12" y1="19" x2="12" y2="5" />
-      <polyline points="5 12 12 5 19 12" />
-    </svg>
-  )
-}
+import { CmdArrowUp } from '../icons/cleanIcons'
 
-function IconMic(): JSX.Element {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <line x1="12" y1="19" x2="12" y2="23" />
-      <line x1="8" y1="23" x2="16" y2="23" />
-    </svg>
-  )
-}
+import { API_BASE } from '../../config/api'
+
 
 
 interface CommandInputProps {
+
   onSend: (command: string) => void
+
 }
 
+
+
+const FALLBACK_MODELS = [
+
+  { id: 'auto', label: 'Auto' },
+
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
+
+]
+
+
+
 export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
+
   const [text, setText] = useState('')
+
+  const [models, setModels] = useState(FALLBACK_MODELS)
+
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const inputMode = useTorchStore((s) => s.inputMode)
+
   const agentStatus = useTorchStore((s) => s.agentStatus)
+
   const wsConnected = useTorchStore((s) => s.wsConnected)
+
   const demoMode = useTorchStore((s) => s.demoMode)
+
+  const selectedModel = useTorchStore((s) => s.selectedModel)
+
+  const setSelectedModel = useTorchStore((s) => s.setSelectedModel)
+
   const { sendStopCommand } = useWebSocket()
 
+
+
+  useEffect(() => {
+
+    if (demoMode) return
+
+    fetch(`${API_BASE}/api/models`)
+
+      .then((r) => r.json())
+
+      .then((data) => {
+
+        if (Array.isArray(data.models) && data.models.length > 0) {
+
+          setModels(data.models)
+
+        }
+
+      })
+
+      .catch(() => {})
+
+  }, [demoMode, wsConnected])
+
+
+
   const handleSend = (): void => {
+
     const trimmed = text.trim()
+
     if (!trimmed) return
+
     onSend(trimmed)
+
     setText('')
+
+    if (inputRef.current) inputRef.current.style.height = '34px'
+
     inputRef.current?.focus()
+
   }
 
+
+
   const handleKeyDown = (e: KeyboardEvent): void => {
+
     if (e.key === 'Enter' && !e.shiftKey) {
+
       e.preventDefault()
+
       handleSend()
+
     }
+
   }
+
+
+
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+
+    setText(e.target.value)
+
+    e.target.style.height = '34px'
+
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+
+  }
+
+
 
   const isProcessing = agentStatus === 'processing' || agentStatus === 'executing'
 
-  // Adjust textarea height automatically
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    setText(e.target.value)
-    e.target.style.height = '58px'
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`
-  }
+  const canSend = text.trim().length > 0 && !isProcessing
+
+
 
   return (
-    <div style={{
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      padding: '14px 28px',
-      background: 'linear-gradient(to bottom, transparent, #000000 15%)',
-      zIndex: 10,
-    }}>
-      <div style={{
-        margin: '0 auto',
-        maxWidth: '980px',
-        background: '#050505',
-        border: '1px solid #1a1a1a',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '60px',
-      }}>
-        {/* Stop Task Row (ADD-3) */}
-        {isProcessing && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            background: 'rgba(239, 68, 68, 0.08)',
-            borderBottom: '1px solid rgba(239, 68, 68, 0.15)',
-            padding: '8px 16px',
-          }}>
-            <span style={{ fontSize: '11px', color: '#fca5a5', fontFamily: "'Inter', sans-serif" }}>
-              Task is running...
-            </span>
-            <button
-              onClick={() => {
-                if (demoMode) {
-                  useTorchStore.getState().setAgentStatus('idle')
-                } else {
-                  sendStopCommand()
-                }
-              }}
-              style={{
-                background: '#ef4444',
-                color: '#ffffff',
-                border: 'none',
-                padding: '4px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                borderRadius: '4px',
-                fontFamily: "'Inter', sans-serif",
-                transition: 'background 150ms ease',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#dc2626' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#ef4444' }}
-            >
-              Stop Task
-            </button>
-          </div>
-        )}
-        {/* TOP ROW: Mode Tabs & Status */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '6px 12px 0 12px',
-        }}>
-          {/* Mode Tabs */}
-          <div style={{ display: 'flex', gap: '4px' }}>
-            {['type', 'voice', 'heytorch'].map((mode) => (
-              <button
-                key={mode}
-                onClick={() => useTorchStore.getState().setInputMode(mode as any)}
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '9px',
-                  fontWeight: 500,
-                  textTransform: 'uppercase',
-                  color: inputMode === mode ? '#ffffff' : '#4a4a4a',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: '4px 8px',
-                  cursor: 'pointer',
-                  transition: 'color 160ms ease',
-                }}
-              >
-                {mode === 'heytorch' ? 'HEY TORCH' : mode}
-              </button>
-            ))}
-          </div>
 
-          {/* Right Status */}
-          <div style={{
-            fontFamily: "'JetBrains Mono', monospace",
-            fontSize: '9px',
-            fontWeight: 500,
-            textTransform: 'uppercase',
-            color: '#4a4a4a',
-            paddingRight: '4px',
-          }}>
-            {wsConnected ? 'ONLINE MODE' : 'LOCAL MODE'}
-          </div>
+    <div className="cmd-input-bar">
+
+      {isProcessing && (
+
+        <div className="cmd-banner" style={{ marginBottom: 12, maxWidth: 680, margin: '0 auto 12px' }}>
+
+          <span className="cmd-banner__text">Task running</span>
+
+          <button
+
+            type="button"
+
+            className="cmd-banner__btn"
+
+            onClick={() => {
+
+              if (demoMode) useTorchStore.getState().setAgentStatus('idle')
+
+              else sendStopCommand()
+
+            }}
+
+          >
+
+            Stop
+
+          </button>
+
         </div>
 
-        {/* MAIN INPUT AREA */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          padding: '6px 12px 10px 16px',
-          gap: '12px',
-        }}>
-          {/* Textarea */}
+      )}
+
+
+
+      <div className="cmd-input-box">
+
+        <div className="cmd-input-row">
+
           <textarea
+
             ref={inputRef}
+
             value={text}
+
             onChange={handleInput}
+
             onKeyDown={handleKeyDown}
-            placeholder="Tell TORCH what to do..."
-            disabled={isProcessing || inputMode !== 'type'}
-            style={{
-              flex: 1,
-              minHeight: '46px',
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: '#ffffff',
-              fontFamily: "'Inter', sans-serif",
-              fontSize: '13px',
-              resize: 'none',
-              paddingTop: '6px',
-              lineHeight: '1.5',
-            }}
+
+            placeholder="Tell TORCH what to do…"
+
+            disabled={isProcessing}
+
+            className="cmd-input-textarea"
+
+            rows={1}
+
           />
 
-          {/* Right Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '2px' }}>
+          <div className="cmd-input-actions">
+
             <button
-              onClick={() => useTorchStore.getState().setInputMode(inputMode === 'voice' ? 'type' : 'voice')}
-              style={{
-                width: '36px',
-                height: '36px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: inputMode === 'voice' ? '#ffffff' : 'transparent',
-                color: inputMode === 'voice' ? '#000000' : '#666',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'all 160ms ease',
-              }}
-            >
-              <IconMic />
-            </button>
-            
-            <button
+
+              type="button"
+
               onClick={handleSend}
-              disabled={!text.trim() || isProcessing || inputMode !== 'type'}
-              style={{
-                width: '36px',
-                height: '36px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: (!text.trim() || isProcessing) ? '#222' : '#ffffff',
-                color: (!text.trim() || isProcessing) ? '#555' : '#000000',
-                border: 'none',
-                cursor: (!text.trim() || isProcessing) ? 'not-allowed' : 'pointer',
-                transition: 'all 160ms ease',
-              }}
-              onMouseEnter={(e) => {
-                if (!text.trim() || isProcessing) return
-                const el = e.currentTarget as HTMLElement
-                el.style.background = '#e0e0e0'
-              }}
-              onMouseLeave={(e) => {
-                if (!text.trim() || isProcessing) return
-                const el = e.currentTarget as HTMLElement
-                el.style.background = '#ffffff'
-              }}
+
+              disabled={!canSend}
+
+              className="cmd-input-send"
+
+              aria-label="Send command"
+
             >
-              <IconArrowUp />
+
+              <CmdArrowUp size={14} />
+
             </button>
+
           </div>
+
         </div>
+
+        <div className="cmd-input-meta">
+
+          <label className="cmd-model-picker">
+
+            <span className="sr-only">AI model</span>
+
+            <select
+
+              value={selectedModel}
+
+              onChange={(e) => setSelectedModel(e.target.value)}
+
+              disabled={isProcessing}
+
+            >
+
+              {models.map((m) => (
+
+                <option key={m.id} value={m.id}>{m.label}</option>
+
+              ))}
+
+            </select>
+
+          </label>
+
+          <span>{demoMode ? 'Demo mode' : wsConnected ? 'Ready' : 'Reconnecting'}</span>
+
+          <span>Enter to send</span>
+
+        </div>
+
       </div>
+
     </div>
+
   )
+
 }
+
+

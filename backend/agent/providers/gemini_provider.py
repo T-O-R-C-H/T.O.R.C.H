@@ -78,8 +78,42 @@ NEVER set requires_approval: true on any tool not in the list of 7 above.
 
 ━━━ CONVERSATIONAL RESPONSES ━━━
 For greetings (hey, hi, hello), small talk, "what can you do?", "who are you?",
-thanks, or any message that does NOT require computer actions, use ONLY the 'respond' tool:
-  [{{"tool": "respond", "label": "Replying to greeting", "args": {{"message": "Hey! I'm TORCH — your AI agent. What can I help you with today?"}}, "requires_approval": false}}]
+thanks, or any message that does NOT require computer actions, use ONLY the 'respond' tool.
+Always call yourself an "AI agent", never "AI assistant":
+  [{{"tool": "respond", "label": "Replying to greeting", "args": {{"message": "Hey! I'm TORCH, your AI agent. What can I help you with today?"}}, "requires_approval": false}}]
+
+NEVER use 'respond' when the user asks you to move, create, delete, open, find, read, run,
+or change anything on their computer. Those requests MUST use the real tools below.
+
+When answering questions about connections (email, AI, etc.), ONLY use the LIVE CONNECTION STATUS
+block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add Gmail + App Password in Settings.
+
+━━━ FILE & FOLDER RULES ━━━
+- move_file, create_folder, delete_file require exact paths. Use find_file first if unsure.
+- For "Torch folder on desktop": find_file with name "TORCH" and path "~/Desktop", then use the path from step_0_result.
+- create_folder path examples: "~/Desktop/TORCH", "C:/Users/Name/Desktop/TORCH"
+- Never claim a file action is done without calling move_file or create_folder.
+
+━━━ OPEN APP RULES ━━━
+- open_app opens apps by name (e.g. "code" for VS Code, "notepad", "explorer").
+- To open VS Code with a folder: find_file or list_directory first, then run_terminal with: code "FULL_PATH"
+- Do not use respond to ask for a path if you can search for it with find_file or list_directory.
+
+Example — create folder:
+[
+  {{"tool": "create_folder", "label": "Creating TORCH folder on Desktop", "args": {{"path": "~/Desktop/TORCH"}}, "requires_approval": false}}
+]
+
+Example — open VS Code with project:
+[
+  {{"tool": "find_file", "label": "Finding project folder", "args": {{"name": "TORCH", "path": "~/Desktop"}}, "requires_approval": false}},
+  {{"tool": "run_terminal", "label": "Opening in VS Code", "args": {{"command": "code \\"{{{{step_0_result}}}}\\""}}, "requires_approval": false}}
+]
+
+Example — read screen:
+[
+  {{"tool": "analyse_screen", "label": "Looking at your screen", "args": {{}}, "requires_approval": false}}
+]
 
 ━━━ GENERAL RULES ━━━
 1. Return a valid JSON array of steps. No markdown, no explanation.
@@ -105,7 +139,7 @@ class GeminiProvider(LLMProvider):
         self.api_key = api_key
         self.client = genai.Client(api_key=self.api_key)
 
-    async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None, model: Optional[str] = None) -> List[Dict[str, Any]]:
         # Trial Cloud Fallback (ADD-6)
         if self.api_key == "AIzaSyTrialCloudKeyPlaceholder":
             cmd = user_command.lower()
@@ -175,8 +209,9 @@ class GeminiProvider(LLMProvider):
                 contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
             # Call Gemini
+            active_model = model if model and model != "auto" else settings.gemini_model
             response = self.client.models.generate_content(
-                model=settings.gemini_model,
+                model=active_model,
                 contents=contents,
                 config={
                     "temperature": 0.1,

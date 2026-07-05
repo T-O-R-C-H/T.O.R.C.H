@@ -13,7 +13,7 @@ from config.settings import settings
 
 logger = logging.getLogger("torch.executor")
 
-NON_BLOCKING_FAILURE_TOOLS = {"screenshot", "analyse_screen"}
+NON_BLOCKING_FAILURE_TOOLS = {"screenshot"}
 NON_RETRYABLE_ERROR_MARKERS = (
     "authentication failed",
     "unauthorized",
@@ -146,21 +146,6 @@ class Executor:
                 await ws_manager.send_terminal_line(
                     f"Error: {translated_err}", "error", client_id
                 )
-                
-                # Send failure summary to chat
-                step_num = i + 1
-                completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
-                chat_failure_msg = (
-                    f"Step {step_num} failed: {translated_err}. "
-                    f"{completed_range}."
-                )
-                await ws_manager.send_agent_response(
-                    {
-                        "role": "assistant",
-                        "content": chat_failure_msg,
-                    },
-                    client_id,
-                )
                 results.append("")
                 break
 
@@ -260,19 +245,6 @@ class Executor:
                             await ws_manager.send_terminal_line(
                                 f"Blocking failure: {plain_err}", "error", client_id
                             )
-                            # Send blocking failure explanation to chat
-                            step_num = i + 1
-                            completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
-                            await ws_manager.send_agent_response(
-                                {
-                                    "role": "assistant",
-                                    "content": (
-                                        f"Step {step_num} failed after 2 attempts: {plain_err}. "
-                                        f"{completed_range}."
-                                    ),
-                                },
-                                client_id,
-                            )
                             break
                     except Exception as e:
                         translated = translate_error(str(e))
@@ -295,7 +267,15 @@ class Executor:
                         if not result_recorded:
                             results.append(result_str)
                 else:
-                    results.append(result_str)
+                    if tool_name == "find_file" and result_str.startswith("Found"):
+                        first_path = self._extract_first_path(result_str)
+                        results.append(first_path or result_str)
+                    elif tool_name in {"read_pdf", "read_word", "read_excel", "move_file", "delete_file"}:
+                        results.append(result_str)
+                    elif "Analysis failed:" in result_str or result_str.startswith("Command failed"):
+                        raise RuntimeError(result_str)
+                    else:
+                        results.append(result_str)
 
                 if step["status"] == "failed":
                     break
@@ -339,25 +319,6 @@ class Executor:
                     )
                     continue
 
-                # Send failure summary to chat with exact format
-                step_num = i + 1
-                completed_range = f"Steps 1\u2013{step_num - 1} completed" if step_num > 1 else "No steps completed"
-                chat_failure_msg = (
-                    f"Step {step_num} failed after 2 attempts: {plain_err}. "
-                    f"{completed_range}."
-                )
-                await ws_manager.send_agent_response(
-                    {
-                        "role": "assistant",
-                        "content": chat_failure_msg,
-                    },
-                    client_id,
-                )
-                await ws_manager.send_terminal_line(
-                    f"Step {step_num} failed after retry handling. Stopping task so I do not continue with unsafe inputs.",
-                    "error",
-                    client_id,
-                )
                 break
 
         await ws_manager.send_status("idle", client_id)
@@ -445,6 +406,17 @@ class Executor:
         event = self._approval_events.get(step_id)
         if event:
             event.set()
+
+    def _extract_first_path(self, find_result: str) -> Optional[str]:
+        """Pull the first file path from a find_file result string."""
+        for line in find_result.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("Found"):
+                continue
+            path_part = stripped.split(" (", 1)[0].strip()
+            if path_part:
+                return path_part
+        return None
 
     def _resolve_references(
         self, args: Dict[str, Any], results: List[str]

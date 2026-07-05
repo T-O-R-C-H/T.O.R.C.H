@@ -24,6 +24,8 @@ interface TorchAPI {
   removeScreenWatchToggle: () => void
   removeBackendHealth: () => void
   removeBackendStatus: () => void
+  getClipboardEntries: () => Promise<Array<{ id: string; text: string; timestamp: number; dateKey: string }>>
+  copyToClipboard: (text: string) => void
 }
 
 declare global {

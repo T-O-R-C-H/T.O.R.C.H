@@ -4,8 +4,8 @@
  */
 
 import { useTorchStore, type Step } from '../store/torchStore'
-
-// ─── Helpers ───
+import { formatAgentContent } from '../utils/plainLanguage'
+import { streamMessageContent } from '../utils/streamContent'
 
 function uuid(): string {
   return crypto.randomUUID()
@@ -26,30 +26,28 @@ function makeStep(label: string, tool: string, requiresApproval = false): Step {
   }
 }
 
-// ─── Scripted Scenarios ───
-
 const SCENARIOS: Record<string, { reply: string; steps: { label: string; tool: string; result?: string; hitl?: boolean }[] }> = {
   file: {
-    reply: "On it. I'll search your filesystem and summarize what I find.",
+    reply: "On it. I'll search your files and summarize what I find.",
     steps: [
-      { label: 'Scanning ~/Documents for recent files', tool: 'find_file', result: 'Found 14 files modified in last 7 days' },
-      { label: 'Reading Sales_Report_Q2.pdf (38 pages)', tool: 'read_pdf', result: '**Sales Report Q2 2026**\n\n• Revenue: $4.2M (+18% QoQ)\n• New clients: 23\n• Top region: North America (62%)\n• Churn rate: 2.1% (down from 3.4%)' },
+      { label: 'Scanning Documents for recent files', tool: 'find_file', result: 'Found 14 files modified in the last 7 days' },
+      { label: 'Reading Sales_Report_Q2.pdf', tool: 'read_pdf', result: 'Sales Report Q2 2026\n\nRevenue: $4.2M (+18% QoQ)\nNew clients: 23\nTop region: North America (62%)\nChurn rate: 2.1% (down from 3.4%)' },
       { label: 'Generating executive summary', tool: 'gemini', result: 'Summary generated and copied to clipboard.' },
     ],
   },
   web: {
     reply: "Got it. Searching the web for the latest headlines.",
     steps: [
-      { label: 'Opening Chromium via Playwright', tool: 'open_browser', result: 'Browser launched' },
-      { label: 'Searching Google for "AI news today"', tool: 'search_web', result: 'Retrieved 10 results from Google' },
-      { label: 'Scraping top 3 articles', tool: 'search_web', result: '**Top AI Headlines — May 2026**\n\n1. *Google DeepMind unveils Gemini 3.0 Ultra* — TechCrunch\n2. *OpenAI launches GPT-5 turbo with reasoning chains* — The Verge\n3. *EU passes landmark AI Safety Act amendment* — Reuters' },
+      { label: 'Opening browser', tool: 'open_browser', result: 'Browser launched' },
+      { label: 'Searching for AI news today', tool: 'search_web', result: 'Retrieved 10 results' },
+      { label: 'Reading top articles', tool: 'search_web', result: 'Top AI Headlines\n\n1. Google DeepMind unveils Gemini 3.0 Ultra\n2. OpenAI launches GPT-5 turbo with reasoning chains\n3. EU passes landmark AI Safety Act amendment' },
     ],
   },
   email: {
     reply: "I'll draft that email for you. You'll need to approve before I send.",
     steps: [
-      { label: 'Drafting email with Gemini', tool: 'gemini', result: '**To:** team@company.com\n**Subject:** Weekly Progress Update\n\nHi team,\n\nHere\'s a quick summary of this week\'s progress:\n• Completed 3 client deliverables\n• Sprint velocity up 12%\n• Next week: focus on Q3 planning\n\nBest,\nTORCH' },
-      { label: 'Sending email via Gmail SMTP', tool: 'send_email', hitl: true },
+      { label: 'Drafting email', tool: 'gemini', result: 'To: team@company.com\nSubject: Weekly Progress Update\n\nHi team,\n\nHere is a quick summary of this week\'s progress:\n• Completed 3 client deliverables\n• Sprint velocity up 12%\n• Next week: focus on Q3 planning\n\nBest,\nTORCH' },
+      { label: 'Sending email', tool: 'send_email', hitl: true },
     ],
   },
 }
@@ -65,24 +63,26 @@ function matchScenario(command: string): string | null {
   return null
 }
 
-// ─── Public API ───
-
 export async function handleDemoCommand(command: string): Promise<void> {
   const store = useTorchStore.getState()
   const scenarioKey = matchScenario(command)
 
   if (!scenarioKey) {
-    // Unknown command in demo mode — show help
     store.setAgentStatus('processing')
-    await delay(600)
+    await delay(500)
+    const messageId = uuid()
+    const helpText = formatAgentContent(
+      "I'm running in demo mode, so there is no live backend connected.\n\nTry one of these:\n\n• Find and summarize my latest report\n• Search the web for AI news\n• Send an email to my team\n\nAdd your Gemini API key in Settings to unlock the full agent."
+    )
     store.addMessage({
-      id: uuid(),
+      id: messageId,
       role: 'torch',
-      content:
-        "I'm running in **demo mode** — no backend connected.\n\nTry one of these showcase commands:\n\n• **\"Find and summarize my latest report\"**\n• **\"Search the web for AI news\"**\n• **\"Send an email to my team\"**\n\nOr add your Gemini API key in Settings to unlock the full TORCH agent.",
+      content: '',
       timestamp: Date.now(),
       steps: [],
+      isStreaming: true,
     })
+    await streamMessageContent(messageId, helpText)
     store.setAgentStatus('idle')
     return
   }
@@ -91,38 +91,34 @@ export async function handleDemoCommand(command: string): Promise<void> {
   const messageId = uuid()
   const steps: Step[] = scenario.steps.map((s) => makeStep(s.label, s.tool, s.hitl ?? false))
 
-  // Show thinking state
   store.setAgentStatus('processing')
-  await delay(800)
+  await delay(700)
 
-  // Add TORCH response with pending steps
   store.addMessage({
     id: messageId,
     role: 'torch',
-    content: scenario.reply,
+    content: '',
     timestamp: Date.now(),
     steps,
+    isStreaming: true,
   })
 
   store.setAgentStatus('executing')
+  await streamMessageContent(messageId, formatAgentContent(scenario.reply))
 
-  // Animate through steps
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i]
     const stepDef = scenario.steps[i]
 
-    // Mark active
     store.updateStep(messageId, step.id, { status: 'active' })
     await delay(1200 + Math.random() * 800)
 
     if (stepDef.hitl) {
-      // Pause on HITL step — set status and wait for user action
       store.updateStep(messageId, step.id, { status: 'hitl_required' })
       store.setAgentStatus('awaiting_approval')
-      return // Execution pauses here; user must approve/cancel
+      return
     }
 
-    // Mark done with result
     store.updateStep(messageId, step.id, {
       status: 'done',
       result: stepDef.result || 'Done',

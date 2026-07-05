@@ -137,8 +137,12 @@ def delete_file(filepath: str) -> str:
 def create_folder(path: str) -> str:
     """Create a new directory."""
     dir_path = Path(path).expanduser().resolve()
-    dir_path.mkdir(parents=True, exist_ok=True)
-    return f"Created directory: {dir_path}"
+    if dir_path.exists():
+        if dir_path.is_dir():
+            return f"Folder already exists: {dir_path}"
+        raise RuntimeError(f"A file already exists at: {dir_path}")
+    dir_path.mkdir(parents=True, exist_ok=False)
+    return f"Created folder: {dir_path}"
 
 
 def zip_files(files: List[str], output: str) -> str:

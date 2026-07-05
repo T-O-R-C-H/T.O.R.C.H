@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { API_BASE } from '../config/api'
 
 // ─── TYPES ───
 
@@ -24,6 +25,7 @@ export interface Message {
   timestamp: number
   steps?: Step[]
   isTyping?: boolean
+  isStreaming?: boolean
   reversible?: boolean
   undoState?: 'available' | 'undone' | 'expired'
   undoResult?: string
@@ -66,6 +68,7 @@ export interface TorchState {
   // Messages
   messages: Message[]
   addMessage: (msg: Message) => void
+  appendMessageContent: (id: string, chunk: string) => void
   updateMessage: (id: string, updates: Partial<Message>) => void
   updateStep: (messageId: string, stepId: string, updates: Partial<Step>) => void
   clearMessages: () => void
@@ -98,6 +101,8 @@ export interface TorchState {
   // Onboarding
   onboardingComplete: boolean
   setOnboardingComplete: (complete: boolean) => void
+  pendingLaunchCommand: string | null
+  setPendingLaunchCommand: (command: string | null) => void
 
   // Current task count (for sidebar badge)
   activeTaskCount: number
@@ -106,6 +111,10 @@ export interface TorchState {
   // Demo Mode
   demoMode: boolean
   setDemoMode: (val: boolean) => void
+
+  // AI model selection
+  selectedModel: string
+  setSelectedModel: (model: string) => void
 
   // Settings tab
   activeSettingsTab: 'connections' | 'general'
@@ -134,6 +143,12 @@ export const useTorchStore = create<TorchState>((set) => ({
   messages: [],
   addMessage: (msg): void =>
     set((state) => ({ messages: [...state.messages, msg] })),
+  appendMessageContent: (id, chunk): void =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === id ? { ...m, content: m.content + chunk } : m
+      )
+    })),
   updateMessage: (id, updates): void =>
     set((state) => ({
       messages: state.messages.map((m) =>
@@ -197,6 +212,8 @@ export const useTorchStore = create<TorchState>((set) => ({
     localStorage.setItem('torch_onboarding_complete', String(complete))
     set({ onboardingComplete: complete })
   },
+  pendingLaunchCommand: null,
+  setPendingLaunchCommand: (command): void => set({ pendingLaunchCommand: command }),
 
   // Tasks
   activeTaskCount: 0,
@@ -205,6 +222,12 @@ export const useTorchStore = create<TorchState>((set) => ({
   // Demo Mode — not persisted to localStorage, always starts fresh
   demoMode: false,
   setDemoMode: (val): void => set({ demoMode: val }),
+
+  selectedModel: localStorage.getItem('torch_selected_model') || 'auto',
+  setSelectedModel: (model): void => {
+    localStorage.setItem('torch_selected_model', model)
+    set({ selectedModel: model })
+  },
 
   // Settings tab
   activeSettingsTab: 'connections',
@@ -240,7 +263,7 @@ export const useTorchStore = create<TorchState>((set) => ({
       return
     }
     try {
-      const response = await fetch('http://localhost:8000/api/skills')
+      const response = await fetch(`${API_BASE}/api/skills`)
       if (response.ok) {
         const data = await response.json()
         set({ skills: data })

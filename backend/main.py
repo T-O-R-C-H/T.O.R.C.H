@@ -62,6 +62,23 @@ async def lifespan(app: FastAPI):
     except ImportError:
         logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
 
+    # Warm up tool registry so the first command is faster
+    try:
+        from agent.executor import executor
+        logger.info(f"Agent tools preloaded: {len(executor._tool_registry)}")
+    except Exception as e:
+        logger.warning(f"Agent tool preload failed: {e}")
+
+    try:
+        import pyautogui  # noqa: F401
+        logger.info("Screen capture: pyautogui available")
+    except ImportError:
+        try:
+            import mss  # noqa: F401
+            logger.info("Screen capture: mss available")
+        except ImportError:
+            logger.warning("Screen capture: install pyautogui and mss — pip install pyautogui mss")
+
     yield
 
     logger.info("TORCH backend shutting down")
@@ -115,6 +132,69 @@ async def system_check():
     }
 
 
+@app.get("/api/models")
+async def list_models():
+    """Available AI models for the command input picker."""
+    return {
+        "models": [
+            {"id": "auto", "label": "Auto"},
+            {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
+            {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
+            {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+        ],
+        "current": settings.gemini_model,
+    }
+
+
+@app.post("/api/email/test")
+async def test_email_connection():
+    """Verify Gmail credentials by signing into IMAP."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    try:
+        import imaplib
+        mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
+        mail.login(settings.gmail_address, settings.gmail_app_password)
+        mail.logout()
+        return {"ok": True, "address": settings.gmail_address, "message": "Gmail connection works."}
+    except Exception as e:
+        logger.error(f"Gmail test failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Gmail sign-in failed: {e}")
+
+
+def _connection_status_block() -> str:
+    """Live status injected into planner prompts so the model does not guess."""
+    gemini_ok = bool(
+        settings.gemini_api_key
+        and settings.gemini_api_key != "AIzaSyTrialCloudKeyPlaceholder"
+    )
+    gmail_ok = bool(settings.gmail_address and settings.gmail_app_password)
+    screen_ok = False
+    try:
+        import pyautogui  # noqa: F401
+        screen_ok = True
+    except ImportError:
+        try:
+            import mss  # noqa: F401
+            screen_ok = True
+        except ImportError:
+            pass
+
+    lines = [
+        "LIVE CONNECTION STATUS (answer questions using ONLY this block):",
+        f"- Gemini AI: {'CONNECTED' if gemini_ok else 'NOT CONNECTED. User must add API key in Settings.'}",
+    ]
+    if gmail_ok:
+        lines.append(f"- Gmail: CONNECTED as {settings.gmail_address}. Email is on-demand, not always-on.")
+    else:
+        lines.append("- Gmail: NOT CONNECTED. User must add Gmail + App Password in Settings.")
+    lines.append(
+        f"- Screen capture: {'READY' if screen_ok else 'NOT READY. User must install pyautogui/mss in backend.'}"
+    )
+    lines.append(f"- Default AI model: {settings.gemini_model}")
+    return "\n".join(lines)
+
+
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
@@ -133,7 +213,8 @@ async def get_settings():
         "openai_configured": bool(settings.openai_api_key),
         "anthropic_configured": bool(settings.anthropic_api_key),
         "active_provider": active_provider,
-        "gmail_configured": bool(settings.gmail_address),
+        "gmail_configured": bool(settings.gmail_address and settings.gmail_app_password),
+        "gmail_password_set": bool(settings.gmail_app_password),
         "gmail_address": settings.gmail_address,
         "wake_word": settings.wake_word,
         "wake_word_sensitivity": settings.wake_word_sensitivity,
@@ -150,8 +231,18 @@ async def update_settings(data: dict):
     # .env should be in the root (parent of backend)
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     
-    # Update in memory
+    # Update in memory and .env — never wipe secrets with empty strings
+    secret_fields = {
+        "gemini_api_key",
+        "openai_api_key",
+        "anthropic_api_key",
+        "gmail_app_password",
+    }
+    filtered = {}
     for key, value in data.items():
+        if key in secret_fields and (value is None or str(value).strip() == ""):
+            continue
+        filtered[key] = value
         if hasattr(settings, key):
             setattr(settings, key, value)
             
@@ -185,7 +276,7 @@ async def update_settings(data: dict):
         "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
     }
     
-    for key, value in data.items():
+    for key, value in filtered.items():
         if key in mapping:
             env_vars[mapping[key]] = str(value)
             
@@ -349,8 +440,9 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
 
     if msg_type == "command":
         content = message.get("content", "")
+        model = message.get("model", "auto")
         logger.info(f"Command received: {content[:80]}")
-        asyncio.create_task(process_command(content, client_id))
+        asyncio.create_task(process_command(content, client_id, model=model))
 
     elif msg_type == "hitl_response":
         step_id = message.get("stepId")
@@ -383,7 +475,7 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         logger.warning(f"Unknown message type: {msg_type}")
 
 
-async def process_command(command: str, client_id: str) -> None:
+async def process_command(command: str, client_id: str, model: str = "auto") -> None:
     """Process a user command through the full agent pipeline."""
     try:
         # 1. Set status to processing
@@ -394,9 +486,15 @@ async def process_command(command: str, client_id: str) -> None:
         from agent.context import ConversationContext
         context = ConversationContext.get_context(client_id)
 
+        connection_status = _connection_status_block()
+
         # 2. Plan with Gemini
         await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
-        raw_steps = await plan_command(command, context=context)
+        raw_steps = await plan_command(
+            f"{command}\n\n{connection_status}",
+            context=context,
+            model=model,
+        )
 
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
         respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
@@ -490,31 +588,52 @@ async def process_command(command: str, client_id: str) -> None:
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
 
-        # Generate a one-sentence plain-language recap (ADD-5)
+        failed_steps = [s for s in executed_steps if s["status"] == "failed"]
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
-        tools_used = {s["tool"] for s in completed_steps}
-        if "send_email" in tools_used:
-            recap_sentence = "Done! I've finished sending your email."
-        elif "read_inbox" in tools_used:
-            recap_sentence = "Done! I've checked your inbox for you."
-        elif "find_file" in tools_used or "find_file_fuzzy" in tools_used:
-            if "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
-                recap_sentence = "Done! I found your document and summarized it."
-            else:
-                recap_sentence = "Done! I found the file you were looking for."
-        elif "search_web" in tools_used:
-            recap_sentence = "Done! I've finished searching the web for you."
-        else:
-            recap_sentence = "Done! I completed the task successfully."
 
-        recap_msg = {
-            "id": str(uuid.uuid4()),
-            "role": "torch",
-            "content": recap_sentence,
-            "timestamp": __import__("time").time() * 1000,
-            "steps": [],
-        }
-        await ws_manager.send_agent_response(recap_msg, client_id)
+        if failed_steps:
+            failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
+            recap_sentence = (
+                f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
+            )
+        elif completed_steps:
+            tools_used = {s["tool"] for s in completed_steps}
+            last_result = (completed_steps[-1].get("result") or "").strip()
+            if "send_email" in tools_used:
+                recap_sentence = "Your email was sent."
+            elif "read_inbox" in tools_used:
+                recap_sentence = "I checked your inbox."
+            elif "move_file" in tools_used:
+                recap_sentence = last_result if last_result else "Your file was moved."
+            elif "create_folder" in tools_used:
+                recap_sentence = last_result if last_result else "Your folder is ready."
+            elif "open_app" in tools_used:
+                recap_sentence = last_result if last_result else "The app was opened."
+            elif "analyse_screen" in tools_used or "screenshot" in tools_used:
+                recap_sentence = "Here's what I saw on your screen."
+            elif "find_file" in tools_used or "find_file_fuzzy" in tools_used:
+                if "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
+                    recap_sentence = "I found your document and pulled out the key details."
+                else:
+                    recap_sentence = last_result if last_result else "I found the file."
+            elif "search_web" in tools_used:
+                recap_sentence = "Web search finished."
+            elif "run_terminal" in tools_used:
+                recap_sentence = last_result if last_result and last_result != "Command executed successfully (no output)" else "The command ran."
+            else:
+                recap_sentence = None
+        else:
+            recap_sentence = None
+
+        if recap_sentence:
+            recap_msg = {
+                "id": str(uuid.uuid4()),
+                "role": "torch",
+                "content": recap_sentence,
+                "timestamp": __import__("time").time() * 1000,
+                "steps": [],
+            }
+            await ws_manager.send_agent_response(recap_msg, client_id)
 
         # Notify if task is reversible
         if rollback_manager.has_reversible_actions(message_id):

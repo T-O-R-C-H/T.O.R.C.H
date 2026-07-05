@@ -52,7 +52,11 @@ const torchAPI = {
   },
   removeBackendStatus: (): void => {
     ipcRenderer.removeAllListeners('backend:status')
-  }
+  },
+
+  getClipboardEntries: (): Promise<Array<{ id: string; text: string; timestamp: number; dateKey: string }>> =>
+    ipcRenderer.invoke('clipboard:list'),
+  copyToClipboard: (text: string): void => ipcRenderer.send('clipboard:copy', text)
 }
 
 if (process.contextIsolated) {

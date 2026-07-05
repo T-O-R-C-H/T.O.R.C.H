@@ -16,62 +16,56 @@ export function ScreenWatch(): JSX.Element {
   ]
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="t-page-title">Screen Watch</h1>
+    <div className="page-shell page-enter">
+      <div className="page-shell__body">
+        <div className="page-toolbar">
           {screenWatchEnabled && (
-            <div className="flex items-center gap-2 px-3 py-1 border border-[#22c55e]/20 bg-[#22c55e]/5">
-              <div className="w-1.5 h-1.5 bg-[#22c55e] pulse-dot" />
-              <span className="t-mono-xs text-[#22c55e]">recording</span>
+            <div className="pill-count flex items-center gap-2" style={{ color: 'var(--color-torch-success)', borderColor: '#bbf7d0', background: '#f0fdf4' }}>
+              <span className="topbar-dot topbar-dot--live pulse-dot" />
+              recording
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setScreenWatchEnabled(!screenWatchEnabled)}
+            className={screenWatchEnabled ? 'btn-primary' : 'btn-secondary'}
+            style={{ fontSize: 11, padding: '6px 12px', marginLeft: 'auto' }}
+          >
+            {screenWatchEnabled ? <Eye size={13} /> : <EyeOff size={13} />}
+            <span className="t-mono-xs">{screenWatchEnabled ? 'Stop' : 'Start watching'}</span>
+          </button>
         </div>
-        <button
-          onClick={() => setScreenWatchEnabled(!screenWatchEnabled)}
-          className={`flex items-center gap-2 px-4 py-2 border transition-all duration-150 ${
-            screenWatchEnabled
-              ? 'border-[#22c55e]/30 text-[#22c55e] bg-[#22c55e]/5 hover:bg-[#22c55e]/10'
-              : 'border-[#181818] text-[#555] hover:text-white hover:border-[#333]'
-          }`}
-        >
-          {screenWatchEnabled ? <Eye size={13} /> : <EyeOff size={13} />}
-          <span className="t-mono-xs">{screenWatchEnabled ? 'Stop' : 'Start watching'}</span>
-        </button>
-      </div>
-
-      {/* Timeline */}
-      <div className="flex-1 overflow-y-auto px-6 py-5">
         <div className="space-y-0">
           {demoActivity.map((entry, i) => (
             <div key={entry.id} className="flex gap-5 group">
-              {/* Time */}
               <div className="w-[52px] flex-shrink-0 pt-4">
-                <span className="t-mono-xs text-[#333]">
+                <span className="t-mono-xs">
                   {new Date(entry.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
 
-              {/* Timeline line + dot */}
               <div className="flex flex-col items-center flex-shrink-0 pt-4">
-                <div className={`w-2 h-2 border ${i === 0 ? 'bg-white border-white' : 'bg-[#111] border-[#222]'}`} />
+                <div
+                  className="w-2 h-2 rounded-full border"
+                  style={{
+                    background: i === 0 ? 'var(--color-torch-text)' : 'var(--color-torch-surface)',
+                    borderColor: i === 0 ? 'var(--color-torch-text)' : 'var(--color-torch-border)'
+                  }}
+                />
                 {i < demoActivity.length - 1 && (
-                  <div className="w-px flex-1 bg-[#141414] mt-1" />
+                  <div className="w-px flex-1 mt-1" style={{ background: 'var(--color-torch-border-subtle)' }} />
                 )}
               </div>
 
-              {/* Content */}
               <div className="flex-1 min-w-0 pb-6 pt-3">
                 <div className="flex items-center gap-3 mb-1">
-                  <span className="text-[13px] text-white font-medium">{entry.app}</span>
+                  <span className="text-[13px] font-medium text-[var(--color-torch-text)]">{entry.app}</span>
                 </div>
-                <p className="text-[12px] text-[#666] leading-relaxed">{entry.description}</p>
+                <p className="text-[12px] text-[var(--color-torch-text-secondary)] leading-relaxed">{entry.description}</p>
               </div>
 
-              {/* Screenshot placeholder */}
-              <div className="w-28 h-16 bg-[#060606] border border-[#141414] flex items-center justify-center flex-shrink-0 mt-3 group-hover:border-[#222] transition-colors">
-                <Monitor size={14} className="text-[#1c1c1c]" />
+              <div className="w-28 h-16 card flex items-center justify-center flex-shrink-0 mt-3 p-0">
+                <Monitor size={14} className="text-[var(--color-torch-text-ghost)]" />
               </div>
             </div>
           ))}

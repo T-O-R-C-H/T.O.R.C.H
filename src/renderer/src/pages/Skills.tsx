@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconPlay as Play, IconX as Delete, IconSparkles as Sparkles, IconLoader as Loader, IconAdd as Add } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
+import { API_BASE } from '../config/api'
 
 interface Skill {
   id: string
@@ -45,7 +46,7 @@ export function Skills(): JSX.Element {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/skills/${skill.id}/run`, {
+      const response = await fetch(`${API_BASE}/api/skills/${skill.id}/run`, {
         method: 'POST'
       })
       if (!response.ok) {
@@ -77,7 +78,7 @@ export function Skills(): JSX.Element {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/skills/${skillId}`, {
+      const response = await fetch(`${API_BASE}/api/skills/${skillId}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
@@ -113,7 +114,7 @@ export function Skills(): JSX.Element {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/skills', {
+      const response = await fetch(`${API_BASE}/api/skills`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -137,47 +138,37 @@ export function Skills(): JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter overflow-y-auto bg-black text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="t-page-title">Skills</h1>
-          <span className="t-mono-xs text-[#333] border border-[#181818] px-2.5 py-1">
-            {skills.length} saved
-          </span>
+    <div className="page-shell page-enter">
+      <div className="page-shell__body">
+        <div className="page-toolbar">
+          <span className="pill-count">{skills.length} saved</span>
+          <button
+            onClick={(): void => setShowAddForm(!showAddForm)}
+            className="btn-secondary text-[10px] px-4 py-1.5 flex items-center gap-1.5"
+          >
+            {showAddForm ? <Delete size={10} /> : <Add size={10} />}
+            <span>{showAddForm ? 'Cancel' : 'New Skill'}</span>
+          </button>
         </div>
-        <button
-          onClick={(): void => setShowAddForm(!showAddForm)}
-          className="btn-secondary text-[10px] px-4 py-1.5 flex items-center gap-1.5"
-        >
-          {showAddForm ? <Delete size={10} /> : <Add size={10} />}
-          <span>{showAddForm ? 'Cancel' : 'New Skill'}</span>
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 p-6">
         {showAddForm && (
-          <form onSubmit={handleCreateSkill} className="mb-6 p-5 border border-[#181818] bg-[#050505] space-y-4">
+          <form onSubmit={handleCreateSkill} className="mb-6 card space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] text-[#444] font-mono uppercase tracking-wider">Skill Name</label>
+                <label className="t-label">Skill name</label>
                 <input
                   type="text"
                   placeholder="e.g. Morning Briefing"
                   value={newName}
                   onChange={(e): void => setNewName(e.target.value)}
-                  className="bg-black border border-[#181818] text-white text-[12px] px-3 py-2 w-full focus:border-[#444]"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] text-[#444] font-mono uppercase tracking-wider">Command</label>
+                <label className="t-label">Command</label>
                 <input
                   type="text"
                   placeholder="e.g. check my emails and summarize today's news"
                   value={newCommand}
                   onChange={(e): void => setNewCommand(e.target.value)}
-                  className="bg-black border border-[#181818] text-white text-[12px] px-3 py-2 w-full focus:border-[#444]"
                 />
               </div>
             </div>
@@ -194,23 +185,23 @@ export function Skills(): JSX.Element {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center h-[300px]">
-            <Loader size={24} className="spinner text-[#666] mb-2" />
-            <p className="text-sm text-[#444]">Loading skill repository...</p>
+            <Loader size={24} className="spinner mb-2" />
+            <p className="text-sm text-[var(--color-torch-text-tertiary)]">Loading skill repository...</p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-[300px] text-center">
-            <p className="text-sm text-[#ef4444] font-medium mb-1">Failed to connect to backend</p>
-            <p className="text-xs text-[#444] max-w-[300px] leading-relaxed">
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-torch-error)' }}>Failed to connect to backend</p>
+            <p className="text-xs text-[var(--color-torch-text-tertiary)] max-w-[300px] leading-relaxed">
               Make sure the backend python server is running. {error}
             </p>
           </div>
         ) : skills.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[300px] text-center">
-            <Sparkles size={28} className="text-[#222] mb-4" />
-            <p className="text-[14px] text-[#444] font-medium">No custom skills yet</p>
-            <p className="text-[12px] text-[#2a2a2a] mt-1.5 max-w-[320px] leading-relaxed">
+            <Sparkles size={28} className="text-[var(--color-torch-border)] mb-4" />
+            <p className="text-[14px] font-medium text-[var(--color-torch-text-secondary)]">No custom skills yet</p>
+            <p className="text-[12px] text-[var(--color-torch-text-tertiary)] mt-1.5 max-w-[320px] leading-relaxed">
               Ask TORCH to save any task: <br />
-              <span className="text-[#666] italic">"Save this as a skill called Morning Briefing"</span>
+              <span className="italic">"Save this as a skill called Morning Briefing"</span>
             </p>
           </div>
         ) : (
@@ -219,41 +210,32 @@ export function Skills(): JSX.Element {
               <div
                 key={skill.id}
                 onClick={(): Promise<void> => handleRunSkill(skill)}
-                className="group relative flex flex-col justify-between border border-[#181818] bg-[#050505] p-5 hover:border-[#333] cursor-pointer transition-all duration-150"
+                className="group relative card cursor-pointer hover:border-[var(--color-torch-border-hover)] transition-colors duration-150 flex flex-col justify-between min-h-[140px]"
               >
-                {/* Delete Button */}
                 <button
+                  type="button"
                   onClick={(e): Promise<void> => handleDeleteSkill(e, skill.id)}
-                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-[#444] hover:text-[#fff] transition-all p-1"
+                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-1"
+                  style={{ color: 'var(--color-torch-text-tertiary)' }}
                   title="Delete skill"
                 >
                   <Delete size={12} />
                 </button>
 
-                {/* Card Top */}
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[14px] font-semibold text-white tracking-tight group-hover:text-[#fff]">
-                      {skill.name}
-                    </span>
-                  </div>
-                  <p className="text-[12px] text-[#666] font-mono leading-relaxed line-clamp-3 mb-4 select-none">
+                  <div className="text-[14px] font-medium text-[var(--color-torch-text)] mb-2">{skill.name}</div>
+                  <p className="text-[12px] font-mono text-[var(--color-torch-text-secondary)] leading-relaxed line-clamp-3 mb-4 select-none">
                     {skill.command}
                   </p>
                 </div>
 
-                {/* Card Bottom */}
-                <div className="flex items-center justify-between border-t border-[#111] pt-3 mt-auto">
+                <div className="flex items-center justify-between border-t border-[var(--color-torch-border-subtle)] pt-3 mt-auto">
                   <div className="flex items-center gap-1">
-                    <span className="text-[9px] text-[#333] font-mono tracking-wider uppercase">
-                      Runs:
-                    </span>
-                    <span className="text-[10px] text-[#888] font-mono font-medium">
-                      {skill.run_count}
-                    </span>
+                    <span className="t-mono-xs">Runs:</span>
+                    <span className="t-mono-xs text-[var(--color-torch-text)]">{skill.run_count}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[10px] text-[#666] font-mono group-hover:text-white transition-colors duration-150">
-                    <Play size={10} className="text-[#444] group-hover:text-white" />
+                  <div className="flex items-center gap-1.5 t-mono-xs text-[var(--color-torch-text-secondary)]">
+                    <Play size={10} />
                     <span>Run</span>
                   </div>
                 </div>

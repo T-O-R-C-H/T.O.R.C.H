@@ -2,39 +2,44 @@ import { ChatArea } from '../components/chat/ChatArea'
 import { CommandInput } from '../components/input/CommandInput'
 import { MetricsBar } from '../components/layout/MetricsBar'
 import { useTorchStore } from '../store/torchStore'
+import { API_BASE } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { useEffect } from 'react'
+import { useEffect, useCallback } from 'react'
 import { handleDemoCommand, handleDemoApproval, handleDemoCancel } from '../demo/demoAgent'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { formatAgentContent } from '../utils/plainLanguage'
+import { streamMessageContent } from '../utils/streamContent'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const demoMode = useTorchStore((s) => s.demoMode)
   const showSettingsKeyBanner = useTorchStore((s) => s.showSettingsKeyBanner)
+  const pendingLaunchCommand = useTorchStore((s) => s.pendingLaunchCommand)
+  const setPendingLaunchCommand = useTorchStore((s) => s.setPendingLaunchCommand)
   const { sendCommand, sendApproval } = useWebSocket()
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
     if (!demoMode) {
-      fetch('http://localhost:8000/api/metrics')
+      fetch(`${API_BASE}/api/metrics`)
         .then((r) => r.json())
         .then((data) => useTorchStore.getState().setMetrics(data))
-        .catch(() => {}) // silently fail if backend is offline
+        .catch(() => {})
     }
   }, [wsConnected, demoMode])
 
-  const handleSend = (command: string): void => {
+  const handleSend = useCallback((command: string): void => {
     addMessage({
       id: crypto.randomUUID(),
       role: 'user',
       content: command,
       timestamp: Date.now()
     })
+    useTorchStore.getState().setAgentStatus('processing')
 
     if (demoMode) {
-      // Route to demo agent
       handleDemoCommand(command)
       return
     }
@@ -43,38 +48,57 @@ export function Command(): JSX.Element {
       sendCommand(command)
     } else {
       useTorchStore.getState().setAgentStatus('processing')
-      setTimeout(() => {
-        addMessage({
-          id: crypto.randomUUID(),
+      setTimeout(async () => {
+        const messageId = crypto.randomUUID()
+        const offlineText = formatAgentContent(
+          "TORCH isn't connected right now. Make sure the app is running, then try your request again."
+        )
+        useTorchStore.getState().addMessage({
+          id: messageId,
           role: 'torch',
-          content: `Backend not connected. Please start the Python server:\n\`cd backend && python main.py\`\n\nYour command: "${command}"`,
+          content: '',
           timestamp: Date.now(),
+          isStreaming: true,
           steps: [
-            { id: '1', label: 'Waiting for backend connection', tool: 'system', args: {}, status: 'failed', requiresApproval: false, error: 'Backend offline' }
+            {
+              id: '1',
+              label: 'Waiting for connection',
+              tool: 'system',
+              args: {},
+              status: 'failed',
+              requiresApproval: false,
+              error: 'Backend offline'
+            }
           ]
         })
+        await streamMessageContent(messageId, offlineText)
         useTorchStore.getState().setAgentStatus('idle')
       }, 500)
     }
-  }
+  }, [addMessage, demoMode, sendCommand, wsConnected])
 
   useEffect(() => {
     if (location.state?.runCommand) {
-      const commandToRun = location.state.runCommand
-      // Clear location state immediately to prevent infinite runs on route/view updates
+      const commandToRun = location.state.runCommand as string
       navigate(location.pathname, { replace: true, state: {} })
       handleSend(commandToRun)
     }
-  }, [location.state])
+  }, [location.state, location.pathname, navigate, handleSend])
+
+  useEffect(() => {
+    if (pendingLaunchCommand) {
+      const cmd = pendingLaunchCommand
+      setPendingLaunchCommand(null)
+      handleSend(cmd)
+    }
+  }, [pendingLaunchCommand, setPendingLaunchCommand, handleSend])
 
   const handleApprove = (messageId: string, stepId: string): void => {
     if (demoMode) {
       handleDemoApproval(messageId, stepId)
       return
     }
-    if (wsConnected) {
-      sendApproval(messageId, stepId, 'approve')
-    }
+    if (wsConnected) sendApproval(messageId, stepId, 'approve')
     useTorchStore.getState().updateStep(messageId, stepId, { status: 'done' })
   }
 
@@ -87,9 +111,7 @@ export function Command(): JSX.Element {
       handleDemoCancel(messageId, stepId)
       return
     }
-    if (wsConnected) {
-      sendApproval(messageId, stepId, 'cancel')
-    }
+    if (wsConnected) sendApproval(messageId, stepId, 'cancel')
     useTorchStore.getState().updateStep(messageId, stepId, { status: 'failed', error: 'Cancelled by user' })
     useTorchStore.getState().setAgentStatus('idle')
   }
@@ -100,114 +122,20 @@ export function Command(): JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#000] relative overflow-hidden page-enter">
-      {/* Demo Mode Banner */}
+    <div className="cmd-page page-enter">
       {demoMode && (
-        <div style={{
-          background: '#0a0a0a',
-          borderBottom: '1px solid #1a1a1a',
-          padding: '8px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              background: '#eab308',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 500,
-              color: '#888',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase' as const,
-            }}>
-              Demo mode — Add your API key in Settings to run real tasks
-            </span>
-          </div>
-          <button
-            onClick={goToSettings}
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 500,
-              color: '#fff',
-              background: '#1a1a1a',
-              border: '1px solid #2a2a2a',
-              padding: '4px 14px',
-              cursor: 'pointer',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase' as const,
-              transition: 'all 150ms ease',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#222' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a' }}
-          >
-            Set up TORCH
+        <div className="cmd-banner">
+          <span className="cmd-banner__text">Demo mode — add API key in Settings for live tasks</span>
+          <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
+            Settings
           </button>
         </div>
       )}
 
-      {/* Settings Key Warning Banner — non-demo */}
       {!demoMode && showSettingsKeyBanner && (
-        <div style={{
-          background: '#0a0a0a',
-          borderBottom: '1px solid #1a1a1a',
-          padding: '8px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-          }}>
-            <div style={{
-              width: '6px',
-              height: '6px',
-              background: '#ef4444',
-              flexShrink: 0,
-            }} />
-            <span style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 500,
-              color: '#888',
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase' as const,
-            }}>
-              Add your Gemini API key in Settings to start using TORCH
-            </span>
-          </div>
-          <button
-            onClick={goToSettings}
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 500,
-              color: '#fff',
-              background: '#1a1a1a',
-              border: '1px solid #2a2a2a',
-              padding: '4px 14px',
-              cursor: 'pointer',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase' as const,
-              transition: 'all 150ms ease',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#222' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a' }}
-          >
+        <div className="cmd-banner">
+          <span className="cmd-banner__text">Add your Gemini API key in Settings to start</span>
+          <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
             Open Settings
           </button>
         </div>
@@ -215,8 +143,7 @@ export function Command(): JSX.Element {
 
       <MetricsBar />
 
-      {/* Main Command Area */}
-      <div className="flex-1 flex flex-col relative overflow-hidden">
+      <div className="cmd-main">
         <ChatArea
           onApprove={handleApprove}
           onEdit={handleEdit}

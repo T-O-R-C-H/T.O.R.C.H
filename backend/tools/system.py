@@ -15,33 +15,48 @@ import requests
 
 logger = logging.getLogger("torch.tools.system")
 
+WINDOWS_APP_COMMANDS = {
+    "vs code": "code",
+    "visual studio code": "code",
+    "vscode": "code",
+    "notepad": "notepad",
+    "explorer": "explorer",
+    "file explorer": "explorer",
+    "chrome": "chrome",
+    "edge": "msedge",
+    "firefox": "firefox",
+}
+
 
 def open_app(name: str) -> str:
     """Open an application by name."""
     system = platform.system()
+    normalized = name.strip().lower()
 
     try:
         if system == "Windows":
-            # Try common paths and startfile
-            os.startfile(name)
-            return f"Opened: {name}"
+            command = WINDOWS_APP_COMMANDS.get(normalized, name)
+            if command == "code":
+                subprocess.Popen(["cmd", "/c", "start", "", "code"], shell=False)
+                return "Opened VS Code."
+            subprocess.Popen(["cmd", "/c", "start", "", command], shell=False)
+            return f"Opened {name}."
         elif system == "Darwin":
             subprocess.Popen(["open", "-a", name])
-            return f"Opened: {name}"
+            return f"Opened {name}."
         else:
             subprocess.Popen([name])
-            return f"Opened: {name}"
+            return f"Opened {name}."
     except Exception as e:
-        # Try as a shell command
         try:
             if system == "Windows":
-                subprocess.Popen(f"start {name}", shell=True)
+                subprocess.Popen(f'start "" "{name}"', shell=True)
             else:
                 subprocess.Popen(name, shell=True)
-            return f"Opened: {name}"
+            return f"Opened {name}."
         except Exception as e2:
             logger.error(f"Failed to open app: {e2}")
-            raise RuntimeError(f"Could not open '{name}': {e2}")
+            raise RuntimeError(f"Could not open '{name}'. Try the exact app name or use run_terminal.")
 
 
 def run_terminal(command: str) -> str:

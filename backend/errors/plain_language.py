@@ -52,6 +52,13 @@ def translate_error(error_str: str) -> dict:
             "what_to_do": "Want me to try a different way?"
         }
 
+    # 7. Screen capture / vision
+    if any(marker in err for marker in ["pyautogui", "mss", "screenshot failed", "screen capture", "screen analysis"]):
+        return {
+            "what_happened": "I couldn't capture or read your screen.",
+            "what_to_do": "Restart TORCH, then run pip install pyautogui mss in the backend folder if this keeps happening."
+        }
+
     # Fallback
     return {
         "what_happened": "Something didn't go as planned while running this step.",

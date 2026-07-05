@@ -1,20 +1,20 @@
 import { useEffect, useRef } from 'react'
 import { useTorchStore } from '../store/torchStore'
 
-function ActivityLogLine({ line }: { line: any }): JSX.Element {
+function ActivityLogLine({ line }: { line: { id: string; timestamp: string; content: string; type: string } }): JSX.Element {
   const isError = line.type === 'error'
   const hasStack = isError && (line.content.includes('Traceback') || line.content.includes('line ') || line.content.length > 100)
 
   if (hasStack) {
-    const cleanMsg = line.content.split('\n')[0] || "An unexpected error occurred."
+    const cleanMsg = line.content.split('\n')[0] || 'An unexpected error occurred.'
     return (
-      <div className="flex gap-4 text-[#ef4444] my-2 p-2 bg-[#080202] border border-[#ef4444]/15 rounded">
-        <span className="text-[#333] flex-shrink-0 select-none w-[72px]">[{line.timestamp}]</span>
+      <div className="terminal-error-block">
+        <span className="terminal-line-time">[{line.timestamp}]</span>
         <div className="flex-1">
-          <div className="font-semibold">{cleanMsg}</div>
-          <details className="mt-2 text-[11px] text-[#a15555] cursor-pointer">
-            <summary className="hover:text-white select-none outline-none font-sans text-[10px] tracking-wide uppercase">Show raw details</summary>
-            <pre className="mt-2 p-3 bg-[#0c0404] border border-[#ef4444]/20 overflow-x-auto whitespace-pre font-mono text-[11px] leading-relaxed text-[#fca5a5]">
+          <div className="font-medium">{cleanMsg}</div>
+          <details className="mt-2 text-[11px] cursor-pointer" style={{ color: 'var(--color-torch-error)' }}>
+            <summary className="select-none outline-none text-[10px] tracking-wide uppercase">Show raw details</summary>
+            <pre className="mt-2 p-3 card overflow-x-auto whitespace-pre text-[11px] leading-relaxed" style={{ color: 'var(--color-torch-error)' }}>
               {line.content}
             </pre>
           </details>
@@ -25,17 +25,17 @@ function ActivityLogLine({ line }: { line: any }): JSX.Element {
 
   const getLineColor = (type: string): string => {
     switch (type) {
-      case 'success': return 'text-[#22c55e]'
-      case 'error': return 'text-[#ef4444]'
-      case 'warning': return 'text-[#eab308]'
-      case 'hitl': return 'text-[#eab308]'
-      default: return 'text-[#888]'
+      case 'success': return 'text-[var(--color-torch-success)]'
+      case 'error': return 'text-[var(--color-torch-error)]'
+      case 'warning': return 'text-[var(--color-torch-warning)]'
+      case 'hitl': return 'text-[var(--color-torch-warning)]'
+      default: return 'text-[var(--color-torch-text-secondary)]'
     }
   }
 
   return (
     <div className={`flex gap-4 my-1 ${getLineColor(line.type)}`}>
-      <span className="text-[#222] flex-shrink-0 select-none w-[72px]">[{line.timestamp}]</span>
+      <span className="terminal-line-time">[{line.timestamp}]</span>
       <span className="whitespace-pre-wrap">{line.content}</span>
     </div>
   )
@@ -63,17 +63,14 @@ export function Terminal(): JSX.Element {
   ]
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="t-page-title">Activity Log</h1>
-          <div className="flex items-center gap-2 px-3 py-1 border border-[#181818]">
-            <div className="w-1.5 h-1.5 bg-[#22c55e] pulse-dot" />
-            <span className="t-mono-xs text-[#555]">streaming</span>
-          </div>
+    <div className="page-shell page-enter">
+      <div className="page-toolbar terminal-toolbar">
+        <div className="pill-count flex items-center gap-2">
+          <span className="topbar-dot topbar-dot--live pulse-dot" />
+          streaming
         </div>
         <button
+          type="button"
           onClick={() => useTorchStore.getState().clearTerminal()}
           className="btn-secondary text-[10px] px-4 py-1.5 font-mono"
         >
@@ -81,14 +78,12 @@ export function Terminal(): JSX.Element {
         </button>
       </div>
 
-      {/* Terminal body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-[#000] px-6 py-5 font-mono text-[12px] leading-[2]">
+      <div ref={scrollRef} className="terminal-body">
         {lines.map((line) => (
           <ActivityLogLine key={line.id} line={line} />
         ))}
-        {/* Cursor */}
         <div className="flex gap-4 mt-2">
-          <span className="text-[#222] select-none w-[72px]">[{new Date().toLocaleTimeString('en-US', { hour12: false })}]</span>
+          <span className="terminal-line-time">[{new Date().toLocaleTimeString('en-US', { hour12: false })}]</span>
           <span className="terminal-cursor" />
         </div>
       </div>

@@ -63,55 +63,51 @@ export function History(): JSX.Element {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h1 className="t-page-title">History</h1>
-          <span className="t-mono-xs text-[#333] border border-[#181818] px-2.5 py-1">{entries.length} entries</span>
+    <div className="page-shell page-enter">
+      <div className="page-list">
+        <div className="page-toolbar">
+          <span className="pill-count">{entries.length} entries</span>
+          <button
+            type="button"
+            onClick={() => useMemoryStore.getState().clearHistory()}
+            className="btn-secondary text-[10px] px-4 py-1.5"
+          >
+            Clear all
+          </button>
         </div>
-        <button
-          onClick={() => useMemoryStore.getState().clearHistory()}
-          className="btn-secondary text-[10px] px-4 py-1.5"
-        >
-          Clear all
-        </button>
-      </div>
-
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
         {entries.map((entry) => (
-          <div key={entry.id} className="border-b border-[#0e0e0e]">
+          <div key={entry.id}>
             <button
+              type="button"
               onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
-              className="w-full flex items-center gap-5 px-6 py-4 row-hover text-left group"
+              className="page-list-row group"
             >
               {statusBadge(entry.status)}
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-[#ccc] truncate group-hover:text-white transition-colors">{entry.command}</p>
+                <p className="text-[13px] text-[var(--color-torch-text)] truncate">{entry.command}</p>
               </div>
               <div className="flex items-center gap-5 flex-shrink-0">
-                <span className="t-mono-xs text-[#333]">{entry.stepsCount} steps</span>
-                <span className="t-mono-xs text-[#333]">{entry.duration}s</span>
-                <span className="t-mono-xs text-[#333]">
+                <span className="t-mono-xs">{entry.stepsCount} steps</span>
+                <span className="t-mono-xs">{entry.duration}s</span>
+                <span className="t-mono-xs">
                   {new Date(entry.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <span className="text-[#333] group-hover:text-[#666] transition-colors">
+                <span style={{ color: 'var(--color-torch-text-tertiary)' }}>
                   {expanded === entry.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 </span>
               </div>
             </button>
 
-            {/* Expanded steps */}
             {expanded === entry.id && (
               <div className="px-6 pb-4 pl-[52px]">
-                <div className="border-l border-[#181818] pl-4 space-y-1">
+                <div className="border-l border-[var(--color-torch-border)] pl-4 space-y-1">
                   {entry.steps.map((step, i) => (
                     <div key={i} className="flex items-center gap-3 py-1.5">
-                      <span className="t-mono-xs text-[#222] w-5">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="t-mono-xs w-5">{String(i + 1).padStart(2, '0')}</span>
                       <span className={`text-[12px] ${
-                        step.status === 'done' ? 'text-[#666]' :
-                        step.status === 'failed' ? 'text-[#ef4444]' : 'text-[#555]'
+                        step.status === 'done' ? 'text-[var(--color-torch-text-secondary)]'
+                        : step.status === 'failed' ? 'text-[var(--color-torch-error)]'
+                        : 'text-[var(--color-torch-text-tertiary)]'
                       }`}>
                         {step.label}
                       </span>

@@ -1,51 +1,58 @@
 import type { Step } from '../../store/torchStore'
 import { IconCheck, IconLoader, IconAlertTriangle, IconCircle } from '../icons'
+import { toPlainLanguage } from '../../utils/plainLanguage'
 
 interface StepListProps {
   steps: Step[]
 }
 
-/**
- * Parses raw tool / terminal results to extract a clean single-line preview.
- * Skips lines composed entirely of symbols/dashes, clamps to 120 chars, and prefixes a block symbol.
- */
 function formatStepResult(result: string | undefined): { text: string; hasOverflow: boolean } {
-  if (!result) return { text: '', hasOverflow: false };
+  if (!result) return { text: '', hasOverflow: false }
 
-  const lines = result.split(/\r?\n/);
-  let targetLine = '';
+  const lines = result.split(/\r?\n/)
+  let targetLine = ''
 
   for (const line of lines) {
-    const trimmed = line.trim();
-    
-    // Skip empty lines or cosmetic divider artifacts (dashes, equals signs, whitespace)
-    if (!trimmed || /^[-=\s]+$/.test(trimmed)) {
-      continue;
-    }
-    
-    targetLine = trimmed;
-    break;
+    const trimmed = line.trim()
+    if (!trimmed || /^[-=\s]+$/.test(trimmed)) continue
+    targetLine = trimmed
+    break
   }
 
-  if (!targetLine) return { text: '', hasOverflow: false };
+  if (!targetLine) return { text: '', hasOverflow: false }
 
-  const hasOverflow = targetLine.length > 120;
-  const truncated = hasOverflow ? `${targetLine.substring(0, 120)}...` : targetLine;
-  
-  return { 
-    text: `↳ ${truncated}`, 
-    hasOverflow 
-  };
+  const hasOverflow = targetLine.length > 120
+  const truncated = hasOverflow ? `${targetLine.substring(0, 120)}...` : targetLine
+  return { text: `↳ ${truncated}`, hasOverflow }
 }
 
-function getStepPhrase(tool: string, args: any, status: string, fallbackLabel: string): string {
-  const isPending = status === 'pending' || status === 'active' || status === 'hitl_required';
-  
-  let name = args?.name || args?.filename || args?.query || args?.filepath || args?.path || args?.url || args?.to || '';
+interface StepListProps {
+  steps: Step[]
+}
+
+function getStepPhrase(tool: string, args: Record<string, unknown>, status: string, fallbackLabel: string): string {
+  if (status === 'failed') {
+    const failMap: Record<string, string> = {
+      analyse_screen: "Couldn't read your screen.",
+      screenshot: "Couldn't capture your screen.",
+      run_terminal: "Command didn't finish.",
+      find_file: "Couldn't find that file.",
+      move_file: "Couldn't move the file.",
+      create_folder: "Couldn't create the folder.",
+      send_email: "Email didn't send.",
+      read_inbox: "Couldn't read your inbox.",
+      open_app: "Couldn't open the app.",
+    }
+    return failMap[tool] || "This step didn't finish."
+  }
+
+  const isPending = status === 'pending' || status === 'active' || status === 'hitl_required'
+
+  let name = (args?.name || args?.filename || args?.query || args?.filepath || args?.path || args?.url || args?.to || '') as string
   if (typeof name === 'string') {
-    name = name.split(/[/\\]/).pop() || name;
+    name = name.split(/[/\\]/).pop() || name
   } else {
-    name = '';
+    name = ''
   }
 
   const map: Record<string, [string, string]> = {
@@ -72,154 +79,65 @@ function getStepPhrase(tool: string, args: any, status: string, fallbackLabel: s
     delete_file: ['Deleting your file...', 'Deleted your file.'],
     create_folder: ['Creating a folder...', 'Created the folder.'],
     zip_files: ['Compressing files...', 'Compressed files.'],
-    save_skill: ['Saving shortcut...', 'Saved shortcut.'],
-  };
+    save_skill: ['Saving shortcut...', 'Saved shortcut.']
+  }
 
-  const phrases = map[tool];
-  if (phrases) {
-    return isPending ? phrases[0] : phrases[1];
-  }
-  
-  return fallbackLabel || (isPending ? 'Working on it...' : 'Completed.');
-}
-
-function cleanErrorMessage(msg: string | undefined): string {
-  if (!msg) return 'An unexpected error occurred.';
-  const lower = msg.toLowerCase();
-  if (lower.includes('file not found') || lower.includes('no such file')) {
-    return "I couldn't find the file you were looking for. Please check the name and try again.";
-  }
-  if (lower.includes('permission') || lower.includes('access denied')) {
-    return "Access was denied. Please make sure the file isn't open in another program and that you have permission to edit it.";
-  }
-  if (lower.includes('network') || lower.includes('timeout') || lower.includes('connection')) {
-    return "There was a connection issue. Please check your internet and try again.";
-  }
-  if (lower.includes('api key') || lower.includes('unauthorized') || lower.includes('quota')) {
-    return "AI helper service configuration issue. Please check settings.";
-  }
-  if (lower.includes('traceback') || lower.includes('line ') || lower.includes('exception') || msg.length > 120) {
-    return "Something went wrong during this step. You can try rephrasing your request.";
-  }
-  return msg;
+  const phrases = map[tool]
+  if (phrases) return isPending ? phrases[0] : phrases[1]
+  return fallbackLabel || (isPending ? 'Working on it...' : 'Completed.')
 }
 
 export function StepList({ steps }: StepListProps): JSX.Element {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+    <div className="step-list">
       {steps.map((step) => {
         const isDone = step.status === 'done'
         const isActive = step.status === 'active'
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'
+        const { text: previewText, hasOverflow } = formatStepResult(step.result)
+        const displayLabel = getStepPhrase(step.tool, step.args, step.status, step.label)
 
-        const { text: previewText, hasOverflow } = formatStepResult(step.result);
-        const displayLabel = getStepPhrase(step.tool, step.args, step.status, step.label);
+        const rowClass = isActive ? 'step-row step-row--active'
+          : isDone ? 'step-row step-row--done'
+          : isFailed ? 'step-row step-row--failed'
+          : 'step-row'
 
         return (
-          <div
-            key={step.id}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-              opacity: isDone ? 0.7 : isFailed ? 0.9 : 1,
-              transition: 'all 300ms ease',
-            }}
-          >
-            {/* Step Row */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px' }}>
-                {isActive ? (
-                  <IconLoader size={15} className="text-[#3b82f6]" />
-                ) : isDone ? (
-                  <IconCheck size={15} className="text-[#10b981]" />
-                ) : isFailed ? (
-                  <IconAlertTriangle size={15} className="text-[#ef4444]" />
-                ) : (
-                  <IconCircle size={14} className="text-[#475569]" />
-                )}
-              </div>
-              <div style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: '13px',
-                fontWeight: isActive ? 500 : 400,
-                color: isActive ? '#f8fafc' : isDone ? '#94a3b8' : isFailed ? '#f87171' : '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                lineHeight: '1.4'
-              }}>
-                <span>{displayLabel}</span>
-              </div>
+          <div key={step.id}>
+            <div className={rowClass}>
+              <span className="step-row__icon">
+                {isActive ? <IconLoader size={14} className="spinner" />
+                  : isDone ? <IconCheck size={14} className="text-[var(--color-torch-success)]" />
+                  : isFailed ? <IconAlertTriangle size={14} className="text-[var(--color-torch-error)]" />
+                  : <IconCircle size={13} className="text-[var(--color-torch-text-tertiary)]" />}
+              </span>
+              <span>{displayLabel}</span>
             </div>
 
-            {/* Clean One-Line Terminal Preview (Only shown when not failed) */}
             {step.result && !isFailed && previewText && (
-              <div style={{ paddingLeft: '28px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                <div style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '11px',
-                  color: '#94a3b8',
-                  lineHeight: '1.4',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all'
-                }}>
-                  {previewText}
-                </div>
-                
+              <div className="step-preview">
+                <div className="step-preview__line">{previewText}</div>
                 {hasOverflow && (
-                  <div style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontSize: '10px',
-                    color: '#475569',
-                    opacity: 0.8,
-                    lineHeight: '1.2',
-                    marginTop: '2px'
-                  }}>
-                    (see full output in Activity Log)
-                  </div>
+                  <div className="step-preview__hint">(see full output in Activity Log)</div>
                 )}
               </div>
             )}
 
-            {/* Error or Active stub */}
             {(step.error || isFailed || (isActive && !step.result)) && (
-              <div style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: '11.5px',
-                lineHeight: 1.6,
-                color: isFailed ? '#fca5a5' : '#64748b',
-                paddingLeft: '28px',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all'
-              }}>
-                {isActive && !step.result && !step.error && `executing operation...`}
-                
+              <div className="step-preview">
+                {isActive && !step.result && !step.error && (
+                  <span className="step-preview__line">Working on this step…</span>
+                )}
                 {step.error && (
-                  <div style={{
-                    marginTop: '4px',
-                    borderLeft: '2px solid #ef4444',
-                    paddingLeft: '10px',
-                    color: '#f87171',
-                    background: 'rgba(239, 68, 68, 0.05)',
-                    padding: '6px 10px',
-                    borderRadius: '4px'
-                  }}>
-                    ERROR: {cleanErrorMessage(step.error)}
+                  <div className="chat-error-card chat-error-card--step">
+                    <span className="chat-error-card__title">What went wrong</span>
+                    <p className="chat-error-card__body">{toPlainLanguage(step.error)}</p>
                   </div>
                 )}
-
                 {!step.error && isFailed && step.result && (
-                  <div style={{
-                    marginTop: '4px',
-                    borderLeft: '2px solid #ef4444',
-                    paddingLeft: '10px',
-                    color: '#fca5a5',
-                    background: 'rgba(239, 68, 68, 0.05)',
-                    padding: '6px 10px',
-                    borderRadius: '4px'
-                  }}>
-                    {cleanErrorMessage(step.result)}
+                  <div className="chat-error-card chat-error-card--step">
+                    <span className="chat-error-card__title">What went wrong</span>
+                    <p className="chat-error-card__body">{toPlainLanguage(step.result)}</p>
                   </div>
                 )}
               </div>

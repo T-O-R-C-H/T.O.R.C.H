@@ -1,197 +1,229 @@
-import { useState } from 'react'
-import { useTorchStore } from '../../store/torchStore'
 import { useLocation } from 'react-router-dom'
 
-/* ═══════════════════════════════════════════════════════════════
-   TORCH TOP HEADER — AI Operating System Control Panel
-   56px · #000 · cinematic · monochrome status pills
-   ═══════════════════════════════════════════════════════════════ */
+import { useTorchStore } from '../../store/torchStore'
 
-/* ─── Window control icons ─── */
+
+
 function IconMinus(): JSX.Element {
+
   return (
+
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+
       <line x1="5" y1="12" x2="19" y2="12" />
+
     </svg>
+
   )
+
 }
+
+
 
 function IconSquare(): JSX.Element {
+
   return (
+
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <rect x="4" y="4" width="16" height="16" rx="0" />
+
+      <rect x="4" y="4" width="16" height="16" rx="1" />
+
     </svg>
+
   )
+
 }
+
+
 
 function IconX(): JSX.Element {
+
   return (
+
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+
       <line x1="18" y1="6" x2="6" y2="18" />
+
       <line x1="6" y1="6" x2="18" y2="18" />
+
     </svg>
+
   )
+
 }
 
-/* ─── Page title map ─── */
+
+
 const pageTitles: Record<string, string> = {
-  '/': 'COMMAND CENTER',
-  '/terminal': 'TERMINAL',
-  '/screenwatch': 'SCREEN WATCH',
-  '/history': 'HISTORY',
-  '/memory': 'MEMORY',
-  '/insights': 'INSIGHTS',
-  '/tasks': 'TASKS',
-  '/settings': 'SETTINGS',
-  '/tools/search': 'WEB SEARCH',
-  '/tools/files': 'FILES',
-  '/tools/messaging': 'MESSAGING',
-  '/tools/browser': 'BROWSER'
+
+  '/': 'Command Center',
+
+  '/chat': 'Command Center',
+
+  '/today': 'Today',
+
+  '/terminal': 'Terminal',
+
+  '/screenwatch': 'Screen Watch',
+
+  '/history': 'History',
+
+  '/memory': 'Memory',
+
+  '/insights': 'Insights',
+
+  '/tasks': 'Tasks',
+
+  '/settings': 'Settings',
+
+  '/skills': 'Skills',
+
+  '/tools/clipboard': 'Clipboard',
+
+  '/tools/search': 'Web Search',
+
+  '/tools/files': 'Files',
+
+  '/tools/messaging': 'Messaging',
+
+  '/tools/browser': 'Browser'
+
 }
 
-/* ─── Status pill component ─── */
-function StatusPill({ children, dot, dotColor = '#fff' }: { children: React.ReactNode; dot?: boolean; dotColor?: string }): JSX.Element {
+
+
+function StatusPill({
+
+  children,
+
+  dotClass
+
+}: {
+
+  children: React.ReactNode
+
+  dotClass?: string
+
+}): JSX.Element {
+
   return (
-    <div style={{
-      height: '28px',
-      padding: '0 10px',
-      border: '1px solid #1a1a1a',
-      background: '#050505',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '6px',
-      fontFamily: "'JetBrains Mono', monospace",
-      fontSize: '10px',
-      fontWeight: 500,
-      color: '#777',
-      letterSpacing: '0.12em',
-      textTransform: 'uppercase' as const,
-    }}>
-      {dot && (
-        <div style={{
-          width: '5px',
-          height: '5px',
-          background: dotColor,
-          borderRadius: '50%',
-          animation: 'pulse-dot 1.5s ease-in-out infinite',
-          flexShrink: 0,
-        }} />
-      )}
+
+    <div className="topbar-pill">
+
+      {dotClass && <span className={`topbar-dot pulse-dot ${dotClass}`} />}
+
       {children}
+
     </div>
+
   )
+
 }
 
-/* ─── Window control button ─── */
-function WindowButton({ onClick, children, danger }: { onClick?: () => void; children: React.ReactNode; danger?: boolean }): JSX.Element {
-  const [hovered, setHovered] = useState(false)
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width: '40px',
-        height: '40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: hovered ? '#111' : 'transparent',
-        border: 'none',
-        color: hovered ? (danger ? '#ef4444' : '#fff') : '#333',
-        cursor: 'pointer',
-        transition: 'all 120ms ease',
-      }}
-    >
-      {children}
-    </button>
-  )
-}
+
 
 export function Topbar(): JSX.Element {
+
   const location = useLocation()
+
   const agentStatus = useTorchStore((s) => s.agentStatus)
+
   const wsConnected = useTorchStore((s) => s.wsConnected)
+
+  const demoMode = useTorchStore((s) => s.demoMode)
+
+
 
   const pageTitle = pageTitles[location.pathname] || 'TORCH'
 
-  const agentLabel = agentStatus === 'idle' ? 'Ready' :
-    agentStatus === 'listening' ? 'Listening...' :
-    agentStatus === 'processing' ? 'Thinking...' :
-    agentStatus === 'executing' ? 'Working...' :
-    agentStatus === 'speaking' ? 'Speaking...' :
-    agentStatus === 'awaiting_approval' ? 'Awaiting Approval' : (agentStatus as string).toUpperCase()
+
+
+  const agentLabel =
+
+    agentStatus === 'idle' ? 'Ready'
+
+    : agentStatus === 'listening' ? 'Listening'
+
+    : agentStatus === 'processing' ? 'Thinking'
+
+    : agentStatus === 'executing' ? 'Working'
+
+    : agentStatus === 'speaking' ? 'Speaking'
+
+    : agentStatus === 'awaiting_approval' ? 'Awaiting approval'
+
+    : String(agentStatus)
+
+
 
   const isActive = agentStatus !== 'idle'
 
+  const dotClass =
+
+    agentStatus === 'awaiting_approval' ? 'topbar-dot--warn'
+
+    : isActive ? 'topbar-dot--live'
+
+    : undefined
+
+
+
   return (
-    <div
-      className="drag-region"
-      style={{
-        height: '56px',
-        background: '#000000',
-        borderBottom: '1px solid #121212',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 24px',
-        flexShrink: 0,
-      }}
-    >
-      {/* ─── LEFT: Page title + subtitle ─── */}
-      <div className="no-drag" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <div style={{
-          fontFamily: "'Inter', system-ui, sans-serif",
-          fontSize: '17px',
-          fontWeight: 600,
-          color: '#ffffff',
-          letterSpacing: '-0.03em',
-          lineHeight: 1,
-        }}>
-          {pageTitle}
-        </div>
-        <div style={{
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: '9px',
-          fontWeight: 500,
-          color: '#555',
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase' as const,
-          marginTop: '4px',
-        }}>
-          TORCH AI OPERATOR
-        </div>
+
+    <div className="topbar drag-region">
+
+      <div className="no-drag">
+
+        <div className="topbar-title">{pageTitle}</div>
+
+        <div className="topbar-sub">Desktop agent</div>
+
       </div>
 
-      {/* ─── RIGHT: Status pills + window controls ─── */}
-      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* Status pills */}
-        <StatusPill dot={isActive} dotColor={agentStatus === 'awaiting_approval' ? '#f59e0b' : '#fff'}>
-          {agentLabel}
+
+
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+        <StatusPill dotClass={dotClass}>{agentLabel}</StatusPill>
+
+        <StatusPill>{demoMode ? 'Demo' : 'Private'}</StatusPill>
+
+        <StatusPill dotClass={wsConnected ? 'topbar-dot--live' : 'topbar-dot--warn'}>
+
+          {wsConnected ? 'Online' : 'Reconnecting'}
+
         </StatusPill>
 
-        <StatusPill>
-          Private
-        </StatusPill>
 
-        <StatusPill dot={true} dotColor={wsConnected ? '#10b981' : '#f59e0b'}>
-          {wsConnected ? 'Online' : 'Reconnecting...'}
-        </StatusPill>
 
-        {/* Separator */}
-        <div style={{ width: '1px', height: '20px', background: '#1a1a1a', margin: '0 8px' }} />
+        <div style={{ width: 1, height: 20, background: 'var(--color-torch-border)', margin: '0 4px' }} />
 
-        {/* Window controls — 40px hit area */}
-        <WindowButton onClick={() => window.torchAPI?.minimizeWindow()}>
+
+
+        <button type="button" className="win-btn" onClick={() => window.torchAPI?.minimizeWindow()}>
+
           <IconMinus />
-        </WindowButton>
-        <WindowButton onClick={() => window.torchAPI?.maximizeWindow()}>
+
+        </button>
+
+        <button type="button" className="win-btn" onClick={() => window.torchAPI?.maximizeWindow()}>
+
           <IconSquare />
-        </WindowButton>
-        <WindowButton onClick={() => window.torchAPI?.closeWindow()} danger>
+
+        </button>
+
+        <button type="button" className="win-btn win-btn--danger" onClick={() => window.torchAPI?.closeWindow()}>
+
           <IconX />
-        </WindowButton>
+
+        </button>
+
       </div>
+
     </div>
+
   )
+
 }
+
+

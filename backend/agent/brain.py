@@ -11,7 +11,11 @@ from agent.providers import get_provider
 logger = logging.getLogger("torch.brain")
 
 
-async def plan_command(user_command: str, context: Optional[List[Dict]] = None) -> List[Dict[str, Any]]:
+async def plan_command(
+    user_command: str,
+    context: Optional[List[Dict]] = None,
+    model: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Send user command to the active LLM provider and receive a structured execution plan.
 
@@ -76,7 +80,7 @@ async def plan_command(user_command: str, context: Optional[List[Dict]] = None) 
                 "error": "No AI provider configured. Add API key in Settings."
             }]
 
-        return await provider.plan_command(user_command, context)
+        return await provider.plan_command(user_command, context, model=model)
 
     except NotImplementedError as e:
         logger.error(f"Brain provider error: {e}")

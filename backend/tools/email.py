@@ -11,12 +11,22 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional
 import logging
+import re
 
 from config.settings import settings
 
 logger = logging.getLogger("torch.tools.email")
+
+
+def _short_address(from_header: str) -> str:
+    if not from_header:
+        return "Unknown sender"
+    match = re.search(r"<([^>]+)>", from_header)
+    if match:
+        return match.group(1)
+    return from_header[:60]
 
 
 def send_email(
@@ -35,7 +45,6 @@ def send_email(
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain"))
 
-    # Attach file if specified
     if attachment:
         attach_path = Path(attachment).expanduser().resolve()
         if attach_path.exists():
@@ -78,11 +87,10 @@ def read_inbox(count: int = 10) -> str:
         _, message_numbers = mail.search(None, "ALL")
         nums = message_numbers[0].split()
 
-        # Get last N emails
         recent = nums[-count:] if len(nums) >= count else nums
         recent.reverse()
 
-        emails = []
+        summaries = []
         for num in recent:
             _, msg_data = mail.fetch(num, "(RFC822)")
             raw = msg_data[0][1]
@@ -90,30 +98,37 @@ def read_inbox(count: int = 10) -> str:
 
             subject = email.header.decode_header(msg["Subject"])[0]
             subject_str = subject[0] if isinstance(subject[0], str) else subject[0].decode()
-            from_addr = msg["From"]
-            date = msg["Date"]
+            from_addr = _short_address(msg.get("From", ""))
+            date = (msg.get("Date") or "")[:16]
 
-            # Get body
-            body = ""
+            body_snip = ""
             if msg.is_multipart():
                 for part in msg.walk():
                     if part.get_content_type() == "text/plain":
-                        body = part.get_payload(decode=True).decode(errors="replace")
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            body_snip = payload.decode(errors="replace")[:120].replace("\n", " ").strip()
                         break
             else:
-                body = msg.get_payload(decode=True).decode(errors="replace")
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    body_snip = payload.decode(errors="replace")[:120].replace("\n", " ").strip()
 
-            emails.append(
-                f"From: {from_addr}\n"
-                f"Subject: {subject_str}\n"
-                f"Date: {date}\n"
-                f"Body: {body[:300]}...\n"
-            )
+            line = f"• {subject_str} — from {from_addr}"
+            if date:
+                line += f" ({date})"
+            if body_snip:
+                line += f"\n  Preview: {body_snip}"
+            summaries.append(line)
 
         mail.close()
         mail.logout()
 
-        return "\n---\n".join(emails) if emails else "Inbox is empty"
+        if not summaries:
+            return "Your inbox is empty."
+
+        header = f"Latest {len(summaries)} email(s) in {settings.gmail_address}:"
+        return header + "\n\n" + "\n\n".join(summaries)
 
     except Exception as e:
         logger.error(f"Failed to read inbox: {e}")

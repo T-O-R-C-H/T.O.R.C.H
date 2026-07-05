@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
+import { API_BASE } from '../config/api'
 
 import {
   IconKey as Key,
@@ -24,10 +25,10 @@ interface SettingRowProps {
 
 function SettingRow({ label, description, children }: SettingRowProps): JSX.Element {
   return (
-    <div className="flex items-center justify-between py-4 border-b border-[#0e0e0e]">
+    <div className="setting-row">
       <div className="flex-1 min-w-0 mr-4">
-        <div className="text-[13px] text-[#ccc]">{label}</div>
-        {description && <div className="text-[11px] text-[#444] mt-0.5">{description}</div>}
+        <div className="setting-row__label">{label}</div>
+        {description && <div className="setting-row__desc">{description}</div>}
       </div>
       <div className="flex items-center gap-3 flex-shrink-0">
         {children}
@@ -38,13 +39,8 @@ function SettingRow({ label, description, children }: SettingRowProps): JSX.Elem
 
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: () => void }): JSX.Element {
   return (
-    <button
-      onClick={onChange}
-      className={`w-10 h-5 border flex items-center px-0.5 transition-all duration-150 ${checked ? 'bg-white border-white' : 'bg-transparent border-[#222]'
-        }`}
-    >
-      <div className={`w-3.5 h-3.5 transition-all duration-150 ${checked ? 'bg-black translate-x-[18px]' : 'bg-[#444] translate-x-0'
-        }`} />
+    <button type="button" onClick={onChange} aria-pressed={checked} className="toggle-track">
+      <div className="toggle-knob" />
     </button>
   )
 }
@@ -67,7 +63,7 @@ export function Settings(): JSX.Element {
   const [wakeWordSensitivity, setWakeWordSensitivity] = useState(50)
   const [screenWatchInterval, setScreenWatchInterval] = useState('30')
   const [voiceModel, setVoiceModel] = useState('base')
-  const [theme, setTheme] = useState('dark')
+  const [theme, setTheme] = useState('light')
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
   const [playwrightInstalled, setPlaywrightInstalled] = useState<boolean | null>(null)
@@ -83,22 +79,23 @@ export function Settings(): JSX.Element {
 
   useEffect(() => {
     // Check playwright status
-    fetch('http://localhost:8000/api/system-check')
+    fetch(`${API_BASE}/api/system-check`)
       .then((r) => r.json())
       .then((data) => setPlaywrightInstalled(data.playwright_installed))
       .catch(() => setPlaywrightInstalled(null))
 
     // Fetch current settings
-    fetch('http://localhost:8000/api/settings')
+    fetch(`${API_BASE}/api/settings`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.gemini_configured) setGeminiKey('********') // Don't show full key
+        if (data.gemini_configured) setGeminiKey('********')
         setGmailAddress(data.gmail_address || '')
+        if (data.gmail_password_set) setGmailPassword('********')
         setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
         setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
         setVoiceModel(data.whisper_model_size || 'base')
       })
-      .catch((err) => console.error('Failed to fetch settings:', err))
+      .catch(() => {})
   }, [])
 
   const handleSocialLogin = (key: string, url: string): void => {
@@ -110,43 +107,50 @@ export function Settings(): JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         gmail_address: gmailAddress,
-        gmail_app_password: gmailPassword,
         wake_word_sensitivity: wakeWordSensitivity / 100,
         screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
         whisper_model_size: voiceModel,
       }
 
-      // Only send API key if it's not the masked placeholder
       if (geminiKey && geminiKey !== '********') {
         payload.gemini_api_key = geminiKey
       }
+      if (gmailPassword && gmailPassword !== '********') {
+        payload.gmail_app_password = gmailPassword
+      }
 
-      await fetch('http://localhost:8000/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
-      // If gemini key was just saved, clear the warning banner
+      if (!res.ok) throw new Error('Save failed')
+
       if (geminiKey) {
         useTorchStore.getState().setShowSettingsKeyBanner(false)
         useTorchStore.getState().setDemoMode(false)
       }
-      alert('Settings saved')
+      if (gmailPassword && gmailPassword !== '********') {
+        setGmailPassword('********')
+      }
+      if (geminiKey && geminiKey !== '********') {
+        setGeminiKey('********')
+      }
     } catch {
-      alert('Failed to save — is the backend running?')
+      alert('Failed to save. Make sure TORCH is running and the backend is online.')
     }
   }
 
   const SegmentButton = ({ options, value, onChange }: { options: { value: string; label: string }[]; value: string; onChange: (v: string) => void }): JSX.Element => (
-    <div className="inline-flex border border-[#181818] divide-x divide-[#181818]">
+    <div className="segment-control">
       {options.map((opt) => (
         <button
           key={opt.value}
+          type="button"
           onClick={() => onChange(opt.value)}
-          className={`px-4 py-1.5 text-[10px] font-mono tracking-[0.04em] transition-all duration-120 ${value === opt.value ? 'bg-white text-black font-medium' : 'text-[#444] hover:text-[#888]'
-            }`}
+          className={`segment-control__btn ${value === opt.value ? 'active' : ''}`}
         >
           {opt.label}
         </button>
@@ -155,42 +159,24 @@ export function Settings(): JSX.Element {
   )
 
   return (
-    <div className="flex-1 flex flex-col h-full page-enter overflow-y-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-[#141414] flex-shrink-0">
-        <h1 className="t-page-title">Settings</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-0 px-6 border-b border-[#141414] flex-shrink-0">
+    <div className="page-shell page-enter">
+      <div className="settings-tabs">
         {([
           { id: 'connections', label: 'Connections' },
           { id: 'preferences', label: 'Preferences' },
         ]).map((tab) => (
           <button
             key={tab.id}
+            type="button"
             onClick={() => setActiveTab(tab.id)}
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: '10px',
-              fontWeight: 500,
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: activeTab === tab.id ? '#000000' : '#888888',
-              background: activeTab === tab.id ? '#ffffff' : 'transparent',
-              border: activeTab === tab.id ? '1px solid #000000' : '1px solid #888888',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              transition: 'all 150ms ease',
-              borderRadius: 0,
-              marginRight: '4px',
-            }}
+            className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
+      <div className="page-shell__body">
       <div className="px-6 py-6 max-w-[680px] space-y-8">
 
         {/* ══════════════════════════════════════════════════════════════
@@ -201,7 +187,7 @@ export function Settings(): JSX.Element {
             {/* API Configuration */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Key size={13} className="text-[#555]" />
+                <Key size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">API CONFIGURATION</span>
               </div>
               <SettingRow label="AI Connection Key" description="Powers all AI reasoning — get your key to start">
@@ -213,8 +199,9 @@ export function Settings(): JSX.Element {
                   className="w-[300px] text-[12px]"
                 />
                 <button
+                  type="button"
                   onClick={() => window.torchAPI?.openExternal('https://aistudio.google.com')}
-                  className="p-2.5 text-[#333] hover:text-white border border-[#181818] hover:border-[#333] transition-all"
+                  className="btn-secondary p-2.5"
                 >
                   <ExternalLink size={12} />
                 </button>
@@ -224,7 +211,7 @@ export function Settings(): JSX.Element {
             {/* Gmail */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Mail size={13} className="text-[#555]" />
+                <Mail size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">GMAIL CONNECTION</span>
               </div>
               <SettingRow label="Gmail Address">
@@ -238,10 +225,10 @@ export function Settings(): JSX.Element {
             {/* Social Accounts */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Share2 size={13} className="text-[#555]" />
+                <Share2 size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">CONNECTED ACCOUNTS</span>
               </div>
-              <p className="text-[12px] text-[#444] mb-5 leading-relaxed">
+              <p className="text-[12px] text-[var(--color-torch-text-secondary)] mb-5 leading-relaxed">
                 TORCH uses browser automation to post — no API keys needed.
                 Just make sure you are logged into these platforms in your browser.
               </p>
@@ -249,23 +236,22 @@ export function Settings(): JSX.Element {
               {SOCIAL_PLATFORMS.map((platform) => {
                 const connected = socialConnected[platform.key] || false
                 return (
-                  <div key={platform.key} className="flex items-center justify-between py-3.5 border-b border-[#0e0e0e]">
+                  <div key={platform.key} className="setting-row">
                     <div>
-                      <div className="text-[13px] text-[#ccc]">{platform.name}</div>
-                      <div className="text-[11px] text-[#333] mt-0.5 font-mono">Login-based access</div>
+                      <div className="setting-row__label">{platform.name}</div>
+                      <div className="setting-row__desc font-mono">Login-based access</div>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
+                        type="button"
                         onClick={() => handleSocialLogin(platform.key, platform.url)}
                         className="btn-secondary text-[10px] px-3 py-1.5"
                       >
                         Open & login
                       </button>
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 border border-[#181818]">
-                        <div className={`w-1.5 h-1.5 ${connected ? 'bg-white' : 'bg-[#333]'}`} />
-                        <span className={`t-mono-xs ${connected ? 'text-[#aaa]' : 'text-[#333]'}`}>
-                          {connected ? 'connected' : 'not verified'}
-                        </span>
+                      <div className="pill-count flex items-center gap-1.5">
+                        <span className={`topbar-dot ${connected ? 'topbar-dot--live' : ''}`} style={{ width: 6, height: 6 }} />
+                        {connected ? 'connected' : 'not verified'}
                       </div>
                     </div>
                   </div>
@@ -273,21 +259,21 @@ export function Settings(): JSX.Element {
               })}
 
               {/* Playwright status */}
-              <div className="mt-4 p-4 border border-[#181818] bg-[#060606]">
+              <div className="mt-4 p-4 card">
                 {playwrightInstalled === true ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-white" />
-                    <p className="t-mono-xs text-[#666]">PLAYWRIGHT INSTALLED — browser automation ready</p>
+                    <span className="topbar-dot topbar-dot--live" />
+                    <p className="t-mono-xs">Playwright installed — browser automation ready</p>
                   </div>
                 ) : playwrightInstalled === false ? (
                   <>
-                    <p className="t-mono-xs text-[#ef4444]">PLAYWRIGHT NOT INSTALLED — run in terminal:</p>
-                    <p className="t-mono-xs text-white mt-1.5">playwright install chromium</p>
+                    <p className="t-mono-xs" style={{ color: 'var(--color-torch-error)' }}>Playwright not installed — run in terminal:</p>
+                    <p className="t-mono-xs mt-1.5">playwright install chromium</p>
                   </>
                 ) : (
                   <>
-                    <p className="t-mono-xs text-[#444]">PLAYWRIGHT REQUIRED — run in terminal:</p>
-                    <p className="t-mono-xs text-white mt-1.5">playwright install chromium</p>
+                    <p className="t-mono-xs">Playwright required — run in terminal:</p>
+                    <p className="t-mono-xs mt-1.5">playwright install chromium</p>
                   </>
                 )}
               </div>
@@ -310,7 +296,7 @@ export function Settings(): JSX.Element {
             {/* Voice */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Mic size={13} className="text-[#555]" />
+                <Mic size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">VOICE SETTINGS</span>
               </div>
               <SettingRow label="Wake Word Sensitivity">
@@ -329,7 +315,7 @@ export function Settings(): JSX.Element {
             {/* Screen Watch */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Monitor size={13} className="text-[#555]" />
+                <Monitor size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">SCREEN WATCH</span>
               </div>
               <SettingRow label="Capture Interval">
@@ -344,7 +330,7 @@ export function Settings(): JSX.Element {
             {/* Appearance */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Palette size={13} className="text-[#555]" />
+                <Palette size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">APPEARANCE</span>
               </div>
               <SettingRow label="Theme">
@@ -359,7 +345,7 @@ export function Settings(): JSX.Element {
             {/* Startup */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Power size={13} className="text-[#555]" />
+                <Power size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">STARTUP & BEHAVIOR</span>
               </div>
               <SettingRow label="Launch on login">
@@ -373,7 +359,7 @@ export function Settings(): JSX.Element {
             {/* Data */}
             <div>
               <div className="flex items-center gap-2.5 mb-4">
-                <Database size={13} className="text-[#555]" />
+                <Database size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">DATA MANAGEMENT</span>
               </div>
               <div className="flex gap-3 font-mono">
@@ -384,9 +370,9 @@ export function Settings(): JSX.Element {
             </div>
 
             {/* Developer Tools */}
-            <div className="pt-6 border-t border-[#0e0e0e]">
+            <div className="pt-6 border-t border-[var(--color-torch-border-subtle)]">
               <div className="flex items-center gap-2.5 mb-4">
-                <Terminal size={13} className="text-[#555]" />
+                <Terminal size={13} className="text-[var(--color-torch-text-tertiary)]" />
                 <span className="t-label">DEVELOPER TOOLS</span>
               </div>
               <div className="flex gap-3">
@@ -416,6 +402,7 @@ export function Settings(): JSX.Element {
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   )

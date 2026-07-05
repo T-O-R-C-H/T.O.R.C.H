@@ -3,6 +3,12 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
 import { existsSync } from 'fs'
+import {
+  startClipboardMonitor,
+  stopClipboardMonitor,
+  getClipboardEntries,
+  copyToClipboard
+} from './clipboardManager'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -432,10 +438,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('backend:getHealth', () => backendHealth)
 
+  ipcMain.handle('clipboard:list', () => getClipboardEntries())
+  ipcMain.on('clipboard:copy', (_, text: string) => copyToClipboard(text))
+
   createMainWindow()
   createOverlayWindow()
   createTray()
   startBackend()
+  startClipboardMonitor()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -449,6 +459,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopClipboardMonitor()
   stopBackend()
 })
 

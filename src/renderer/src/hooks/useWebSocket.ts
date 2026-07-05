@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useTorchStore, type Message, type TerminalLine } from '../store/torchStore'
-
-const WS_URL = 'ws://localhost:8000/ws'
+import { WS_URL } from '../config/api'
+import { formatAgentContent } from '../utils/plainLanguage'
+import { streamMessageContent } from '../utils/streamContent'
 
 export function useWebSocket(): {
   sendCommand: (command: string) => void
@@ -65,7 +66,19 @@ export function useWebSocket(): {
     switch (data.type) {
       case 'agent_response': {
         const msg = data.message as Message
-        store.addMessage(msg)
+        const fullText = formatAgentContent(msg.content || '')
+        store.addMessage({ ...msg, content: '', isStreaming: true })
+        void streamMessageContent(msg.id, fullText)
+        break
+      }
+      case 'content_delta': {
+        const { messageId, delta } = data as { messageId: string; delta: string }
+        store.appendMessageContent(messageId, delta as string)
+        break
+      }
+      case 'content_done': {
+        const { messageId } = data as { messageId: string }
+        store.updateMessage(messageId, { isStreaming: false })
         break
       }
       case 'step_update': {
@@ -123,7 +136,8 @@ export function useWebSocket(): {
 
   const sendCommand = useCallback((command: string): void => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'command', content: command }))
+      const model = useTorchStore.getState().selectedModel
+      wsRef.current.send(JSON.stringify({ type: 'command', content: command, model }))
     }
   }, [])
 
