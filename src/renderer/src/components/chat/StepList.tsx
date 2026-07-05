@@ -11,18 +11,21 @@ function formatStepResult(result: string | undefined): { text: string; hasOverfl
 
   const lines = result.split(/\r?\n/)
   let targetLine = ''
+  let nonEmptyCount = 0
 
   for (const line of lines) {
     const trimmed = line.trim()
     if (!trimmed || /^[-=\s]+$/.test(trimmed)) continue
-    targetLine = trimmed
-    break
+    if (!targetLine) {
+      targetLine = trimmed
+    }
+    nonEmptyCount++
   }
 
   if (!targetLine) return { text: '', hasOverflow: false }
 
-  const hasOverflow = targetLine.length > 120
-  const truncated = hasOverflow ? `${targetLine.substring(0, 120)}...` : targetLine
+  const hasOverflow = targetLine.length > 120 || nonEmptyCount > 1
+  const truncated = targetLine.length > 120 ? `${targetLine.substring(0, 120)}...` : targetLine
   return { text: `↳ ${truncated}`, hasOverflow }
 }
 

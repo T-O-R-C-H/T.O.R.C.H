@@ -78,24 +78,45 @@ export function Settings(): JSX.Element {
   })
 
   useEffect(() => {
-    // Check playwright status
-    fetch(`${API_BASE}/api/system-check`)
-      .then((r) => r.json())
-      .then((data) => setPlaywrightInstalled(data.playwright_installed))
-      .catch(() => setPlaywrightInstalled(null))
+    const loadSystemCheck = (retries = 5) => {
+      fetch(`${API_BASE}/api/system-check`)
+        .then((r) => {
+          if (!r.ok) throw new Error()
+          return r.json()
+        })
+        .then((data) => setPlaywrightInstalled(data.playwright_installed))
+        .catch(() => {
+          if (retries > 0) {
+            setTimeout(() => loadSystemCheck(retries - 1), 1000)
+          } else {
+            setPlaywrightInstalled(null)
+          }
+        })
+    }
 
-    // Fetch current settings
-    fetch(`${API_BASE}/api/settings`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.gemini_configured) setGeminiKey('********')
-        setGmailAddress(data.gmail_address || '')
-        if (data.gmail_password_set) setGmailPassword('********')
-        setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
-        setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
-        setVoiceModel(data.whisper_model_size || 'base')
-      })
-      .catch(() => {})
+    const loadSettings = (retries = 5) => {
+      fetch(`${API_BASE}/api/settings`)
+        .then((r) => {
+          if (!r.ok) throw new Error()
+          return r.json()
+        })
+        .then((data) => {
+          if (data.gemini_configured) setGeminiKey('********')
+          setGmailAddress(data.gmail_address || '')
+          if (data.gmail_password_set) setGmailPassword('********')
+          setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
+          setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
+          setVoiceModel(data.whisper_model_size || 'base')
+        })
+        .catch(() => {
+          if (retries > 0) {
+            setTimeout(() => loadSettings(retries - 1), 1000)
+          }
+        })
+    }
+
+    loadSystemCheck()
+    loadSettings()
   }, [])
 
   const handleSocialLogin = (key: string, url: string): void => {
