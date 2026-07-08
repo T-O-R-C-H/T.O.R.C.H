@@ -306,7 +306,7 @@ class Executor:
                     client_id=client_id,
                 )
                 await ws_manager.send_terminal_line(
-                    f"✗ {step['label']}: {plain_err}", "error", client_id
+                    f"✗ {step['label']}: {plain_err}", "error", client_id  
                 )
 
                 logger.error(f"Step {step_id} failed: {e}", exc_info=True)
