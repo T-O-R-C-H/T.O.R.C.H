@@ -6,7 +6,7 @@ import { streamMessageContent } from '../utils/streamContent'
 
 export function useWebSocket(): {
   sendCommand: (command: string) => void
-  sendApproval: (messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown) => void
+  sendApproval: (messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown) => boolean
   reconnect: () => void
   sendStopCommand: () => void
   sendUndoCommand: (messageId: string) => void
@@ -66,9 +66,13 @@ export function useWebSocket(): {
     switch (data.type) {
       case 'agent_response': {
         const msg = data.message as Message
-        const fullText = formatAgentContent(msg.content || '')
-        store.addMessage({ ...msg, content: '', isStreaming: true })
-        void streamMessageContent(msg.id, fullText)
+        if (data.stream === true) {
+          store.addMessage({ ...msg, content: '', isStreaming: true })
+        } else {
+          const fullText = formatAgentContent(msg.content || '')
+          store.addMessage({ ...msg, content: '', isStreaming: true })
+          void streamMessageContent(msg.id, fullText)
+        }
         break
       }
       case 'content_delta': {
@@ -92,6 +96,23 @@ export function useWebSocket(): {
       }
       case 'hitl_request': {
         store.setAgentStatus('awaiting_approval')
+        break
+      }
+      case 'approval_result': {
+        const { messageId, stepId, accepted, error } = data as {
+          messageId: string
+          stepId: string
+          accepted: boolean
+          error?: string
+        }
+        store.updateStep(
+          messageId,
+          stepId,
+          accepted
+            ? { status: 'active' }
+            : { status: 'failed', error: error || 'Approval was not accepted' }
+        )
+        if (!accepted) store.setAgentStatus('idle')
         break
       }
       case 'terminal': {
@@ -141,10 +162,12 @@ export function useWebSocket(): {
     }
   }, [])
 
-  const sendApproval = useCallback((messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown): void => {
+  const sendApproval = useCallback((messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown): boolean => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'hitl_response', messageId, stepId, action, editedData }))
+      return true
     }
+    return false
   }, [])
 
   const sendStopCommand = useCallback((): void => {

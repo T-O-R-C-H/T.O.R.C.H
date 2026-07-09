@@ -31,6 +31,8 @@ export function Command(): JSX.Element {
   }, [wsConnected, demoMode])
 
   const handleSend = useCallback((command: string): void => {
+    const currentStatus = useTorchStore.getState().agentStatus
+    if (currentStatus === 'processing' || currentStatus === 'executing') return
     addMessage({
       id: crypto.randomUUID(),
       role: 'user',
@@ -98,8 +100,13 @@ export function Command(): JSX.Element {
       handleDemoApproval(messageId, stepId)
       return
     }
-    if (wsConnected) sendApproval(messageId, stepId, 'approve')
-    useTorchStore.getState().updateStep(messageId, stepId, { status: 'done' })
+    if (!wsConnected || !sendApproval(messageId, stepId, 'approve')) {
+      useTorchStore.getState().updateStep(messageId, stepId, {
+        status: 'failed',
+        error: 'Approval could not be sent because the backend is disconnected'
+      })
+      useTorchStore.getState().setAgentStatus('idle')
+    }
   }
 
   const handleEdit = (messageId: string, stepId: string): void => {

@@ -86,8 +86,27 @@ class ConnectionManager:
         await self.send_message(data, client_id)
 
     async def send_agent_response(self, message: dict, client_id: str = "main") -> None:
-        """Send a complete agent response message."""
-        await self.send_message({"type": "agent_response", "message": message}, client_id)
+        """Stream an agent response to the client in ordered content chunks."""
+        content = str(message.get("content") or "")
+        initial_message = {**message, "content": ""}
+        await self.send_message(
+            {"type": "agent_response", "message": initial_message, "stream": True},
+            client_id,
+        )
+        for offset in range(0, len(content), 48):
+            await self.send_message(
+                {
+                    "type": "content_delta",
+                    "messageId": message["id"],
+                    "delta": content[offset:offset + 48],
+                },
+                client_id,
+            )
+            await asyncio.sleep(0)
+        await self.send_message(
+            {"type": "content_done", "messageId": message["id"]},
+            client_id,
+        )
 
     async def send_hitl_request(
         self,

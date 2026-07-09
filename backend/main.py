@@ -445,10 +445,18 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         asyncio.create_task(process_command(content, client_id, model=model))
 
     elif msg_type == "hitl_response":
+        message_id = message.get("messageId")
         step_id = message.get("stepId")
         action = message.get("action", "cancel")
         logger.info(f"HITL response: {step_id} → {action}")
-        executor.submit_approval(step_id, action)
+        accepted = bool(step_id) and executor.submit_approval(step_id, action)
+        await ws_manager.send_message({
+            "type": "approval_result",
+            "messageId": message_id,
+            "stepId": step_id,
+            "accepted": accepted,
+            "error": None if accepted else "Approval request is invalid or has expired",
+        }, client_id)
 
     elif msg_type == "stop_task":
         logger.info("Stop task received")
