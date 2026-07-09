@@ -6,6 +6,7 @@ Runs validated execution plans step-by-step with HITL support.
 import asyncio
 import logging
 import importlib
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 
 from websocket import manager as ws_manager
@@ -400,12 +401,16 @@ class Executor:
         finally:
             self._approval_events.pop(step_id, None)
 
-    def submit_approval(self, step_id: str, action: str) -> None:
+    def submit_approval(self, step_id: str, action: str) -> bool:
         """Submit an approval response from the frontend."""
-        self._approval_results[step_id] = action
+        if action not in {"approve", "edit", "cancel"}:
+            return False
         event = self._approval_events.get(step_id)
-        if event:
-            event.set()
+        if not event or event.is_set():
+            return False
+        self._approval_results[step_id] = action
+        event.set()
+        return True
 
     def _extract_first_path(self, find_result: str) -> Optional[str]:
         """Pull the first file path from a find_file result string."""
@@ -415,7 +420,13 @@ class Executor:
                 continue
             path_part = stripped.split(" (", 1)[0].strip()
             if path_part:
-                return path_part
+                candidate = Path(path_part).expanduser()
+                if ".." in candidate.parts or not candidate.is_absolute():
+                    return None
+                normalized = candidate.resolve()
+                if not normalized.exists():
+                    return None
+                return str(normalized)
         return None
 
     def _resolve_references(

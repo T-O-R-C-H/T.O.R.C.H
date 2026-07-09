@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconPlay as Play, IconX as Delete, IconSparkles as Sparkles, IconLoader as Loader, IconAdd as Add } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
+import { runShortcut } from '../utils/runShortcut'
 
 interface Skill {
   id: string
@@ -20,6 +21,8 @@ export function Skills(): JSX.Element {
   const [showAddForm, setShowAddForm] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCommand, setNewCommand] = useState('')
+  const [runningSkillIdsState, setRunningSkillIdsState] = useState<Set<string>>(() => new Set())
+  const runningSkillIds = useRef(new Set<string>())
   const navigate = useNavigate()
   const demoMode = useTorchStore((s) => s.demoMode)
 
@@ -40,28 +43,33 @@ export function Skills(): JSX.Element {
   }, [demoMode])
 
   const handleRunSkill = async (skill: Skill): Promise<void> => {
+    if (runningSkillIds.current.has(skill.id)) return
+    runningSkillIds.current.add(skill.id)
+    setRunningSkillIdsState((current) => new Set(current).add(skill.id))
     if (demoMode) {
       navigate('/chat', { state: { runCommand: skill.command } })
+      runningSkillIds.current.delete(skill.id)
+      setRunningSkillIdsState((current) => {
+        const next = new Set(current)
+        next.delete(skill.id)
+        return next
+      })
       return
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/skills/${skill.id}/run`, {
-        method: 'POST'
-      })
-      if (!response.ok) {
-        throw new Error('Failed to run skill')
-      }
-      const data = await response.json()
-      if (data.status === 'success') {
-        // Fetch updated skills to sync run count across views
-        await fetchSkills()
-        navigate('/chat', { state: { runCommand: data.command } })
-      } else {
-        throw new Error(data.message || 'Error running skill')
-      }
+      const data = await runShortcut(skill.id)
+      await fetchSkills()
+      navigate('/chat', { state: { runCommand: data.command } })
     } catch (err: any) {
       alert(err.message || 'Error executing skill')
+    } finally {
+      runningSkillIds.current.delete(skill.id)
+      setRunningSkillIdsState((current) => {
+        const next = new Set(current)
+        next.delete(skill.id)
+        return next
+      })
     }
   }
 
@@ -209,8 +217,9 @@ export function Skills(): JSX.Element {
             {skills.map((skill) => (
               <div
                 key={skill.id}
-                onClick={(): Promise<void> => handleRunSkill(skill)}
-                className="group relative card cursor-pointer hover:border-[var(--color-torch-border-hover)] transition-colors duration-150 flex flex-col justify-between min-h-[140px]"
+                onClick={(): void => { if (!runningSkillIdsState.has(skill.id)) void handleRunSkill(skill) }}
+                aria-busy={runningSkillIdsState.has(skill.id)}
+                className={`group relative card hover:border-[var(--color-torch-border-hover)] transition-colors duration-150 flex flex-col justify-between min-h-[140px] ${runningSkillIdsState.has(skill.id) ? 'cursor-wait' : 'cursor-pointer'}`}
               >
                 <button
                   type="button"
@@ -235,8 +244,8 @@ export function Skills(): JSX.Element {
                     <span className="t-mono-xs text-[var(--color-torch-text)]">{skill.run_count}</span>
                   </div>
                   <div className="flex items-center gap-1.5 t-mono-xs text-[var(--color-torch-text-secondary)]">
-                    <Play size={10} />
-                    <span>Run</span>
+                    {runningSkillIdsState.has(skill.id) ? <Loader size={10} className="spinner" /> : <Play size={10} />}
+                    <span>{runningSkillIdsState.has(skill.id) ? 'Running…' : 'Run'}</span>
                   </div>
                 </div>
               </div>

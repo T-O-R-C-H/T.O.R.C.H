@@ -12,10 +12,28 @@ from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger("torch.tools.files")
 
+def _normalize_find_inputs(name: str, path: str) -> tuple[str, Path]:
+    clean_name = str(name or "").strip()
+    clean_path = str(path or "").strip()
+    if not clean_name or clean_name in {".", ".."}:
+        raise ValueError("File name cannot be empty or malformed")
+    if "\x00" in clean_name or "/" in clean_name or "\\" in clean_name:
+        raise ValueError("File name must not contain a path")
+    if not clean_path or "\x00" in clean_path:
+        raise ValueError("Search path cannot be empty or malformed")
+
+    expanded = Path(clean_path).expanduser()
+    if ".." in expanded.parts:
+        raise ValueError("Search path traversal is not allowed")
+    normalized = expanded.resolve()
+    if not normalized.exists() or not normalized.is_dir():
+        raise ValueError(f"Search path is not a valid directory: {normalized}")
+    return clean_name, normalized
+
 
 def find_file(name: str, path: str = "~") -> str:
     """Recursively search for a file by name."""
-    search_path = Path(path).expanduser().resolve()
+    name, search_path = _normalize_find_inputs(name, path)
     logger.info(f"Searching for '{name}' in {search_path}")
 
     matches = []
@@ -176,11 +194,11 @@ def find_file_fuzzy(name: str, path: str = "~") -> dict:
     import difflib
     from pathlib import Path
 
-    search_path = Path(path).expanduser().resolve()
+    name, search_path = _normalize_find_inputs(name, path)
     all_files = []
     
     # Clean input name
-    search_name = name.lower().strip()
+    search_name = name.lower()
     search_stem = Path(search_name).stem.lower()
 
     try:

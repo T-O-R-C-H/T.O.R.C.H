@@ -1,8 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTorchStore, type Skill } from '../../store/torchStore'
 import { API_BASE } from '../../config/api'
 import { TorchWordmark } from '../ui/TorchWordmark'
+import { runShortcut } from '../../utils/runShortcut'
 import {
   IconMessage,
   IconCalendar,
@@ -109,6 +110,8 @@ export function Sidebar(): JSX.Element {
   const [showAddForm, setShowAddForm] = useState(false)
   const [shortcutName, setShortcutName] = useState('')
   const [shortcutCommand, setShortcutCommand] = useState('')
+  const [runningShortcutIdsState, setRunningShortcutIdsState] = useState<Set<string>>(() => new Set())
+  const runningShortcutIds = useRef(new Set<string>())
 
   const [clipboardCount, setClipboardCount] = useState(0)
   const [accountTier, setAccountTier] = useState<'Pro' | 'Free'>('Free')
@@ -139,17 +142,34 @@ export function Sidebar(): JSX.Element {
   }, [demoMode, fetchSkills])
 
   const handleShortcutClick = async (shortcut: Skill | { name: string; command: string }): Promise<void> => {
+    const shortcutId = 'id' in shortcut ? shortcut.id : shortcut.name
+    if (runningShortcutIds.current.has(shortcutId)) return
+    runningShortcutIds.current.add(shortcutId)
+    setRunningShortcutIdsState((current) => new Set(current).add(shortcutId))
     if ('id' in shortcut && !shortcut.id.startsWith('demo') && !demoMode) {
       try {
-        const response = await fetch(`${API_BASE}/api/skills/${shortcut.id}/run`, {
-          method: 'POST'
+        const result = await runShortcut(shortcut.id)
+        await fetchSkills()
+        navigate('/chat', { state: { runCommand: result.command } })
+      } catch (err: unknown) {
+        alert(err instanceof Error ? err.message : 'Error running shortcut')
+      } finally {
+        runningShortcutIds.current.delete(shortcutId)
+        setRunningShortcutIdsState((current) => {
+          const next = new Set(current)
+          next.delete(shortcutId)
+          return next
         })
-        if (response.ok) await fetchSkills()
-      } catch (err) {
-        console.error('Error running shortcut:', err)
       }
+      return
     }
     navigate('/chat', { state: { runCommand: shortcut.command } })
+    runningShortcutIds.current.delete(shortcutId)
+    setRunningShortcutIdsState((current) => {
+      const next = new Set(current)
+      next.delete(shortcutId)
+      return next
+    })
   }
 
   const handleSaveShortcut = async (e: React.FormEvent): Promise<void> => {
@@ -226,9 +246,15 @@ export function Sidebar(): JSX.Element {
               key={'id' in shortcut ? shortcut.id : shortcut.name}
               type="button"
               onClick={() => void handleShortcutClick(shortcut)}
+              disabled={runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)}
+              aria-busy={runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)}
               className="sidebar-nav-item sidebar-nav-item--shortcut"
             >
-              <span>{shortcut.name}</span>
+              <span>
+                {runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)
+                  ? `${shortcut.name}…`
+                  : shortcut.name}
+              </span>
               <span className="sidebar-play">▶</span>
             </button>
           ))}
