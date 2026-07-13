@@ -13,6 +13,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+
+# ─── Pydantic Models ───
+
+
+class SkillCreateRequest(BaseModel):
+    """Request body for creating a new skill."""
+    name: str = Field(..., description="Shortcut name (e.g. Morning Briefing)")
+    command: str = Field(..., description="Command to execute (e.g. summarize my emails)")
 
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -297,20 +307,26 @@ async def update_settings(data: dict):
 
 @app.get("/api/skills")
 async def api_get_skills():
-    """Get all saved skills."""
+    """Get all saved skills ordered by run_count DESC."""
     import skills
     return skills.get_skills()
 
 
-@app.post("/api/skills")
-async def api_create_skill(data: dict):
-    """Create a new skill."""
-    name = data.get("name")
-    command = data.get("command")
+@app.post("/api/skills", status_code=201)
+async def api_create_skill(data: SkillCreateRequest):
+    """Create a new skill.
 
-    if not name or not str(name).strip():
+    - **name**: Shortcut name (required)
+    - **command**: Command to execute (required)
+
+    Returns HTTP 400 if name or command is empty.
+    """
+    name = data.name
+    command = data.command
+
+    if not name or not name.strip():
         raise HTTPException(status_code=400, detail="Name cannot be empty")
-    if not command or not str(command).strip():
+    if not command or not command.strip():
         raise HTTPException(status_code=400, detail="Command cannot be empty")
 
     import skills
@@ -321,7 +337,10 @@ async def api_create_skill(data: dict):
 
 @app.post("/api/skills/{skill_id}/run")
 async def api_run_skill(skill_id: str):
-    """Run a skill (increment run_count and return the command)."""
+    """Run a skill by ID (increment run_count and return the stored command).
+
+    Returns HTTP 404 if the skill does not exist.
+    """
     import skills
     command = skills.run_skill(skill_id)
     if not command:
@@ -336,7 +355,7 @@ async def api_run_skill(skill_id: str):
 
 @app.delete("/api/skills/{skill_id}")
 async def api_delete_skill(skill_id: str):
-    """Delete a skill permanently."""
+    """Delete a skill permanently by ID."""
     import skills
     skills.delete_skill(skill_id)
     return {"deleted": True}
