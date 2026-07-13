@@ -194,8 +194,11 @@ class Executor:
                 await ws_manager.send_terminal_line("Approved ✓", "success", client_id)
                 await ws_manager.send_status("executing", client_id)
 
-            # Register step for rollback before execution if reversible
-            rollback_manager.register_step(message_id, tool_name, resolved_args)
+                # Register step for rollback ONLY AFTER approval for reversible tools
+                rollback_manager.register_step(message_id, tool_name, resolved_args)
+            else:
+                # Register step for rollback immediately if no approval required
+                rollback_manager.register_step(message_id, tool_name, resolved_args)
 
             # Execute the tool
             try:
