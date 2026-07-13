@@ -4,11 +4,11 @@
 
 ### 1. API keys & AI provider
 
-| Requirement | Required? | Notes |
-|---------------|-----------|-------|
-| `GEMINI_API_KEY` | **Yes** (for live AI) | Get from [Google AI Studio](https://aistudio.google.com). Set in Settings or root `.env`. |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Optional | Alternative providers if wired in backend. |
-| Demo mode | Fallback | Works without a key — scripted scenarios only. |
+| Requirement                            | Required?             | Notes                                                                                     |
+| -------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`                       | **Yes** (for live AI) | Get from [Google AI Studio](https://aistudio.google.com). Set in Settings or root `.env`. |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | Optional              | Alternative providers if wired in backend.                                                |
+| Demo mode                              | Fallback              | Works without a key — scripted scenarios only.                                            |
 
 Copy `.env.example` → `.env` at repo root and fill in values. The backend reads this on startup.
 
@@ -41,12 +41,12 @@ Outputs go to `dist/`. Update `electron-builder.yml` publish URL before enabling
 
 ### 4. Optional integrations
 
-| Feature | Env vars | Extra setup |
-|---------|----------|-------------|
-| Email | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | Google App Password at myaccount.google.com/apppasswords |
-| Web automation | — | `playwright install chromium` |
-| Voice wake word | `WAKE_WORD`, `WHISPER_MODEL_SIZE` | Microphone permission in OS |
-| Screen watch | `SCREEN_WATCH_ENABLED=true` | Screen capture permission |
+| Feature         | Env vars                              | Extra setup                                              |
+| --------------- | ------------------------------------- | -------------------------------------------------------- |
+| Email           | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | Google App Password at myaccount.google.com/apppasswords |
+| Web automation  | —                                     | `playwright install chromium`                            |
+| Voice wake word | `WAKE_WORD`, `WHISPER_MODEL_SIZE`     | Microphone permission in OS                              |
+| Screen watch    | `SCREEN_WATCH_ENABLED=true`           | Screen capture permission                                |
 
 ### 5. Marketing website
 
@@ -163,12 +163,12 @@ jobs:
 
 ## Quick reference
 
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Electron + backend dev |
-| `npm run build:win` | Windows installer |
-| `npm run website:dev` | Marketing site preview |
-| `cd backend && python main.py` | Backend only |
-| `playwright install chromium` | Web tools |
+| Command                        | Purpose                |
+| ------------------------------ | ---------------------- |
+| `npm run dev`                  | Electron + backend dev |
+| `npm run build:win`            | Windows installer      |
+| `npm run website:dev`          | Marketing site preview |
+| `cd backend && python main.py` | Backend only           |
+| `playwright install chromium`  | Web tools              |
 
 Questions? Open an issue on the repo with `deployment` label.

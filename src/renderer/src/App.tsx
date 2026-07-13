@@ -8,8 +8,6 @@ import { HeyTorch } from './components/overlay/HeyTorch'
 
 import { useTorchStore } from './store/torchStore'
 
-
-
 import { Command } from './pages/Command'
 
 import { Today } from './pages/Today'
@@ -42,40 +40,24 @@ import { Messaging } from './pages/tools/Messaging'
 
 import { Browser } from './pages/tools/Browser'
 
-
-
 function OverlayRoute(): JSX.Element {
-
   return (
-
     <div className="w-full h-full flex items-end justify-center pb-10 bg-transparent">
-
       <HeyTorch />
-
     </div>
-
   )
-
 }
 
-
-
 function AppLayout(): JSX.Element {
-
   return (
-
     <div className="app-shell">
-
       <Sidebar />
 
       <div className="app-main">
-
         <Topbar />
 
         <div className="app-routes">
-
           <Routes>
-
             <Route path="/" element={<Command />} />
 
             <Route path="/chat" element={<Command />} />
@@ -107,50 +89,25 @@ function AppLayout(): JSX.Element {
             <Route path="/tools/messaging" element={<Messaging />} />
 
             <Route path="/tools/browser" element={<Browser />} />
-
           </Routes>
-
         </div>
-
       </div>
-
     </div>
-
   )
-
 }
-
-
 
 function App(): JSX.Element {
-
   const onboardingComplete = useTorchStore((s) => s.onboardingComplete)
 
-
-
   return (
-
     <HashRouter>
-
       <Routes>
-
         <Route path="/overlay" element={<OverlayRoute />} />
 
-        <Route path="/*" element={
-
-          onboardingComplete ? <AppLayout /> : <Onboarding />
-
-        } />
-
+        <Route path="/*" element={onboardingComplete ? <AppLayout /> : <Onboarding />} />
       </Routes>
-
     </HashRouter>
-
   )
-
 }
 
-
-
 export default App
-

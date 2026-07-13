@@ -16,15 +16,18 @@ export class TorchMiniApp {
   }
 
   _build() {
-    const metricsHtml = this.showMetrics ? `
+    const metricsHtml = this.showMetrics
+      ? `
       <div class="cmd-metrics">
         <div class="cmd-metric"><div class="cmd-metric__label">Tasks</div><div class="cmd-metric__value">12</div></div>
         <div class="cmd-metric"><div class="cmd-metric__label">Time saved</div><div class="cmd-metric__value">3.2h</div></div>
         <div class="cmd-metric"><div class="cmd-metric__label">Actions</div><div class="cmd-metric__value">48</div></div>
         <div class="cmd-metric"><div class="cmd-metric__label">Success</div><div class="cmd-metric__value">94%</div></div>
-      </div>` : ''
+      </div>`
+      : ''
 
-    const idleHtml = this.startIdle ? `
+    const idleHtml = this.startIdle
+      ? `
       <div class="cmd-idle" data-idle>
         <div class="torch-wordmark torch-wordmark--sm">
           <div class="torch-wordmark__frame">
@@ -41,7 +44,8 @@ export class TorchMiniApp {
           <div class="cmd-suggestion" data-sug="2"><div><div class="cmd-suggestion__title">Summarize a document</div><div class="cmd-suggestion__desc">Get key points fast</div></div></div>
           <div class="cmd-suggestion" data-sug="3"><div><div class="cmd-suggestion__title">Open an app</div><div class="cmd-suggestion__desc">Launch and navigate your desktop</div></div></div>
         </div>
-      </div>` : ''
+      </div>`
+      : ''
 
     this.container.innerHTML = `
       <div class="torch-app-window ${this.compact ? 'torch-app-window--compact' : ''}">
@@ -135,7 +139,9 @@ export class TorchMiniApp {
       this.messagesEl.innerHTML = this._idleHtml || ''
       this.idleEl = this.messagesEl.querySelector('[data-idle]')
     }
-    this.container.querySelectorAll('.cmd-suggestion').forEach((el) => el.classList.remove('highlight'))
+    this.container
+      .querySelectorAll('.cmd-suggestion')
+      .forEach((el) => el.classList.remove('highlight'))
     this.setInput('Tell TORCH what to do…', true)
     this.setStatus('Ready')
   }
@@ -160,7 +166,8 @@ export class TorchMiniApp {
     if (show) {
       this.typingEl = document.createElement('div')
       this.typingEl.className = 'cmd-typing'
-      this.typingEl.innerHTML = '<span class="typing-square"></span><span class="typing-square"></span><span class="typing-square"></span> Thinking…'
+      this.typingEl.innerHTML =
+        '<span class="typing-square"></span><span class="typing-square"></span><span class="typing-square"></span> Thinking…'
       this.messagesEl.appendChild(this.typingEl)
       this.scrollFeed()
     }
@@ -243,10 +250,18 @@ export class TorchMiniApp {
 }
 
 function stepHtml(step) {
-  const cls = step.status === 'active' || step.status === 'hitl_required' ? 'step-row step-row--active'
-    : step.status === 'done' ? 'step-row step-row--done' : 'step-row'
-  const icon = step.status === 'active' || step.status === 'hitl_required' ? '◌'
-    : step.status === 'done' ? '✓' : '○'
+  const cls =
+    step.status === 'active' || step.status === 'hitl_required'
+      ? 'step-row step-row--active'
+      : step.status === 'done'
+        ? 'step-row step-row--done'
+        : 'step-row'
+  const icon =
+    step.status === 'active' || step.status === 'hitl_required'
+      ? '◌'
+      : step.status === 'done'
+        ? '✓'
+        : '○'
   let html = `<div class="${cls}"><span class="step-row__icon">${icon}</span><span>${esc(step.label)}</span></div>`
   if (step.result && (step.status === 'done' || step.status === 'active')) {
     html += `<div class="step-preview">↳ ${esc(String(step.result).slice(0, 90))}</div>`

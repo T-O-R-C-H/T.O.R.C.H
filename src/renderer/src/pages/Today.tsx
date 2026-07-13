@@ -15,10 +15,7 @@ export function Today(): JSX.Element {
   const userName = localStorage.getItem('torch_user_name') || 'there'
 
   const hour = new Date().getHours()
-  const greeting =
-    hour < 12 ? 'Good morning'
-    : hour < 17 ? 'Good afternoon'
-    : 'Good evening'
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   const runCommand = (command: string): void => {
     navigate('/chat', { state: { runCommand: command } })
@@ -29,7 +26,9 @@ export function Today(): JSX.Element {
       <div className="page-shell__body today-page">
         <div className="today-hero">
           <TorchWordmark size="sm" />
-          <h1 className="today-hero__title">{greeting}, {userName}</h1>
+          <h1 className="today-hero__title">
+            {greeting}, {userName}
+          </h1>
           <p className="today-hero__subtitle">
             Your desktop agent is ready. Pick a quick action or open Chat to give TORCH a task.
           </p>
@@ -79,7 +78,11 @@ export function Today(): JSX.Element {
             <button type="button" className="btn-secondary" onClick={() => navigate('/chat')}>
               Open Command Center
             </button>
-            <button type="button" className="btn-secondary" onClick={() => navigate('/tools/clipboard')}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => navigate('/tools/clipboard')}
+            >
               View clipboard
             </button>
             <button type="button" className="btn-secondary" onClick={() => navigate('/history')}>

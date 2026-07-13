@@ -23,7 +23,9 @@ export function Clipboard(): JSX.Element {
 
   useEffect(() => {
     void loadEntries()
-    const timer = setInterval(() => { void loadEntries() }, 2000)
+    const timer = setInterval(() => {
+      void loadEntries()
+    }, 2000)
     return () => clearInterval(timer)
   }, [])
 

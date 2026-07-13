@@ -25,8 +25,8 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
   const hitlWarning = hitlStep?.error?.includes('not configured')
     ? 'Service not configured — check Settings before approving'
     : hitlStep?.tool === 'send_email' && !wsConnected
-    ? 'Credentials not configured in Settings'
-    : undefined
+      ? 'Credentials not configured in Settings'
+      : undefined
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -45,9 +45,7 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
   }, [message.reversible, message.undoState, message.timestamp])
 
   if (isSystem) {
-    return (
-      <div className="chat-system fade-in">{message.content}</div>
-    )
+    return <div className="chat-system fade-in">{message.content}</div>
   }
 
   if (isUser) {
@@ -68,13 +66,9 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
           <span className="chat-agent-name">TORCH</span>
         </div>
 
-        {message.content && (
-          <p className="chat-agent-body">{message.content}</p>
-        )}
+        {message.content && <p className="chat-agent-body">{message.content}</p>}
 
-        {message.steps && message.steps.length > 0 && (
-          <StepList steps={message.steps} />
-        )}
+        {message.steps && message.steps.length > 0 && <StepList steps={message.steps} />}
 
         {hitlStep && (
           <ApprovalCard
@@ -95,7 +89,11 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
             ) : (
               <>
                 <span className="chat-undo__muted">Need to reverse this?</span>
-                <button type="button" className="btn-secondary" onClick={() => sendUndoCommand(message.id)}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => sendUndoCommand(message.id)}
+                >
                   Undo last action
                 </button>
               </>

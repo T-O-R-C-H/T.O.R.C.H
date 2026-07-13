@@ -19,9 +19,7 @@ export function TorchWordmark({
         <span className="torch-wordmark__corner torch-wordmark__corner--br" aria-hidden="true" />
         <span className="torch-wordmark__word">TORCH</span>
       </div>
-      {showMeta && (
-        <span className="torch-wordmark__meta">Desktop agent</span>
-      )}
+      {showMeta && <span className="torch-wordmark__meta">Desktop agent</span>}
     </div>
   )
 }

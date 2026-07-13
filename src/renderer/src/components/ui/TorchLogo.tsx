@@ -13,26 +13,27 @@ export function TorchLogo({ className, style, size = 32 }: TorchLogoProps): JSX.
 
   useEffect(() => {
     // Check if body has light theme class or if system is light
-    const isLight = document.documentElement.classList.contains('light') || 
-                    document.body.classList.contains('light')
+    const isLight =
+      document.documentElement.classList.contains('light') ||
+      document.body.classList.contains('light')
     setIsDark(!isLight)
   }, [])
 
-  const src = isDark 
+  const src = isDark
     ? new URL('../../assets/TorchLogoWhite.png', import.meta.url).href
     : new URL('../../assets/TorchLogoBlack.png', import.meta.url).href
 
   return (
-    <img 
-      src={src} 
-      alt="TORCH Logo" 
-      className={className} 
+    <img
+      src={src}
+      alt="TORCH Logo"
+      className={className}
       style={{
         height: `${size}px`,
         width: 'auto',
         objectFit: 'contain',
         ...style
-      }} 
+      }}
     />
   )
 }

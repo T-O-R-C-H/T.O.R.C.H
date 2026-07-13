@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconPlay as Play, IconX as Delete, IconSparkles as Sparkles, IconLoader as Loader, IconAdd as Add } from '../components/icons'
+import {
+  IconPlay as Play,
+  IconX as Delete,
+  IconSparkles as Sparkles,
+  IconLoader as Loader,
+  IconAdd as Add
+} from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
 import { runShortcut } from '../utils/runShortcut'
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return String(err)
+}
 
 interface Skill {
   id: string
@@ -26,21 +37,23 @@ export function Skills(): JSX.Element {
   const navigate = useNavigate()
   const demoMode = useTorchStore((s) => s.demoMode)
 
-  const loadSkills = async (): Promise<void> => {
-    try {
-      setLoading(true)
-      await fetchSkills()
-      setError(null)
-    } catch (err: any) {
-      setError(err.message || 'Error fetching skills')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    loadSkills()
-  }, [demoMode])
+    let cancelled = false
+    const load = async (): Promise<void> => {
+      try {
+        await fetchSkills()
+        if (!cancelled) setError(null)
+      } catch (err) {
+        if (!cancelled) setError(getErrorMessage(err) || 'Error fetching skills')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return (): void => {
+      cancelled = true
+    }
+  }, [fetchSkills, demoMode])
 
   const handleRunSkill = async (skill: Skill): Promise<void> => {
     if (runningSkillIds.current.has(skill.id)) return
@@ -61,8 +74,8 @@ export function Skills(): JSX.Element {
       const data = await runShortcut(skill.id)
       await fetchSkills()
       navigate('/chat', { state: { runCommand: data.command } })
-    } catch (err: any) {
-      alert(err.message || 'Error executing skill')
+    } catch (err) {
+      alert(getErrorMessage(err) || 'Error executing skill')
     } finally {
       runningSkillIds.current.delete(skill.id)
       setRunningSkillIdsState((current) => {
@@ -75,7 +88,7 @@ export function Skills(): JSX.Element {
 
   const handleDeleteSkill = async (e: React.MouseEvent, skillId: string): Promise<void> => {
     e.stopPropagation() // Prevent triggering the card click (run command)
-    
+
     if (demoMode) {
       useTorchStore.setState({ skills: skills.filter((s) => s.id !== skillId) })
       return
@@ -93,8 +106,8 @@ export function Skills(): JSX.Element {
         throw new Error('Failed to delete skill')
       }
       await fetchSkills()
-    } catch (err: any) {
-      alert(err.message || 'Error deleting skill')
+    } catch (err) {
+      alert(getErrorMessage(err) || 'Error deleting skill')
     }
   }
 
@@ -140,8 +153,8 @@ export function Skills(): JSX.Element {
       setNewName('')
       setNewCommand('')
       setShowAddForm(false)
-    } catch (err: any) {
-      alert(err.message || 'Error creating skill')
+    } catch (err) {
+      alert(getErrorMessage(err) || 'Error creating skill')
     }
   }
 
@@ -181,10 +194,7 @@ export function Skills(): JSX.Element {
               </div>
             </div>
             <div className="flex justify-end">
-              <button
-                type="submit"
-                className="btn-primary text-[10px] px-5 py-1.5"
-              >
+              <button type="submit" className="btn-primary text-[10px] px-5 py-1.5">
                 Create
               </button>
             </div>
@@ -194,11 +204,15 @@ export function Skills(): JSX.Element {
         {loading ? (
           <div className="flex flex-col items-center justify-center h-[300px]">
             <Loader size={24} className="spinner mb-2" />
-            <p className="text-sm text-[var(--color-torch-text-tertiary)]">Loading skill repository...</p>
+            <p className="text-sm text-[var(--color-torch-text-tertiary)]">
+              Loading skill repository...
+            </p>
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-[300px] text-center">
-            <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-torch-error)' }}>Failed to connect to backend</p>
+            <p className="text-sm font-medium mb-1" style={{ color: 'var(--color-torch-error)' }}>
+              Failed to connect to backend
+            </p>
             <p className="text-xs text-[var(--color-torch-text-tertiary)] max-w-[300px] leading-relaxed">
               Make sure the backend python server is running. {error}
             </p>
@@ -206,10 +220,14 @@ export function Skills(): JSX.Element {
         ) : skills.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[300px] text-center">
             <Sparkles size={28} className="text-[var(--color-torch-border)] mb-4" />
-            <p className="text-[14px] font-medium text-[var(--color-torch-text-secondary)]">No custom skills yet</p>
+            <p className="text-[14px] font-medium text-[var(--color-torch-text-secondary)]">
+              No custom skills yet
+            </p>
             <p className="text-[12px] text-[var(--color-torch-text-tertiary)] mt-1.5 max-w-[320px] leading-relaxed">
               Ask TORCH to save any task: <br />
-              <span className="italic">"Save this as a skill called Morning Briefing"</span>
+              <span className="italic">
+                &quot;Save this as a skill called Morning Briefing&quot;
+              </span>
             </p>
           </div>
         ) : (
@@ -217,7 +235,9 @@ export function Skills(): JSX.Element {
             {skills.map((skill) => (
               <div
                 key={skill.id}
-                onClick={(): void => { if (!runningSkillIdsState.has(skill.id)) void handleRunSkill(skill) }}
+                onClick={(): void => {
+                  if (!runningSkillIdsState.has(skill.id)) void handleRunSkill(skill)
+                }}
                 aria-busy={runningSkillIdsState.has(skill.id)}
                 className={`group relative card hover:border-[var(--color-torch-border-hover)] transition-colors duration-150 flex flex-col justify-between min-h-[140px] ${runningSkillIdsState.has(skill.id) ? 'cursor-wait' : 'cursor-pointer'}`}
               >
@@ -232,7 +252,9 @@ export function Skills(): JSX.Element {
                 </button>
 
                 <div>
-                  <div className="text-[14px] font-medium text-[var(--color-torch-text)] mb-2">{skill.name}</div>
+                  <div className="text-[14px] font-medium text-[var(--color-torch-text)] mb-2">
+                    {skill.name}
+                  </div>
                   <p className="text-[12px] font-mono text-[var(--color-torch-text-secondary)] leading-relaxed line-clamp-3 mb-4 select-none">
                     {skill.command}
                   </p>
@@ -241,10 +263,16 @@ export function Skills(): JSX.Element {
                 <div className="flex items-center justify-between border-t border-[var(--color-torch-border-subtle)] pt-3 mt-auto">
                   <div className="flex items-center gap-1">
                     <span className="t-mono-xs">Runs:</span>
-                    <span className="t-mono-xs text-[var(--color-torch-text)]">{skill.run_count}</span>
+                    <span className="t-mono-xs text-[var(--color-torch-text)]">
+                      {skill.run_count}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1.5 t-mono-xs text-[var(--color-torch-text-secondary)]">
-                    {runningSkillIdsState.has(skill.id) ? <Loader size={10} className="spinner" /> : <Play size={10} />}
+                    {runningSkillIdsState.has(skill.id) ? (
+                      <Loader size={10} className="spinner" />
+                    ) : (
+                      <Play size={10} />
+                    )}
                     <span>{runningSkillIdsState.has(skill.id) ? 'Running…' : 'Run'}</span>
                   </div>
                 </div>

@@ -1,147 +1,180 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORCH — Your desktop AI agent</title>
-  <meta name="description" content="TORCH runs on your computer and handles everyday work — finding files, drafting emails, researching the web — with your approval before anything sensitive.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="app-ui.css">
-</head>
-<body>
-
-  <header class="header" id="header">
-    <div class="header__inner">
-      <a href="#" class="header__logo">TORCH</a>
-      <nav class="header__nav">
-        <a href="#features">Features</a>
-        <a href="#showcase">See it work</a>
-        <a href="#download">Download</a>
-      </nav>
-      <a href="#download" class="header__cta">Download</a>
-    </div>
-  </header>
-
-  <!-- Hero — centered like Cursor, NO demo here -->
-  <section class="hero">
-    <div class="hero__inner reveal">
-      <h1 class="hero__title">TORCH is your desktop agent for getting real work done.</h1>
-      <div class="hero__actions">
-        <a href="#download" class="btn btn--dark">Download for Windows</a>
-        <a href="#showcase" class="btn btn--link">See it in action →</a>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TORCH — Your desktop AI agent</title>
+    <meta
+      name="description"
+      content="TORCH runs on your computer and handles everyday work — finding files, drafting emails, researching the web — with your approval before anything sensitive."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="app-ui.css" />
+  </head>
+  <body>
+    <header class="header" id="header">
+      <div class="header__inner">
+        <a href="#" class="header__logo">TORCH</a>
+        <nav class="header__nav">
+          <a href="#features">Features</a>
+          <a href="#showcase">See it work</a>
+          <a href="#download">Download</a>
+        </nav>
+        <a href="#download" class="header__cta">Download</a>
       </div>
-    </div>
-  </section>
+    </header>
 
-  <!-- Full-page app demo — like Cursor hero showcase -->
-  <section class="showcase" id="showcase">
-    <div class="showcase__wrap reveal reveal--scale">
-      <div class="showcase__frame" id="showcase-demo" data-demo="hero" data-role="showcase"></div>
-    </div>
-  </section>
-
-  <!-- Trust strip -->
-  <section class="trust reveal">
-    <p class="trust__label">Built for people who live on their desktop</p>
-    <div class="trust__items">
-      <span>Files & folders</span>
-      <span>Email</span>
-      <span>Web research</span>
-      <span>Apps & shortcuts</span>
-    </div>
-  </section>
-
-  <!-- Feature sections — Cursor alternating layout, UNIQUE demo each -->
-  <section class="features" id="features">
-
-    <article class="feature reveal">
-      <div class="feature__copy">
-        <h2>Turn a sentence into a finished task</h2>
-        <p>Type what you need — or tap a suggestion. TORCH plans the steps and works through them while you watch.</p>
-        <a href="#showcase" class="feature__link">See Command Center →</a>
+    <!-- Hero — centered like Cursor, NO demo here -->
+    <section class="hero">
+      <div class="hero__inner reveal">
+        <h1 class="hero__title">TORCH is your desktop agent for getting real work done.</h1>
+        <div class="hero__actions">
+          <a href="#download" class="btn btn--dark">Download for Windows</a>
+          <a href="#showcase" class="btn btn--link">See it in action →</a>
+        </div>
       </div>
-      <div class="feature__visual">
-        <div class="feature__demo demo-frame demo-frame--compact" data-demo="suggestions" data-start-idle="true"></div>
-      </div>
-    </article>
+    </section>
 
-    <article class="feature feature--reverse reveal">
-      <div class="feature__copy">
-        <h2>Find and understand your documents</h2>
-        <p>Ask for a report, a spreadsheet, or a folder. TORCH locates it, reads it, and brings back what matters — without you digging through files.</p>
+    <!-- Full-page app demo — like Cursor hero showcase -->
+    <section class="showcase" id="showcase">
+      <div class="showcase__wrap reveal reveal--scale">
+        <div class="showcase__frame" id="showcase-demo" data-demo="hero" data-role="showcase"></div>
       </div>
-      <div class="feature__visual">
-        <div class="feature__demo demo-frame demo-frame--compact" data-demo="files"></div>
-      </div>
-    </article>
+    </section>
 
-    <article class="feature reveal">
-      <div class="feature__copy">
-        <h2>Research the web from one place</h2>
-        <p>Need headlines, answers, or a quick summary? TORCH searches and reads for you, then delivers a clear answer in the app.</p>
+    <!-- Trust strip -->
+    <section class="trust reveal">
+      <p class="trust__label">Built for people who live on their desktop</p>
+      <div class="trust__items">
+        <span>Files & folders</span>
+        <span>Email</span>
+        <span>Web research</span>
+        <span>Apps & shortcuts</span>
       </div>
-      <div class="feature__visual">
-        <div class="feature__demo demo-frame demo-frame--compact" data-demo="web"></div>
+    </section>
+
+    <!-- Feature sections — Cursor alternating layout, UNIQUE demo each -->
+    <section class="features" id="features">
+      <article class="feature reveal">
+        <div class="feature__copy">
+          <h2>Turn a sentence into a finished task</h2>
+          <p>
+            Type what you need — or tap a suggestion. TORCH plans the steps and works through them
+            while you watch.
+          </p>
+          <a href="#showcase" class="feature__link">See Command Center →</a>
+        </div>
+        <div class="feature__visual">
+          <div
+            class="feature__demo demo-frame demo-frame--compact"
+            data-demo="suggestions"
+            data-start-idle="true"
+          ></div>
+        </div>
+      </article>
+
+      <article class="feature feature--reverse reveal">
+        <div class="feature__copy">
+          <h2>Find and understand your documents</h2>
+          <p>
+            Ask for a report, a spreadsheet, or a folder. TORCH locates it, reads it, and brings
+            back what matters — without you digging through files.
+          </p>
+        </div>
+        <div class="feature__visual">
+          <div class="feature__demo demo-frame demo-frame--compact" data-demo="files"></div>
+        </div>
+      </article>
+
+      <article class="feature reveal">
+        <div class="feature__copy">
+          <h2>Research the web from one place</h2>
+          <p>
+            Need headlines, answers, or a quick summary? TORCH searches and reads for you, then
+            delivers a clear answer in the app.
+          </p>
+        </div>
+        <div class="feature__visual">
+          <div class="feature__demo demo-frame demo-frame--compact" data-demo="web"></div>
+        </div>
+      </article>
+
+      <article class="feature feature--reverse reveal">
+        <div class="feature__copy">
+          <h2>Nothing sensitive happens without you</h2>
+          <p>
+            Before an email sends or a risky action runs, TORCH stops and asks. Review, edit,
+            approve, or cancel — you're always in control.
+          </p>
+        </div>
+        <div class="feature__visual">
+          <div
+            class="feature__demo demo-frame demo-frame--compact"
+            data-demo="email"
+            data-pause-approval="true"
+          ></div>
+        </div>
+      </article>
+
+      <article class="feature reveal">
+        <div class="feature__copy">
+          <h2>Speak when your hands are full</h2>
+          <p>
+            Say the wake phrase and tell TORCH what to do. Open apps, run shortcuts, or kick off a
+            task without touching the keyboard.
+          </p>
+        </div>
+        <div class="feature__visual">
+          <div class="feature__demo demo-frame demo-frame--compact" data-demo="voice"></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Testimonial-style quote -->
+    <section class="quote-section reveal">
+      <blockquote>
+        <p>
+          “I describe what I need once. TORCH handles the clicks, the searching, and the
+          follow-through — and stops before it sends anything I haven't seen.”
+        </p>
+        <footer>— Early TORCH user</footer>
+      </blockquote>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="cta-section" id="download">
+      <div class="cta-section__inner reveal">
+        <h2>Try TORCH on your desktop.</h2>
+        <p>Free to download. Your files stay on your computer.</p>
+        <div class="cta-section__actions">
+          <a href="#download" class="btn btn--dark btn--lg" id="btn-download"
+            >Download for Windows</a
+          >
+        </div>
+        <p class="cta-section__note">
+          Also available for Mac soon · Works offline for local file tasks
+        </p>
       </div>
-    </article>
+    </section>
 
-    <article class="feature feature--reverse reveal">
-      <div class="feature__copy">
-        <h2>Nothing sensitive happens without you</h2>
-        <p>Before an email sends or a risky action runs, TORCH stops and asks. Review, edit, approve, or cancel — you're always in control.</p>
+    <footer class="footer">
+      <div class="footer__inner">
+        <span class="footer__logo">TORCH</span>
+        <nav class="footer__links">
+          <a href="#features">Features</a>
+          <a href="#download">Download</a>
+          <a href="mailto:hello@torch.app">Contact</a>
+        </nav>
+        <span class="footer__copy">© 2026 TORCH</span>
       </div>
-      <div class="feature__visual">
-        <div class="feature__demo demo-frame demo-frame--compact" data-demo="email" data-pause-approval="true"></div>
-      </div>
-    </article>
+    </footer>
 
-    <article class="feature reveal">
-      <div class="feature__copy">
-        <h2>Speak when your hands are full</h2>
-        <p>Say the wake phrase and tell TORCH what to do. Open apps, run shortcuts, or kick off a task without touching the keyboard.</p>
-      </div>
-      <div class="feature__visual">
-        <div class="feature__demo demo-frame demo-frame--compact" data-demo="voice"></div>
-      </div>
-    </article>
-
-  </section>
-
-  <!-- Testimonial-style quote -->
-  <section class="quote-section reveal">
-    <blockquote>
-      <p>“I describe what I need once. TORCH handles the clicks, the searching, and the follow-through — and stops before it sends anything I haven't seen.”</p>
-      <footer>— Early TORCH user</footer>
-    </blockquote>
-  </section>
-
-  <!-- Final CTA -->
-  <section class="cta-section" id="download">
-    <div class="cta-section__inner reveal">
-      <h2>Try TORCH on your desktop.</h2>
-      <p>Free to download. Your files stay on your computer.</p>
-      <div class="cta-section__actions">
-        <a href="#download" class="btn btn--dark btn--lg" id="btn-download">Download for Windows</a>
-      </div>
-      <p class="cta-section__note">Also available for Mac soon · Works offline for local file tasks</p>
-    </div>
-  </section>
-
-  <footer class="footer">
-    <div class="footer__inner">
-      <span class="footer__logo">TORCH</span>
-      <nav class="footer__links">
-        <a href="#features">Features</a>
-        <a href="#download">Download</a>
-        <a href="mailto:hello@torch.app">Contact</a>
-      </nav>
-      <span class="footer__copy">© 2026 TORCH</span>
-    </div>
-  </footer>
-
-  <script type="module" src="main.js"></script>
-</body>
+    <script type="module" src="main.js"></script>
+  </body>
 </html>

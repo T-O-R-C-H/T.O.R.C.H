@@ -1,7 +1,8 @@
 # T.O.R.C.H
+
 ![CI](https://github.com/Muyideen-js/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)
 
-### *Thinking, Observing, Reasoning, Creating & Handling*
+### _Thinking, Observing, Reasoning, Creating & Handling_
 
 > Your personal AI agent that gives you complete control over your PC and online life through voice and text commands.
 
@@ -19,24 +20,26 @@
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Desktop Shell | Electron |
-| Frontend | React 18, TypeScript, Tailwind CSS, Framer Motion, Zustand |
-| Backend | Python 3.11+, FastAPI, WebSockets |
-| AI Brain | Gemini 2.5 Flash (free tier) |
-| Voice | OpenAI Whisper (local, offline) |
-| Automation | PyAutoGUI, Playwright |
-| Memory | SQLite + ChromaDB |
+| Layer         | Technology                                                 |
+| ------------- | ---------------------------------------------------------- |
+| Desktop Shell | Electron                                                   |
+| Frontend      | React 18, TypeScript, Tailwind CSS, Framer Motion, Zustand |
+| Backend       | Python 3.11+, FastAPI, WebSockets                          |
+| AI Brain      | Gemini 2.5 Flash (free tier)                               |
+| Voice         | OpenAI Whisper (local, offline)                            |
+| Automation    | PyAutoGUI, Playwright                                      |
+| Memory        | SQLite + ChromaDB                                          |
 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
 - Python 3.11+
 - npm or yarn
 
 ### Frontend Setup
+
 ```bash
 cd TORCH
 npm install
@@ -44,6 +47,7 @@ npm run dev
 ```
 
 ### Backend Setup
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -51,6 +55,7 @@ python main.py
 ```
 
 ### Configuration
+
 1. Copy `.env.example` to `.env`
 2. Add your Gemini API key from [aistudio.google.com](https://aistudio.google.com)
 3. (Optional) Add Gmail credentials for email features
