@@ -125,13 +125,21 @@ export function Sidebar(): JSX.Element {
 
   useEffect(() => {
     if (demoMode) {
-      setAccountTier('Free')
+      queueMicrotask(() => setAccountTier('Free'))
       return
     }
+    let cancelled = false
     fetch(`${API_BASE}/api/settings`)
       .then((r) => r.json())
-      .then((data) => setAccountTier(data.gemini_configured ? 'Pro' : 'Free'))
-      .catch(() => setAccountTier('Free'))
+      .then((data) => {
+        if (!cancelled) setAccountTier(data.gemini_configured ? 'Pro' : 'Free')
+      })
+      .catch(() => {
+        if (!cancelled) setAccountTier('Free')
+      })
+    return (): void => {
+      cancelled = true
+    }
   }, [demoMode, wsConnected])
 
   useEffect(() => {
