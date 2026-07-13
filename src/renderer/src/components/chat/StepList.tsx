@@ -33,7 +33,12 @@ interface StepListProps {
   steps: Step[]
 }
 
-function getStepPhrase(tool: string, args: Record<string, unknown>, status: string, fallbackLabel: string): string {
+function getStepPhrase(
+  tool: string,
+  args: Record<string, unknown>,
+  status: string,
+  fallbackLabel: string
+): string {
   if (status === 'failed') {
     const failMap: Record<string, string> = {
       analyse_screen: "Couldn't read your screen.",
@@ -44,14 +49,21 @@ function getStepPhrase(tool: string, args: Record<string, unknown>, status: stri
       create_folder: "Couldn't create the folder.",
       send_email: "Email didn't send.",
       read_inbox: "Couldn't read your inbox.",
-      open_app: "Couldn't open the app.",
+      open_app: "Couldn't open the app."
     }
     return failMap[tool] || "This step didn't finish."
   }
 
   const isPending = status === 'pending' || status === 'active' || status === 'hitl_required'
 
-  let name = (args?.name || args?.filename || args?.query || args?.filepath || args?.path || args?.url || args?.to || '') as string
+  let name = (args?.name ||
+    args?.filename ||
+    args?.query ||
+    args?.filepath ||
+    args?.path ||
+    args?.url ||
+    args?.to ||
+    '') as string
   if (typeof name === 'string') {
     name = name.split(/[/\\]/).pop() || name
   } else {
@@ -100,19 +112,27 @@ export function StepList({ steps }: StepListProps): JSX.Element {
         const { text: previewText, hasOverflow } = formatStepResult(step.result)
         const displayLabel = getStepPhrase(step.tool, step.args, step.status, step.label)
 
-        const rowClass = isActive ? 'step-row step-row--active'
-          : isDone ? 'step-row step-row--done'
-          : isFailed ? 'step-row step-row--failed'
-          : 'step-row'
+        const rowClass = isActive
+          ? 'step-row step-row--active'
+          : isDone
+            ? 'step-row step-row--done'
+            : isFailed
+              ? 'step-row step-row--failed'
+              : 'step-row'
 
         return (
           <div key={step.id}>
             <div className={rowClass}>
               <span className="step-row__icon">
-                {isActive ? <IconLoader size={14} className="spinner" />
-                  : isDone ? <IconCheck size={14} className="text-[var(--color-torch-success)]" />
-                  : isFailed ? <IconAlertTriangle size={14} className="text-[var(--color-torch-error)]" />
-                  : <IconCircle size={13} className="text-[var(--color-torch-text-tertiary)]" />}
+                {isActive ? (
+                  <IconLoader size={14} className="spinner" />
+                ) : isDone ? (
+                  <IconCheck size={14} className="text-[var(--color-torch-success)]" />
+                ) : isFailed ? (
+                  <IconAlertTriangle size={14} className="text-[var(--color-torch-error)]" />
+                ) : (
+                  <IconCircle size={13} className="text-[var(--color-torch-text-tertiary)]" />
+                )}
               </span>
               <span>{displayLabel}</span>
             </div>

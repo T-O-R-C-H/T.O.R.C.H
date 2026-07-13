@@ -3,7 +3,13 @@ import { API_BASE } from '../config/api'
 
 // ─── TYPES ───
 
-export type AgentStatus = 'idle' | 'listening' | 'processing' | 'executing' | 'speaking' | 'awaiting_approval'
+export type AgentStatus =
+  | 'idle'
+  | 'listening'
+  | 'processing'
+  | 'executing'
+  | 'speaking'
+  | 'awaiting_approval'
 export type InputMode = 'type' | 'voice' | 'heytorch'
 export type StepStatus = 'pending' | 'active' | 'done' | 'failed' | 'hitl_required'
 
@@ -141,19 +147,14 @@ export const useTorchStore = create<TorchState>((set) => ({
 
   // Messages
   messages: [],
-  addMessage: (msg): void =>
-    set((state) => ({ messages: [...state.messages, msg] })),
+  addMessage: (msg): void => set((state) => ({ messages: [...state.messages, msg] })),
   appendMessageContent: (id, chunk): void =>
     set((state) => ({
-      messages: state.messages.map((m) =>
-        m.id === id ? { ...m, content: m.content + chunk } : m
-      )
+      messages: state.messages.map((m) => (m.id === id ? { ...m, content: m.content + chunk } : m))
     })),
   updateMessage: (id, updates): void =>
     set((state) => ({
-      messages: state.messages.map((m) =>
-        m.id === id ? { ...m, ...updates } : m
-      )
+      messages: state.messages.map((m) => (m.id === id ? { ...m, ...updates } : m))
     })),
   updateStep: (messageId, stepId, updates): void =>
     set((state) => ({
@@ -161,9 +162,7 @@ export const useTorchStore = create<TorchState>((set) => ({
         m.id === messageId
           ? {
               ...m,
-              steps: m.steps?.map((s) =>
-                s.id === stepId ? { ...s, ...updates } : s
-              )
+              steps: m.steps?.map((s) => (s.id === stepId ? { ...s, ...updates } : s))
             }
           : m
       )
@@ -181,8 +180,7 @@ export const useTorchStore = create<TorchState>((set) => ({
     successRate: 100,
     successDelta: 0
   },
-  setMetrics: (updates): void =>
-    set((state) => ({ metrics: { ...state.metrics, ...updates } })),
+  setMetrics: (updates): void => set((state) => ({ metrics: { ...state.metrics, ...updates } })),
 
   // Terminal
   terminalLines: [],

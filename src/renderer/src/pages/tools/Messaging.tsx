@@ -11,8 +11,8 @@ export function Messaging(): JSX.Element {
         <MessageSquare size={32} className="text-[#1c1c1c] mb-4" />
         <h3 className="heading-md mb-2">Messaging Hub</h3>
         <p className="text-[11px] text-[#444] mb-6 text-center max-w-[400px]">
-          Send and manage messages across platforms — WhatsApp, Telegram, Slack, and more.
-          TORCH automates conversations with HITL approval for every message sent.
+          Send and manage messages across platforms — WhatsApp, Telegram, Slack, and more. TORCH
+          automates conversations with HITL approval for every message sent.
         </p>
         <div className="flex gap-2">
           <div className="px-4 py-2 border border-[#1c1c1c] mono-xs text-[#333]">WhatsApp</div>

@@ -68,13 +68,11 @@ export const useMemoryStore = create<MemoryState>((set) => ({
   setPredictions: (predictions): void => set({ predictions }),
 
   activityLog: [],
-  addActivity: (entry): void =>
-    set((state) => ({ activityLog: [...state.activityLog, entry] })),
+  addActivity: (entry): void => set((state) => ({ activityLog: [...state.activityLog, entry] })),
   clearActivity: (): void => set({ activityLog: [] }),
 
   history: [],
-  addHistory: (entry): void =>
-    set((state) => ({ history: [entry, ...state.history] })),
+  addHistory: (entry): void => set((state) => ({ history: [entry, ...state.history] })),
   clearHistory: (): void => set({ history: [] }),
 
   frequentCommands: [],

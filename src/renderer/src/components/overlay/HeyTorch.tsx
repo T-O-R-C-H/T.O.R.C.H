@@ -44,9 +44,14 @@ export function HeyTorch(): JSX.Element {
     }
   }, [overlayStatus, overlayReply])
 
-  const statusText = overlayStatus === 'listening' ? 'listening...' :
-    overlayStatus === 'processing' ? 'processing...' :
-    overlayStatus === 'speaking' ? 'torch speaking' : ''
+  const statusText =
+    overlayStatus === 'listening'
+      ? 'listening...'
+      : overlayStatus === 'processing'
+        ? 'processing...'
+        : overlayStatus === 'speaking'
+          ? 'torch speaking'
+          : ''
 
   const handleDismiss = (): void => {
     setOverlayVisible(false)
@@ -69,16 +74,16 @@ export function HeyTorch(): JSX.Element {
       )}
 
       {/* Status text */}
-      <div className="mono-xs text-[#444] mt-4">
-        {statusText}
-      </div>
+      <div className="mono-xs text-[#444] mt-4">{statusText}</div>
 
       {/* Reply area */}
       {overlayStatus === 'speaking' && displayedReply && (
         <div className="mt-4 w-full">
-          <p className={`text-[12px] text-[#ccc] leading-relaxed ${
-            displayedReply.length < overlayReply.length ? 'typewriter-cursor' : ''
-          }`}>
+          <p
+            className={`text-[12px] text-[#ccc] leading-relaxed ${
+              displayedReply.length < overlayReply.length ? 'typewriter-cursor' : ''
+            }`}
+          >
             {displayedReply}
           </p>
         </div>

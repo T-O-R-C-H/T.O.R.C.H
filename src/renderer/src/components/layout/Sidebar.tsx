@@ -65,12 +65,7 @@ const activityItems: NavItem[] = [
 
 function Indicator({ type }: { type: NavItem['indicator'] }): JSX.Element | null {
   if (!type) return null
-  return (
-    <span
-      className={`sidebar-indicator sidebar-indicator--${type}`}
-      aria-hidden="true"
-    />
-  )
+  return <span className={`sidebar-indicator sidebar-indicator--${type}`} aria-hidden="true" />
 }
 
 function NavList({ items, title }: { items: NavItem[]; title?: string }): JSX.Element {
@@ -89,9 +84,7 @@ function NavList({ items, title }: { items: NavItem[]; title?: string }): JSX.El
           >
             {Icon && <Icon />}
             <span>{item.label}</span>
-            {item.badge !== undefined && (
-              <span className="sidebar-badge">{item.badge}</span>
-            )}
+            {item.badge !== undefined && <span className="sidebar-badge">{item.badge}</span>}
             {item.indicator && <Indicator type={item.indicator} />}
           </NavLink>
         )
@@ -110,7 +103,9 @@ export function Sidebar(): JSX.Element {
   const [showAddForm, setShowAddForm] = useState(false)
   const [shortcutName, setShortcutName] = useState('')
   const [shortcutCommand, setShortcutCommand] = useState('')
-  const [runningShortcutIdsState, setRunningShortcutIdsState] = useState<Set<string>>(() => new Set())
+  const [runningShortcutIdsState, setRunningShortcutIdsState] = useState<Set<string>>(
+    () => new Set()
+  )
   const runningShortcutIds = useRef(new Set<string>())
 
   const [clipboardCount, setClipboardCount] = useState(0)
@@ -122,7 +117,9 @@ export function Sidebar(): JSX.Element {
       if (entries) setClipboardCount(entries.length)
     }
     void loadClipboardCount()
-    const timer = setInterval(() => { void loadClipboardCount() }, 5000)
+    const timer = setInterval(() => {
+      void loadClipboardCount()
+    }, 5000)
     return () => clearInterval(timer)
   }, [])
 
@@ -141,7 +138,9 @@ export function Sidebar(): JSX.Element {
     fetchSkills()
   }, [demoMode, fetchSkills])
 
-  const handleShortcutClick = async (shortcut: Skill | { name: string; command: string }): Promise<void> => {
+  const handleShortcutClick = async (
+    shortcut: Skill | { name: string; command: string }
+  ): Promise<void> => {
     const shortcutId = 'id' in shortcut ? shortcut.id : shortcut.name
     if (runningShortcutIds.current.has(shortcutId)) return
     runningShortcutIds.current.add(shortcutId)
@@ -247,7 +246,9 @@ export function Sidebar(): JSX.Element {
               type="button"
               onClick={() => void handleShortcutClick(shortcut)}
               disabled={runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)}
-              aria-busy={runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)}
+              aria-busy={runningShortcutIdsState.has(
+                'id' in shortcut ? shortcut.id : shortcut.name
+              )}
               className="sidebar-nav-item sidebar-nav-item--shortcut"
             >
               <span>
@@ -289,18 +290,25 @@ export function Sidebar(): JSX.Element {
                 value={shortcutCommand}
                 onChange={(e) => setShortcutCommand(e.target.value)}
               />
-              <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: '5px 10px' }}>
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{ fontSize: 11, padding: '5px 10px' }}
+              >
                 Save
               </button>
             </form>
           )}
         </div>
 
-        <NavList title="Activity" items={activityItems.map((item) =>
-          item.path === '/tools/clipboard' && clipboardCount > 0
-            ? { ...item, badge: clipboardCount }
-            : item
-        )} />
+        <NavList
+          title="Activity"
+          items={activityItems.map((item) =>
+            item.path === '/tools/clipboard' && clipboardCount > 0
+              ? { ...item, badge: clipboardCount }
+              : item
+          )}
+        />
       </div>
 
       <div className="sidebar-footer">
@@ -309,7 +317,9 @@ export function Sidebar(): JSX.Element {
             <div className="sidebar-user__avatar">{userName.charAt(0).toUpperCase()}</div>
             <div className="sidebar-user__meta">
               <span className="sidebar-user__name">{userName}</span>
-              <span className={`sidebar-user__tier sidebar-user__tier--${accountTier.toLowerCase()}`}>
+              <span
+                className={`sidebar-user__tier sidebar-user__tier--${accountTier.toLowerCase()}`}
+              >
                 {accountTier} account
               </span>
             </div>

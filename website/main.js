@@ -65,14 +65,18 @@ const revealObs = new IntersectionObserver(
 revealEls.forEach((el) => revealObs.observe(el))
 
 const header = document.getElementById('header')
-window.addEventListener('scroll', () => {
-  header?.classList.toggle('is-scrolled', window.scrollY > 12)
+window.addEventListener(
+  'scroll',
+  () => {
+    header?.classList.toggle('is-scrolled', window.scrollY > 12)
 
-  const showcase = document.querySelector('.showcase__wrap')
-  if (showcase && window.scrollY < window.innerHeight * 1.2) {
-    showcase.style.transform = `translateY(${Math.min(window.scrollY * 0.04, 24)}px)`
-  }
-}, { passive: true })
+    const showcase = document.querySelector('.showcase__wrap')
+    if (showcase && window.scrollY < window.innerHeight * 1.2) {
+      showcase.style.transform = `translateY(${Math.min(window.scrollY * 0.04, 24)}px)`
+    }
+  },
+  { passive: true }
+)
 
 document.querySelectorAll('a[href^="#"]').forEach((link) => {
   link.addEventListener('click', (e) => {

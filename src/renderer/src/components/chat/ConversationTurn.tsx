@@ -6,7 +6,12 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { StepList } from './StepList'
 import { ApprovalCard } from './ApprovalCard'
 import { AgentActivity } from './AgentActivity'
-import { formatAgentContent, formatUserContent, isLikelyErrorMessage, toPlainLanguage } from '../../utils/plainLanguage'
+import {
+  formatAgentContent,
+  formatUserContent,
+  isLikelyErrorMessage,
+  toPlainLanguage
+} from '../../utils/plainLanguage'
 
 interface ConversationTurnProps {
   user?: MessageType
@@ -40,8 +45,8 @@ export function ConversationTurn({
   const hitlWarning = hitlStep?.error?.includes('not configured')
     ? 'This service is not set up yet. Check Settings before approving.'
     : hitlStep?.tool === 'send_email' && !wsConnected
-    ? 'Email is not connected in Settings yet.'
-    : undefined
+      ? 'Email is not connected in Settings yet.'
+      : undefined
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -51,7 +56,9 @@ export function ConversationTurn({
       if (remaining <= 0) setExpired(true)
       else timer = setTimeout(() => setExpired(true), remaining)
     }
-    return () => { if (timer) clearTimeout(timer) }
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
   }, [agent?.reversible, agent?.undoState, agent?.timestamp])
 
   if (!user && !agent) return null
@@ -88,17 +95,15 @@ export function ConversationTurn({
           )}
 
           {bodyText && !isErrorReply && (
-            <div className={`chat-turn__body ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}>
+            <div
+              className={`chat-turn__body ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
+            >
               {bodyText}
-              {agent.isStreaming && (
-                <span className="chat-turn__cursor" aria-hidden="true" />
-              )}
+              {agent.isStreaming && <span className="chat-turn__cursor" aria-hidden="true" />}
             </div>
           )}
 
-          {agent.steps && agent.steps.length > 0 && (
-            <StepList steps={agent.steps} />
-          )}
+          {agent.steps && agent.steps.length > 0 && <StepList steps={agent.steps} />}
 
           {hitlStep && agent && (
             <ApprovalCard
@@ -119,7 +124,11 @@ export function ConversationTurn({
               ) : (
                 <>
                   <span className="chat-undo__muted">Need to reverse this?</span>
-                  <button type="button" className="btn-secondary" onClick={() => sendUndoCommand(agent.id)}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => sendUndoCommand(agent.id)}
+                  >
                     Undo last action
                   </button>
                 </>

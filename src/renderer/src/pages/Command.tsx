@@ -30,54 +30,57 @@ export function Command(): JSX.Element {
     }
   }, [wsConnected, demoMode])
 
-  const handleSend = useCallback((command: string): void => {
-    const currentStatus = useTorchStore.getState().agentStatus
-    if (currentStatus === 'processing' || currentStatus === 'executing') return
-    addMessage({
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: command,
-      timestamp: Date.now()
-    })
-    useTorchStore.getState().setAgentStatus('processing')
-
-    if (demoMode) {
-      handleDemoCommand(command)
-      return
-    }
-
-    if (wsConnected) {
-      sendCommand(command)
-    } else {
+  const handleSend = useCallback(
+    (command: string): void => {
+      const currentStatus = useTorchStore.getState().agentStatus
+      if (currentStatus === 'processing' || currentStatus === 'executing') return
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: command,
+        timestamp: Date.now()
+      })
       useTorchStore.getState().setAgentStatus('processing')
-      setTimeout(async () => {
-        const messageId = crypto.randomUUID()
-        const offlineText = formatAgentContent(
-          "TORCH isn't connected right now. Make sure the app is running, then try your request again."
-        )
-        useTorchStore.getState().addMessage({
-          id: messageId,
-          role: 'torch',
-          content: '',
-          timestamp: Date.now(),
-          isStreaming: true,
-          steps: [
-            {
-              id: '1',
-              label: 'Waiting for connection',
-              tool: 'system',
-              args: {},
-              status: 'failed',
-              requiresApproval: false,
-              error: 'Backend offline'
-            }
-          ]
-        })
-        await streamMessageContent(messageId, offlineText)
-        useTorchStore.getState().setAgentStatus('idle')
-      }, 500)
-    }
-  }, [addMessage, demoMode, sendCommand, wsConnected])
+
+      if (demoMode) {
+        handleDemoCommand(command)
+        return
+      }
+
+      if (wsConnected) {
+        sendCommand(command)
+      } else {
+        useTorchStore.getState().setAgentStatus('processing')
+        setTimeout(async () => {
+          const messageId = crypto.randomUUID()
+          const offlineText = formatAgentContent(
+            "TORCH isn't connected right now. Make sure the app is running, then try your request again."
+          )
+          useTorchStore.getState().addMessage({
+            id: messageId,
+            role: 'torch',
+            content: '',
+            timestamp: Date.now(),
+            isStreaming: true,
+            steps: [
+              {
+                id: '1',
+                label: 'Waiting for connection',
+                tool: 'system',
+                args: {},
+                status: 'failed',
+                requiresApproval: false,
+                error: 'Backend offline'
+              }
+            ]
+          })
+          await streamMessageContent(messageId, offlineText)
+          useTorchStore.getState().setAgentStatus('idle')
+        }, 500)
+      }
+    },
+    [addMessage, demoMode, sendCommand, wsConnected]
+  )
 
   useEffect(() => {
     if (location.state?.runCommand) {
@@ -119,7 +122,9 @@ export function Command(): JSX.Element {
       return
     }
     if (wsConnected) sendApproval(messageId, stepId, 'cancel')
-    useTorchStore.getState().updateStep(messageId, stepId, { status: 'failed', error: 'Cancelled by user' })
+    useTorchStore
+      .getState()
+      .updateStep(messageId, stepId, { status: 'failed', error: 'Cancelled by user' })
     useTorchStore.getState().setAgentStatus('idle')
   }
 
@@ -132,7 +137,9 @@ export function Command(): JSX.Element {
     <div className="cmd-page page-enter">
       {demoMode && (
         <div className="cmd-banner">
-          <span className="cmd-banner__text">Demo mode — add API key in Settings for live tasks</span>
+          <span className="cmd-banner__text">
+            Demo mode — add API key in Settings for live tasks
+          </span>
           <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
             Settings
           </button>

@@ -1,8 +1,20 @@
-import { IconTrendingUp as TrendingUp, IconTarget as Target, IconClock as Clock } from '../components/icons'
+import {
+  IconTrendingUp as TrendingUp,
+  IconTarget as Target,
+  IconClock as Clock
+} from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { useEffect, useState } from 'react'
 
-function AnimatedBar({ value, maxValue, delay }: { value: number; maxValue: number; delay: number }): JSX.Element {
+function AnimatedBar({
+  value,
+  maxValue,
+  delay
+}: {
+  value: number
+  maxValue: number
+  delay: number
+}): JSX.Element {
   const [width, setWidth] = useState(0)
   useEffect(() => {
     const timer = setTimeout(() => setWidth((value / maxValue) * 100), delay)
@@ -12,7 +24,11 @@ function AnimatedBar({ value, maxValue, delay }: { value: number; maxValue: numb
   return (
     <div
       className="h-full transition-all duration-700 ease-out"
-      style={{ width: `${width}%`, background: 'var(--color-torch-text)', opacity: 0.25 + (value / maxValue) * 0.55 }}
+      style={{
+        width: `${width}%`,
+        background: 'var(--color-torch-text)',
+        opacity: 0.25 + (value / maxValue) * 0.55
+      }}
     />
   )
 }
@@ -31,18 +47,48 @@ function GaugeRing({ value, label }: { value: number; label: string }): JSX.Elem
   return (
     <div className="flex flex-col items-center gap-3">
       <svg width="100" height="100" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r="40" fill="none" stroke="var(--color-torch-border)" strokeWidth="3" />
         <circle
-          cx="50" cy="50" r="40"
-          fill="none" stroke="var(--color-torch-text)" strokeWidth="3"
+          cx="50"
+          cy="50"
+          r="40"
+          fill="none"
+          stroke="var(--color-torch-border)"
+          strokeWidth="3"
+        />
+        <circle
+          cx="50"
+          cy="50"
+          r="40"
+          fill="none"
+          stroke="var(--color-torch-text)"
+          strokeWidth="3"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
           transform="rotate(-90 50 50)"
           style={{ transition: 'stroke-dashoffset 1s ease-out' }}
         />
-        <text x="50" y="47" textAnchor="middle" fill="var(--color-torch-text)" fontSize="18" fontWeight="500" fontFamily="Inter">{value}</text>
-        <text x="50" y="62" textAnchor="middle" fill="var(--color-torch-text-tertiary)" fontSize="8" fontFamily="JetBrains Mono">%</text>
+        <text
+          x="50"
+          y="47"
+          textAnchor="middle"
+          fill="var(--color-torch-text)"
+          fontSize="18"
+          fontWeight="500"
+          fontFamily="Inter"
+        >
+          {value}
+        </text>
+        <text
+          x="50"
+          y="62"
+          textAnchor="middle"
+          fill="var(--color-torch-text-tertiary)"
+          fontSize="8"
+          fontFamily="JetBrains Mono"
+        >
+          %
+        </text>
       </svg>
       <span className="t-mono-xs">{label}</span>
     </div>
@@ -116,7 +162,9 @@ export function Insights(): JSX.Element {
                 <div key={cat.label}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[11px] text-[var(--color-torch-text)]">{cat.label}</span>
-                    <span className="t-mono-xs">{Math.round((cat.count / totalCategory) * 100)}%</span>
+                    <span className="t-mono-xs">
+                      {Math.round((cat.count / totalCategory) * 100)}%
+                    </span>
                   </div>
                   <div className="progress-bar">
                     <div
@@ -138,7 +186,9 @@ export function Insights(): JSX.Element {
               <span className="t-label">Time saved this week</span>
             </div>
             <div className="flex items-baseline gap-2 mb-4">
-              <span className="text-[32px] font-medium tracking-[-1px] text-[var(--color-torch-text)]">4.2</span>
+              <span className="text-[32px] font-medium tracking-[-1px] text-[var(--color-torch-text)]">
+                4.2
+              </span>
               <span className="text-[14px] text-[var(--color-torch-text-tertiary)]">hours</span>
             </div>
             <div className="space-y-2">

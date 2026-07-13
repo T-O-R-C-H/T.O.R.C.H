@@ -199,7 +199,9 @@ async function checkBackendHealth(): Promise<void> {
   } catch (error) {
     backendFailedChecks += 1
     const message = error instanceof Error ? error.message : 'Unknown backend health check error'
-    console.error(`[TORCH] Backend health check failed (${backendFailedChecks}/${backendMaxFailedChecks}): ${message}`)
+    console.error(
+      `[TORCH] Backend health check failed (${backendFailedChecks}/${backendMaxFailedChecks}): ${message}`
+    )
 
     publishBackendHealth({
       status: 'unhealthy',
@@ -210,9 +212,12 @@ async function checkBackendHealth(): Promise<void> {
 
     if (backendFailedChecks >= backendMaxFailedChecks) {
       const startupGracePeriodMs = 60000 // 60s grace period for cold start
-      const isStillStarting = backendHealth.status === 'starting' && (Date.now() - backendStartTime < startupGracePeriodMs)
+      const isStillStarting =
+        backendHealth.status === 'starting' && Date.now() - backendStartTime < startupGracePeriodMs
       if (isStillStarting) {
-        console.log(`[TORCH] Backend is still starting (elapsed: ${Math.round((Date.now() - backendStartTime) / 1000)}s). Skipping restart.`)
+        console.log(
+          `[TORCH] Backend is still starting (elapsed: ${Math.round((Date.now() - backendStartTime) / 1000)}s). Skipping restart.`
+        )
       } else {
         console.log(`[TORCH] Max failed checks reached. Restarting backend...`)
         scheduleBackendRestart(message)

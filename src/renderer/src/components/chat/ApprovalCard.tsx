@@ -9,7 +9,13 @@ interface ApprovalCardProps {
   onCancel: () => void
 }
 
-export function ApprovalCard({ summary, warning, onApprove, onEdit, onCancel }: ApprovalCardProps): JSX.Element {
+export function ApprovalCard({
+  summary,
+  warning,
+  onApprove,
+  onEdit,
+  onCancel
+}: ApprovalCardProps): JSX.Element {
   const approvalSent = useRef(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -29,12 +35,15 @@ export function ApprovalCard({ summary, warning, onApprove, onEdit, onCancel }: 
 
       <div className="approval-card__body">{summary}</div>
 
-      {warning && (
-        <div className="approval-card__warn">⚠ {warning}</div>
-      )}
+      {warning && <div className="approval-card__warn">⚠ {warning}</div>}
 
       <div className="approval-card__actions">
-        <button type="button" className="btn-primary" onClick={handleApprove} disabled={isSubmitting}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={handleApprove}
+          disabled={isSubmitting}
+        >
           {isSubmitting ? 'Approving…' : 'Approve'}
         </button>
         <button type="button" className="btn-secondary" onClick={onEdit} disabled={isSubmitting}>

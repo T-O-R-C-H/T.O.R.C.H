@@ -6,8 +6,16 @@ export const SCENARIOS = {
     userCommand: 'Find and summarize my latest report',
     reply: "On it. I'll search your files and put together a short summary.",
     steps: [
-      { label: 'Looking for your file...', tool: 'find_file', result: 'Found Sales_Report_Q2.pdf in Documents' },
-      { label: 'Reading your document...', tool: 'read_pdf', result: '38 pages · revenue up 18% quarter over quarter' },
+      {
+        label: 'Looking for your file...',
+        tool: 'find_file',
+        result: 'Found Sales_Report_Q2.pdf in Documents'
+      },
+      {
+        label: 'Reading your document...',
+        tool: 'read_pdf',
+        result: '38 pages · revenue up 18% quarter over quarter'
+      },
       { label: 'Writing your summary', tool: 'gemini', result: 'Summary ready in Command Center' }
     ]
   },
@@ -18,16 +26,32 @@ export const SCENARIOS = {
     pickSuggestion: 0,
     steps: [
       { label: 'Looking for your file...', tool: 'find_file', result: 'Found 3 matching files' },
-      { label: 'Opening the most recent report', tool: 'read_pdf', result: 'Sales_Report_Q2.pdf opened' }
+      {
+        label: 'Opening the most recent report',
+        tool: 'read_pdf',
+        result: 'Sales_Report_Q2.pdf opened'
+      }
     ]
   },
   files: {
     userCommand: 'Pull the key numbers from my Q2 sales report',
     reply: 'Searching your Documents folder now.',
     steps: [
-      { label: 'Looking for your file...', tool: 'find_file', result: 'Found: Documents/Reports/Sales_Report_Q2.pdf' },
-      { label: 'Reading your spreadsheet...', tool: 'read_pdf', result: 'Revenue $4.2M · 23 new clients · churn 2.1%' },
-      { label: 'Highlighting the numbers you asked for', tool: 'gemini', result: 'Key metrics copied to your reply' }
+      {
+        label: 'Looking for your file...',
+        tool: 'find_file',
+        result: 'Found: Documents/Reports/Sales_Report_Q2.pdf'
+      },
+      {
+        label: 'Reading your spreadsheet...',
+        tool: 'read_pdf',
+        result: 'Revenue $4.2M · 23 new clients · churn 2.1%'
+      },
+      {
+        label: 'Highlighting the numbers you asked for',
+        tool: 'gemini',
+        result: 'Key metrics copied to your reply'
+      }
     ]
   },
   web: {
@@ -35,15 +59,23 @@ export const SCENARIOS = {
     reply: 'Searching the web and reading the latest articles for you.',
     steps: [
       { label: 'Opening your browser...', tool: 'open_browser', result: 'Browser ready' },
-      { label: 'Searching for today\'s AI news', tool: 'search_web', result: '10 results found' },
-      { label: 'Summarizing the top stories', tool: 'search_web', result: '3 headlines with short summaries' }
+      { label: "Searching for today's AI news", tool: 'search_web', result: '10 results found' },
+      {
+        label: 'Summarizing the top stories',
+        tool: 'search_web',
+        result: '3 headlines with short summaries'
+      }
     ]
   },
   email: {
     userCommand: 'Send a weekly update to my team',
     reply: "I've drafted the email. Review it below — nothing sends until you approve.",
     steps: [
-      { label: 'Drafting your email', tool: 'gemini', result: 'To: team@company.com · Subject: Weekly update' },
+      {
+        label: 'Drafting your email',
+        tool: 'gemini',
+        result: 'To: team@company.com · Subject: Weekly update'
+      },
       { label: 'Ready to send your email', tool: 'send_email', hitl: true }
     ]
   },
@@ -86,7 +118,10 @@ export class DemoRunner {
 
     do {
       const scenario = SCENARIOS[scenarioKey]
-      if (!scenario) { this.running = false; return }
+      if (!scenario) {
+        this.running = false
+        return
+      }
 
       this.app.fullReset()
       await delay(500)

@@ -61,24 +61,30 @@ export function AgentActivity({ status, startedAt, onTimeout }: AgentActivityPro
     const elapsed = startedAt ? Date.now() - startedAt : 0
 
     if (showOffline) {
-      const offlineTimer = setTimeout(() => {
+      const offlineTimer = setTimeout(
+        () => {
+          if (!firedRef.current) {
+            firedRef.current = true
+            setTimedOut(true)
+            onTimeout?.()
+          }
+        },
+        Math.max(OFFLINE_STOP_MS - elapsed, 0)
+      )
+      return () => clearTimeout(offlineTimer)
+    }
+
+    const slowTimer = setTimeout(() => setSlow(true), Math.max(SLOW_THRESHOLD_MS - elapsed, 0))
+    const timeoutTimer = setTimeout(
+      () => {
         if (!firedRef.current) {
           firedRef.current = true
           setTimedOut(true)
           onTimeout?.()
         }
-      }, Math.max(OFFLINE_STOP_MS - elapsed, 0))
-      return () => clearTimeout(offlineTimer)
-    }
-
-    const slowTimer = setTimeout(() => setSlow(true), Math.max(SLOW_THRESHOLD_MS - elapsed, 0))
-    const timeoutTimer = setTimeout(() => {
-      if (!firedRef.current) {
-        firedRef.current = true
-        setTimedOut(true)
-        onTimeout?.()
-      }
-    }, Math.max(TIMEOUT_MS - elapsed, 0))
+      },
+      Math.max(TIMEOUT_MS - elapsed, 0)
+    )
 
     return () => {
       clearTimeout(slowTimer)

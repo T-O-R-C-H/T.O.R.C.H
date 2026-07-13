@@ -14,8 +14,8 @@ export function Browser(): JSX.Element {
         <Globe2 size={32} className="text-[#1c1c1c] mb-4" />
         <h3 className="heading-md mb-2">Browser Control</h3>
         <p className="text-[11px] text-[#444] mb-6 text-center max-w-[400px]">
-          TORCH uses Playwright to automate browser actions — navigate, click, fill forms,
-          scrape content, and interact with any website
+          TORCH uses Playwright to automate browser actions — navigate, click, fill forms, scrape
+          content, and interact with any website
         </p>
         <div className="flex items-center gap-2 w-full max-w-[480px]">
           <div className="flex-1 relative">

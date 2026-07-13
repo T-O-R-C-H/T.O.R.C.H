@@ -100,12 +100,7 @@ function StepPanel({
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }): JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onChange}
-      aria-pressed={checked}
-      className="toggle-track"
-    >
+    <button type="button" onClick={onChange} aria-pressed={checked} className="toggle-track">
       <div className="toggle-knob" />
     </button>
   )
@@ -255,9 +250,7 @@ export function Onboarding(): JSX.Element {
                     className="ob-name-field__input"
                   />
                   <div className="ob-name-field__footer">
-                    <span className="ob-name-field__error">
-                      {nameError || '\u00A0'}
-                    </span>
+                    <span className="ob-name-field__error">{nameError || '\u00A0'}</span>
                     <span className="ob-name-field__hint">Max 50 chars</span>
                   </div>
                 </div>

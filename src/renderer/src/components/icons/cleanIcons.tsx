@@ -60,7 +60,15 @@ export function CmdMonitor({ size = 18, className, strokeWidth = 1.5 }: IconProp
 
 export function CmdArrowUp({ size = 18, className, strokeWidth = 1.75 }: IconProps): JSX.Element {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      className={className}
+    >
       <line x1="12" y1="19" x2="12" y2="5" />
       <polyline points="5 12 12 5 19 12" />
     </svg>

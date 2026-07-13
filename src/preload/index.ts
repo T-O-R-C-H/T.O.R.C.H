@@ -54,8 +54,9 @@ const torchAPI = {
     ipcRenderer.removeAllListeners('backend:status')
   },
 
-  getClipboardEntries: (): Promise<Array<{ id: string; text: string; timestamp: number; dateKey: string }>> =>
-    ipcRenderer.invoke('clipboard:list'),
+  getClipboardEntries: (): Promise<
+    Array<{ id: string; text: string; timestamp: number; dateKey: string }>
+  > => ipcRenderer.invoke('clipboard:list'),
   copyToClipboard: (text: string): void => ipcRenderer.send('clipboard:copy', text)
 }
 

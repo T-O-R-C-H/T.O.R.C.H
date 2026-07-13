@@ -6,7 +6,12 @@ import { streamMessageContent } from '../utils/streamContent'
 
 export function useWebSocket(): {
   sendCommand: (command: string) => void
-  sendApproval: (messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown) => boolean
+  sendApproval: (
+    messageId: string,
+    stepId: string,
+    action: 'approve' | 'edit' | 'cancel',
+    editedData?: unknown
+  ) => boolean
   reconnect: () => void
   sendStopCommand: () => void
   sendUndoCommand: (messageId: string) => void
@@ -120,7 +125,8 @@ export function useWebSocket(): {
         break
       }
       case 'overlay': {
-        if (data.status) store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
+        if (data.status)
+          store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
         if (data.reply) store.setOverlayReply(data.reply as string)
         break
       }
@@ -134,10 +140,16 @@ export function useWebSocket(): {
         break
       }
       case 'undo_result': {
-        const { messageId, status, reversed, failed } = data as { messageId: string; status: string; reversed: string[]; failed: string[] }
-        const resultText = status === 'success'
-          ? `Undone successfully: ${reversed.join(', ')}`
-          : `Partial undo: ${reversed.join(', ')}. Could not reverse: ${failed.join(', ')}`
+        const { messageId, status, reversed, failed } = data as {
+          messageId: string
+          status: string
+          reversed: string[]
+          failed: string[]
+        }
+        const resultText =
+          status === 'success'
+            ? `Undone successfully: ${reversed.join(', ')}`
+            : `Partial undo: ${reversed.join(', ')}. Could not reverse: ${failed.join(', ')}`
         store.updateMessage(messageId, {
           undoState: 'undone',
           undoResult: resultText
@@ -162,13 +174,23 @@ export function useWebSocket(): {
     }
   }, [])
 
-  const sendApproval = useCallback((messageId: string, stepId: string, action: 'approve' | 'edit' | 'cancel', editedData?: unknown): boolean => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'hitl_response', messageId, stepId, action, editedData }))
-      return true
-    }
-    return false
-  }, [])
+  const sendApproval = useCallback(
+    (
+      messageId: string,
+      stepId: string,
+      action: 'approve' | 'edit' | 'cancel',
+      editedData?: unknown
+    ): boolean => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: 'hitl_response', messageId, stepId, action, editedData })
+        )
+        return true
+      }
+      return false
+    },
+    []
+  )
 
   const sendStopCommand = useCallback((): void => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

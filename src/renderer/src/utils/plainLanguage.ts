@@ -23,13 +23,22 @@ export function toPlainLanguage(raw: string | undefined): string {
   if (lower.includes('cancelled by user')) {
     return 'You cancelled this action.'
   }
-  if (lower.includes('pyautogui') || lower.includes('screenshot failed') || lower.includes('mss:')) {
+  if (
+    lower.includes('pyautogui') ||
+    lower.includes('screenshot failed') ||
+    lower.includes('mss:')
+  ) {
     return "I couldn't capture your screen. Restart TORCH after setup, or run: pip install pyautogui mss in the backend folder."
   }
   if (lower.includes('step ') && lower.includes('failed after')) {
     return 'This step did not finish. Check the details below and try again.'
   }
-  if (lower.includes('traceback') || lower.includes('exception') || lower.includes('line ') || raw.length > 140) {
+  if (
+    lower.includes('traceback') ||
+    lower.includes('exception') ||
+    lower.includes('line ') ||
+    raw.length > 140
+  ) {
     return 'Something went wrong on this step. Try rephrasing your request.'
   }
 
@@ -71,6 +80,6 @@ export function isLikelyErrorMessage(text: string): boolean {
     lower.includes("couldn't") ||
     lower.includes('something went wrong') ||
     lower.includes("didn't go as planned") ||
-    lower.includes('step ') && lower.includes('attempts')
+    (lower.includes('step ') && lower.includes('attempts'))
   )
 }
