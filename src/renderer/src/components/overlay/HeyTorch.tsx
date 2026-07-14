@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { TorchOrb } from './TorchOrb'
 import { WaveStrip } from '../input/WaveStrip'
 import { useTorchStore } from '../../store/torchStore'
+import { useMemoryStore } from '../../store/memoryStore'
 
 export function HeyTorch(): JSX.Element {
   const overlayStatus = useTorchStore((s) => s.overlayStatus)
   const overlayReply = useTorchStore((s) => s.overlayReply)
   const setOverlayVisible = useTorchStore((s) => s.setOverlayVisible)
+  const activityLog = useMemoryStore((s) => s.activityLog)
   const [displayedReply, setDisplayedReply] = useState('')
   const typewriterRef = useRef<any>(undefined)
 
@@ -75,6 +77,13 @@ export function HeyTorch(): JSX.Element {
 
       {/* Status text */}
       <div className="mono-xs text-[#444] mt-4">{statusText}</div>
+
+      {/* Background context indicator - show during listening/processing */}
+      {(overlayStatus === 'listening' || overlayStatus === 'processing') && activityLog.length > 0 && (
+        <div className="mt-3 w-full text-[10px] text-[#333] border-t border-[#1c1c1c] pt-2">
+          <div className="truncate text-[#555]">context: {activityLog[activityLog.length - 1]?.app || 'unknown'}</div>
+        </div>
+      )}
 
       {/* Reply area */}
       {overlayStatus === 'speaking' && displayedReply && (
