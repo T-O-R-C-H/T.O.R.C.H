@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from './AgentActivity'
 import { useTorchStore } from '../../store/torchStore'
@@ -73,6 +73,14 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { sendStopCommand } = useWebSocket()
+  
+  const [startingUp, setStartingUp] = useState(true)
+
+  useEffect(() => {
+    if (wsConnected || demoMode) {
+      setStartingUp(false)
+    }
+  }, [wsConnected, demoMode])
 
   const turns = buildChatTurns(messages)
   const lastTurn = turns[turns.length - 1]
@@ -113,6 +121,25 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   }, [messages, agentStatus])
 
   if (messages.length === 0) {
+    if (startingUp && !demoMode) {
+      return (
+        <div className="cmd-idle">
+          <div className="cmd-idle__header flex flex-col items-center justify-center">
+            <TorchWordmark size="sm" />
+            <p className="cmd-idle__title mt-4">Starting TORCH…</p>
+            <p className="cmd-idle__subtitle mt-2">
+              Waking up the local agent server. This takes a few seconds.
+            </p>
+            <div className="flex gap-1.5 mt-8">
+              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)' }} />
+              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)', animationDelay: '0.12s' }} />
+              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)', animationDelay: '0.24s' }} />
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">

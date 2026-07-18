@@ -48,6 +48,7 @@ export interface MemoryState {
 
   history: HistoryEntry[]
   addHistory: (entry: HistoryEntry) => void
+  setHistory: (history: HistoryEntry[]) => void
   clearHistory: () => void
 
   frequentCommands: { command: string; count: number }[]
@@ -73,6 +74,7 @@ export const useMemoryStore = create<MemoryState>((set) => ({
 
   history: [],
   addHistory: (entry): void => set((state) => ({ history: [entry, ...state.history] })),
+  setHistory: (history): void => set({ history }),
   clearHistory: (): void => set({ history: [] }),
 
   frequentCommands: [],
