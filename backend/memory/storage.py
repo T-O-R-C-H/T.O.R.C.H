@@ -182,6 +182,13 @@ class TorchDatabase:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_frequent_files(self, limit: int = 10) -> List[Dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT filepath as path, access_count as count FROM files_accessed ORDER BY access_count DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ─── Metrics ───
 
     def get_stats_for_date(self, date_prefix: str) -> Dict[str, Any]:

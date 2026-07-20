@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   IconCheck as Check,
   IconX as X,
@@ -6,6 +6,8 @@ import {
   IconChevronUp as ChevronUp
 } from '../components/icons'
 import { useMemoryStore, type HistoryEntry } from '../store/memoryStore'
+import { useTorchStore } from '../store/torchStore'
+import { API_BASE } from '../config/api'
 
 const demoHistory: HistoryEntry[] = [
   {
@@ -54,9 +56,61 @@ const demoHistory: HistoryEntry[] = [
 
 export function History(): JSX.Element {
   const history = useMemoryStore((s) => s.history)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const setHistory = useMemoryStore((s) => s.setHistory)
+  const clearHistory = useMemoryStore((s) => s.clearHistory)
+  const demoMode = useTorchStore((s) => s.demoMode)
 
-  const entries = history.length > 0 ? history : demoHistory
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (demoMode) {
+      return
+    }
+
+    let active = true
+    const fetchHistory = async (): Promise<void> => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`${API_BASE}/api/history`)
+        if (!res.ok) throw new Error('Failed to fetch history')
+        const data = await res.json()
+        if (active) setHistory(data)
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Error loading history')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    void fetchHistory()
+    return () => {
+      active = false
+    }
+  }, [demoMode, setHistory])
+
+  const handleClearAll = async (): Promise<void> => {
+    if (demoMode) {
+      clearHistory()
+      return
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/history`, { method: 'DELETE' })
+      if (res.ok) {
+        clearHistory()
+      } else {
+        alert('Failed to clear history on server')
+      }
+    } catch (err) {
+      console.error('Error clearing history:', err)
+      alert('Error clearing history')
+    }
+  }
+
+  const entries = demoMode ? demoHistory : history
 
   const statusBadge = (status: string): JSX.Element => {
     if (status === 'completed')
@@ -88,13 +142,36 @@ export function History(): JSX.Element {
           <span className="pill-count">{entries.length} entries</span>
           <button
             type="button"
-            onClick={() => useMemoryStore.getState().clearHistory()}
+            onClick={() => void handleClearAll()}
             className="btn-secondary text-[10px] px-4 py-1.5"
+            disabled={loading || entries.length === 0}
           >
             Clear all
           </button>
         </div>
-        {entries.map((entry) => (
+
+        {loading && (
+          <div className="flex items-center justify-center p-12 text-sm text-[var(--color-torch-text-secondary)]">
+            Loading history...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="flex items-center justify-center p-12 text-sm text-[var(--color-torch-error)]">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && entries.length === 0 && (
+          <div className="flex flex-col items-center justify-center text-center p-12">
+            <p className="text-sm text-[var(--color-torch-text-secondary)] mb-2">No history yet</p>
+            <p className="text-xs text-[var(--color-torch-text-tertiary)]">
+              Run a task in the Command Center to see it here.
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && entries.map((entry) => (
           <div key={entry.id}>
             <button
               type="button"

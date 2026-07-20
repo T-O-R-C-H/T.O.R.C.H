@@ -305,6 +305,71 @@ async def update_settings(data: dict):
     return {"status": "updated"}
 
 
+@app.get("/api/history")
+async def get_history():
+    """Get task execution history for the UI."""
+    from memory.storage import db
+    tasks = db.get_tasks(50)
+    history_entries = []
+    for task in tasks:
+        try:
+            steps = json.loads(task["steps_json"]) if task["steps_json"] else []
+        except Exception:
+            steps = []
+        
+        status = task["status"]
+        if status not in ("completed", "failed", "cancelled"):
+            status = "completed"
+            
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(task["created_at"])
+            timestamp = int(dt.timestamp() * 1000)
+        except Exception:
+            timestamp = int(__import__("time").time() * 1000)
+            
+        history_entries.append({
+            "id": task["id"],
+            "command": task["command"],
+            "timestamp": timestamp,
+            "status": status,
+            "stepsCount": len(steps),
+            "duration": int(task["duration_ms"] / 1000) if task["duration_ms"] else 0,
+            "steps": [{"label": s.get("label", s.get("tool", "step")), "status": s.get("status", "done")} for s in steps]
+        })
+    return history_entries
+
+
+@app.delete("/api/history")
+async def delete_history():
+    """Clear all task and step records from database."""
+    from memory.storage import db
+    with db._connect() as conn:
+        conn.execute("DELETE FROM tasks")
+        conn.execute("DELETE FROM steps")
+    return {"ok": True}
+
+
+@app.get("/api/memory")
+async def get_memory():
+    """Get aggregated frequent commands, contacts, files, and habits."""
+    from memory.storage import db
+    from memory.habits import detect_time_patterns
+    
+    habits_list = []
+    for i, p in enumerate(detect_time_patterns()):
+        p["id"] = f"habit-{i}"
+        p["lastOccurrence"] = int(__import__("time").time() * 1000)
+        habits_list.append(p)
+        
+    return {
+        "frequent_commands": db.get_frequent_commands(10),
+        "frequent_contacts": db.get_frequent_contacts(10),
+        "frequent_files": db.get_frequent_files(10),
+        "habits": habits_list,
+    }
+
+
 @app.get("/api/skills")
 async def api_get_skills():
     """Get all saved skills ordered by run_count DESC."""

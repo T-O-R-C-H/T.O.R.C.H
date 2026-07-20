@@ -18,7 +18,7 @@ export function useWebSocket(): {
 } {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<any>(undefined)
-  const { setWsConnected, addTerminalLine } = useTorchStore.getState()
+  const { setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine } = useTorchStore.getState()
 
   const connect = useCallback(() => {
     // Skip WebSocket connection in demo mode
@@ -26,11 +26,14 @@ export function useWebSocket(): {
       return
     }
     try {
+      setWsPhase('connecting')
       const ws = new WebSocket(WS_URL)
       wsRef.current = ws
 
       ws.onopen = (): void => {
         setWsConnected(true)
+        setWsPhase('connected')
+        setHasConnectedOnce(true)
         addTerminalLine({
           id: crypto.randomUUID(),
           timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
@@ -41,6 +44,7 @@ export function useWebSocket(): {
 
       ws.onclose = (): void => {
         setWsConnected(false)
+        setWsPhase('disconnected')
         if (!useTorchStore.getState().demoMode) {
           reconnectTimer.current = setTimeout(connect, 3000)
         }
@@ -48,6 +52,7 @@ export function useWebSocket(): {
 
       ws.onerror = (): void => {
         setWsConnected(false)
+        setWsPhase('disconnected')
       }
 
       ws.onmessage = (event): void => {
@@ -59,11 +64,12 @@ export function useWebSocket(): {
         }
       }
     } catch {
+      setWsPhase('disconnected')
       if (!useTorchStore.getState().demoMode) {
         reconnectTimer.current = setTimeout(connect, 3000)
       }
     }
-  }, [])
+  }, [setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine])
 
   const handleMessage = useCallback((data: Record<string, unknown>): void => {
     const store = useTorchStore.getState()

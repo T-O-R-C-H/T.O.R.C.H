@@ -37,7 +37,7 @@ export function ConversationTurn({
   onCancel
 }: ConversationTurnProps): JSX.Element | null {
   const wsConnected = useTorchStore((s) => s.wsConnected)
-  const { sendUndoCommand } = useWebSocket()
+  const { sendUndoCommand, sendStopCommand } = useWebSocket()
   const [expired, setExpired] = useState(false)
 
   const hitlStep = agent?.steps?.find((s) => s.status === 'hitl_required')
@@ -82,6 +82,7 @@ export function ConversationTurn({
           status={activityStatus}
           startedAt={activityStartedAt}
           onTimeout={onActivityTimeout}
+          onStop={sendStopCommand}
         />
       )}
 

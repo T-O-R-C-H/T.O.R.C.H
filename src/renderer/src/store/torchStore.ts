@@ -103,6 +103,10 @@ export interface TorchState {
   // WebSocket
   wsConnected: boolean
   setWsConnected: (connected: boolean) => void
+  wsPhase: 'disconnected' | 'connecting' | 'connected'
+  setWsPhase: (phase: 'disconnected' | 'connecting' | 'connected') => void
+  hasConnectedOnce: boolean
+  setHasConnectedOnce: (val: boolean) => void
 
   // Onboarding
   onboardingComplete: boolean
@@ -203,6 +207,10 @@ export const useTorchStore = create<TorchState>((set) => ({
   // WebSocket
   wsConnected: false,
   setWsConnected: (connected): void => set({ wsConnected: connected }),
+  wsPhase: 'disconnected',
+  setWsPhase: (phase): void => set({ wsPhase: phase }),
+  hasConnectedOnce: false,
+  setHasConnectedOnce: (val): void => set({ hasConnectedOnce: val }),
 
   // Onboarding
   onboardingComplete: localStorage.getItem('torch_onboarding_complete') === 'true',

@@ -2014,6 +2014,22 @@
   animation-delay: 0.24s;
 }
 
+.chat-turn__activity--warn .typing-square {
+  background: var(--color-torch-error) !important;
+}
+
+.chat-turn__activity--slow .typing-square {
+  background: var(--color-torch-warning) !important;
+}
+
+.chat-turn__activity--warn {
+  color: var(--color-torch-error) !important;
+}
+
+.chat-turn__activity--slow {
+  color: var(--color-torch-warning) !important;
+}
+
 @keyframes bounce-square {
   0%,
   100% {

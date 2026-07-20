@@ -32,6 +32,10 @@ import { Skills } from './pages/Skills'
 
 import { Clipboard } from './pages/Clipboard'
 
+import { Inbox } from './pages/Inbox'
+
+import { FollowUps } from './pages/FollowUps'
+
 import { WebSearch } from './pages/tools/WebSearch'
 
 import { Files } from './pages/tools/Files'
@@ -71,6 +75,10 @@ function AppLayout(): JSX.Element {
             <Route path="/history" element={<History />} />
 
             <Route path="/memory" element={<Memory />} />
+
+            <Route path="/inbox" element={<Inbox />} />
+
+            <Route path="/follow-ups" element={<FollowUps />} />
 
             <Route path="/insights" element={<Insights />} />
 
