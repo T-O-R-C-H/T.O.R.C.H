@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from './AgentActivity'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchWordmark } from '../ui/TorchWordmark'
+import { TorchLogo } from '../ui/TorchLogo'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -125,15 +125,15 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header flex flex-col items-center justify-center">
-            <TorchWordmark size="sm" />
+            <TorchLogo size={36} />
             <p className="cmd-idle__title mt-4">Starting TORCH…</p>
             <p className="cmd-idle__subtitle mt-2">
               Waking up the local agent server. This takes a few seconds.
             </p>
             <div className="flex gap-1.5 mt-8">
-              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)' }} />
-              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)', animationDelay: '0.12s' }} />
-              <span className="typing-square animate-pulse" style={{ background: 'var(--color-torch-text-secondary)', animationDelay: '0.24s' }} />
+              <span className="typing-square animate-pulse" />
+              <span className="typing-square animate-pulse" style={{ animationDelay: '0.12s' }} />
+              <span className="typing-square animate-pulse" style={{ animationDelay: '0.24s' }} />
             </div>
           </div>
         </div>
@@ -143,7 +143,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchWordmark size="sm" />
+          <TorchLogo size={36} />
           <p className="cmd-idle__title">Command Center</p>
           <p className="cmd-idle__subtitle">
             Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
-import { TorchWordmark } from '../components/ui/TorchWordmark'
+import { TorchLogo } from '../components/ui/TorchLogo'
 
 const quickActions = [
   { label: 'Find a file', command: 'Find my latest report in Documents' },
@@ -25,7 +25,7 @@ export function Today(): JSX.Element {
     <div className="page-shell page-enter">
       <div className="page-shell__body today-page">
         <div className="today-hero">
-          <TorchWordmark size="sm" />
+          <TorchLogo size={36} />
           <h1 className="today-hero__title">
             {greeting}, {userName}
           </h1>

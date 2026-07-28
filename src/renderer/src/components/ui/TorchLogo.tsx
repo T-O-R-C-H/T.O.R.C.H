@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import logoSrc from '@resources/logo.png'
 
 interface TorchLogoProps {
   className?: string
@@ -7,26 +7,10 @@ interface TorchLogoProps {
 }
 
 export function TorchLogo({ className, style, size = 32 }: TorchLogoProps): JSX.Element {
-  // Simple theme detection for now.
-  // In a real app this would hook into a ThemeProvider context.
-  const [isDark, setIsDark] = useState(true)
-
-  useEffect(() => {
-    // Check if body has light theme class or if system is light
-    const isLight =
-      document.documentElement.classList.contains('light') ||
-      document.body.classList.contains('light')
-    setIsDark(!isLight)
-  }, [])
-
-  const src = isDark
-    ? new URL('../../assets/TorchLogoWhite.png', import.meta.url).href
-    : new URL('../../assets/TorchLogoBlack.png', import.meta.url).href
-
   return (
     <img
-      src={src}
-      alt="TORCH Logo"
+      src={logoSrc}
+      alt="TORCH"
       className={className}
       style={{
         height: `${size}px`,

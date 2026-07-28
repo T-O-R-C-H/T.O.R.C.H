@@ -6,6 +6,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { StepList } from './StepList'
 import { ApprovalCard } from './ApprovalCard'
 import { AgentActivity } from './AgentActivity'
+import { LinkifiedText } from './LinkifiedText'
 import {
   formatAgentContent,
   formatUserContent,
@@ -99,7 +100,7 @@ export function ConversationTurn({
             <div
               className={`chat-turn__body ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
             >
-              {bodyText}
+              <LinkifiedText text={bodyText} />
               {agent.isStreaming && <span className="chat-turn__cursor" aria-hidden="true" />}
             </div>
           )}

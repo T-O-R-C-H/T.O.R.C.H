@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { useTorchStore, type Skill } from '../../store/torchStore'
 import { API_BASE } from '../../config/api'
-import { TorchWordmark } from '../ui/TorchWordmark'
+import { TorchLogo } from '../ui/TorchLogo'
 import { runShortcut } from '../../utils/runShortcut'
 import {
   IconMessage,
@@ -238,7 +238,7 @@ export function Sidebar(): JSX.Element {
     <aside className="sidebar">
       <div className="sidebar-header drag-region">
         <div className="no-drag">
-          <TorchWordmark size="sm" className="torch-wordmark--sidebar" />
+          <TorchLogo size={28} />
         </div>
       </div>
 

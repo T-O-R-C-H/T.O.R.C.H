@@ -19,6 +19,12 @@
   --color-torch-text-ghost: #d4d4d8;
   --color-torch-accent: #262626;
   --color-torch-accent-fg: #fafafa;
+  --color-torch-blue: #60a5fa;
+  --color-torch-blue-dark: #3b82f6;
+  --color-torch-blue-light: #eff6ff;
+  --color-torch-blue-muted: #93c5fd;
+  --color-torch-link: #c15f3c;
+  --color-torch-link-hover: #a04e30;
   --color-torch-success: #16a34a;
   --color-torch-error: #dc2626;
   --color-torch-warning: #ca8a04;
@@ -687,6 +693,7 @@
   align-items: center;
   justify-content: center;
   padding: 32px 24px 140px;
+  background: linear-gradient(180deg, var(--color-torch-blue-light) 0%, var(--color-torch-bg) 40%);
 }
 
 .cmd-idle__header {
@@ -835,20 +842,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-torch-accent);
-  color: var(--color-torch-accent-fg);
+  background: var(--color-torch-blue);
+  color: #ffffff;
   border: none;
   border-radius: var(--radius-torch-sm);
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 150ms ease;
+  transition: background 150ms ease, opacity 150ms ease;
 }
 
 .cmd-input-send:hover:not(:disabled) {
-  opacity: 0.85;
+  background: var(--color-torch-blue-dark);
 }
 .cmd-input-send:disabled {
   background: var(--color-torch-border);
+  color: var(--color-torch-text-tertiary);
   cursor: not-allowed;
 }
 
@@ -879,6 +887,20 @@
   color: var(--color-torch-text);
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.chat-link {
+  color: var(--color-torch-link);
+  text-decoration: underline;
+  text-decoration-color: rgba(193, 95, 60, 0.35);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.chat-link:hover {
+  color: var(--color-torch-link-hover);
+  text-decoration-color: var(--color-torch-link-hover);
 }
 
 .chat-turn__body--streaming {
@@ -2003,7 +2025,7 @@
 .typing-square {
   width: 4px;
   height: 4px;
-  background: var(--color-torch-text-tertiary);
+  background: var(--color-torch-blue-muted);
   border-radius: 1px;
   animation: bounce-square 0.6s infinite ease-in-out;
 }

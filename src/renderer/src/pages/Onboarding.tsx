@@ -7,7 +7,7 @@ import {
   ObMonitor as AppIcon,
   ObPointer
 } from '../components/icons/cleanIcons'
-import { TorchWordmark } from '../components/ui/TorchWordmark'
+import { TorchLogo } from '../components/ui/TorchLogo'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
 
@@ -201,7 +201,7 @@ export function Onboarding(): JSX.Element {
         <AnimatePresence mode="wait" custom={direction}>
           {currentStep === 'welcome' && (
             <StepPanel stepKey="welcome" direction={direction}>
-              <TorchWordmark size="lg" />
+              <TorchLogo size={48} />
               <p className="ob-acronym">Thinking · Observing · Reasoning · Creating · Handling</p>
               <p className="ob-lead">
                 A desktop AI agent that automates everyday work — files, apps, and email — from one
@@ -229,7 +229,7 @@ export function Onboarding(): JSX.Element {
 
           {currentStep === 'name' && (
             <StepPanel stepKey="name" direction={direction}>
-              <TorchWordmark size="sm" />
+              <TorchLogo size={36} />
               <h2 className="ob-title">What should we call you?</h2>
               <p className="ob-lead">
                 Used in replies and status updates. Stored locally on this device only.
