@@ -1,6 +1,15 @@
-import { app, clipboard } from 'electron'
+import { app, clipboard, BrowserWindow } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { classifyClipboard } from './contextService'
+
 import { join } from 'path'
+
+export interface ClipboardChangeEvent {
+  id: string
+  text: string
+  timestamp: number
+  kind: 'code' | 'url' | 'email' | 'text'
+}
 
 export interface ClipboardEntry {
   id: string
@@ -43,6 +52,15 @@ function pruneOldDays(): void {
   entries = entries.filter((e) => e.dateKey === cutoff)
 }
 
+function emitClipboardChange(changeEvent: ClipboardChangeEvent): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    const url = window.webContents.getURL()
+    if (url.includes('/overlay') || url.includes('#/overlay')) {
+      window.webContents.send('clipboard:changed', changeEvent)
+    }
+  }
+}
+
 function addEntry(text: string): ClipboardEntry | null {
   const trimmed = text.trim()
   if (!trimmed || trimmed === lastText) return null
@@ -58,6 +76,15 @@ function addEntry(text: string): ClipboardEntry | null {
   entries.unshift(entry)
   entries = entries.slice(0, MAX_ENTRIES)
   saveStore()
+
+  const changeEvent: ClipboardChangeEvent = {
+    id: entry.id,
+    text: trimmed,
+    timestamp: entry.timestamp,
+    kind: classifyClipboard(trimmed)
+  }
+  emitClipboardChange(changeEvent)
+
   return entry
 }
 

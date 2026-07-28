@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, clipboard } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
@@ -9,6 +9,8 @@ import {
   getClipboardEntries,
   copyToClipboard
 } from './clipboardManager'
+import { getDesktopContext } from './contextService'
+import { loadOverlayPosition, saveOverlayPosition } from './overlayPosition'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -257,6 +259,47 @@ function scheduleBackendRestart(reason: string): void {
   }, backendRestartDelayMs)
 }
 
+let overlaySaveTimer: NodeJS.Timeout | null = null
+
+function getProjectRoot(): string {
+  return is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
+}
+
+function showFloatingOverlay(): void {
+  if (!overlayWindow) return
+  overlayWindow.showInactive()
+  overlayWindow.webContents.send('overlay:activate')
+}
+
+function hideFloatingOverlay(): void {
+  overlayWindow?.hide()
+}
+
+function positionOverlayBottomRight(): void {
+  if (!overlayWindow) return
+
+  const saved = loadOverlayPosition()
+  if (saved) {
+    overlayWindow.setPosition(saved.x, saved.y)
+    return
+  }
+
+  const display = screen.getPrimaryDisplay()
+  const { width: screenWidth, height: screenHeight } = display.workAreaSize
+  const [width, height] = overlayWindow.getSize()
+  overlayWindow.setPosition(Math.round(screenWidth - width - 24), Math.round(screenHeight - height - 24))
+}
+
+function scheduleOverlayPositionSave(): void {
+  if (!overlayWindow) return
+  if (overlaySaveTimer) clearTimeout(overlaySaveTimer)
+  overlaySaveTimer = setTimeout(() => {
+    if (!overlayWindow) return
+    const [x, y] = overlayWindow.getPosition()
+    saveOverlayPosition({ x, y })
+  }, 300)
+}
+
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -298,6 +341,18 @@ function createMainWindow(): void {
     mainWindow?.hide()
   })
 
+  mainWindow.on('hide', () => {
+    showFloatingOverlay()
+  })
+
+  mainWindow.on('minimize', () => {
+    mainWindow?.hide()
+  })
+
+  mainWindow.on('show', () => {
+    hideFloatingOverlay()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -312,14 +367,9 @@ function createMainWindow(): void {
 }
 
 function createOverlayWindow(): void {
-  const display = screen.getPrimaryDisplay()
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize
-
   overlayWindow = new BrowserWindow({
-    width: 400,
-    height: 320,
-    x: Math.round((screenWidth - 400) / 2),
-    y: screenHeight - 400,
+    width: 380,
+    height: 520,
     show: false,
     frame: false,
     transparent: true,
@@ -327,6 +377,7 @@ function createOverlayWindow(): void {
     skipTaskbar: true,
     resizable: false,
     focusable: true,
+    hasShadow: true,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -335,6 +386,12 @@ function createOverlayWindow(): void {
       nodeIntegration: false,
       zoomFactor: 1.0
     }
+  })
+
+  positionOverlayBottomRight()
+
+  overlayWindow.on('moved', () => {
+    scheduleOverlayPositionSave()
   })
 
   overlayWindow.webContents.on('did-finish-load', () => {
@@ -350,12 +407,14 @@ function createOverlayWindow(): void {
 }
 
 function createTray(): void {
-  // Create a simple torch icon using nativeImage
-  const trayIcon = nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADASURBVDiNrZMxDsIwDEV/nBbBzMIFOAYrhytxCMTOwsIROAALEmJhYGBgQKK0cUJSNYD0pci2/v+OYwf+rAqAA3YPuAb2f+EPwAloNYOl8BNQA8fAQ3bRA3f/8FcChsAVcA5sA0tAr4BzYJd0aaBF5hNgGxqBNjYOTTfGnACXwCawAKyEpv3QgLHqy8BFZjkH7IUmjbEjDQiwAqwDi0AfeHnifTzYNpKcA3thZpENwE02d8AhMKLyrE/Af8UL9jdPB+7ZF0YAAAAASUVORK5CYII='
-  )
+  const logoPath = join(getProjectRoot(), 'resources', 'logo.png')
+  const trayIcon = existsSync(logoPath)
+    ? nativeImage.createFromPath(logoPath)
+    : nativeImage.createFromDataURL(
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAbwAAAG8B8aLcQwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAADASURBVDiNrZMxDsIwDEV/nBbBzMIFOAYrhytxCMTOwsIROAALEmJhYGBgQKK0cUJSNYD0pci2/v+OYwf+rAqAA3YPuAb2f+EPwAloNYOl8BNQA8fAQ3bRA3f/8FcChsAVcA5sA0tAr4BzYJd0aaBF5hNgGxqBNjYOTTfGnACXwCawAKyEpv3QgLHqy8BFZjkH7IUmjbEjDQiwAqwDi0AfeHnifTzYNpKcA3thZpENwE02d8AhMKLyrE/Af8UL9jdPB+7ZF0YAAAAASUVORK5CYII='
+      )
 
-  tray = new Tray(trayIcon.resize({ width: 16, height: 16 }))
+  tray = new Tray(trayIcon.resize({ width: 18, height: 18 }))
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -368,8 +427,7 @@ function createTray(): void {
     {
       label: 'Hey TORCH',
       click: (): void => {
-        overlayWindow?.show()
-        overlayWindow?.webContents.send('overlay:activate')
+        showFloatingOverlay()
       }
     },
     { type: 'separator' },
@@ -401,6 +459,7 @@ function createTray(): void {
     } else {
       mainWindow?.show()
       mainWindow?.focus()
+      hideFloatingOverlay()
     }
   })
 }
@@ -429,11 +488,20 @@ app.whenReady().then(() => {
 
   // Overlay controls
   ipcMain.on('overlay:show', () => {
-    overlayWindow?.show()
-    overlayWindow?.webContents.send('overlay:activate')
+    showFloatingOverlay()
   })
   ipcMain.on('overlay:hide', () => {
-    overlayWindow?.hide()
+    hideFloatingOverlay()
+  })
+  ipcMain.on('overlay:openMain', () => {
+    mainWindow?.show()
+    mainWindow?.focus()
+    hideFloatingOverlay()
+  })
+
+  ipcMain.handle('context:getDesktop', () => {
+    const clipboardText = clipboard.readText() || ''
+    return getDesktopContext(clipboardText)
   })
 
   // Open external links

@@ -1,10 +1,11 @@
 import { HashRouter, Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
 
 import { Sidebar } from './components/layout/Sidebar'
 
 import { Topbar } from './components/layout/Topbar'
 
-import { HeyTorch } from './components/overlay/HeyTorch'
+import { FloatingOverlay } from './components/overlay/FloatingOverlay'
 
 import { useTorchStore } from './store/torchStore'
 
@@ -45,9 +46,18 @@ import { Messaging } from './pages/tools/Messaging'
 import { Browser } from './pages/tools/Browser'
 
 function OverlayRoute(): JSX.Element {
+  useEffect(() => {
+    document.body.style.background = 'transparent'
+    document.documentElement.style.background = 'transparent'
+    return (): void => {
+      document.body.style.background = ''
+      document.documentElement.style.background = ''
+    }
+  }, [])
+
   return (
-    <div className="w-full h-full flex items-end justify-center pb-10 bg-transparent">
-      <HeyTorch />
+    <div className="overlay-shell">
+      <FloatingOverlay />
     </div>
   )
 }

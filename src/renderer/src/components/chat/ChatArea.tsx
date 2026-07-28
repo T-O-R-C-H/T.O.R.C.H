@@ -124,8 +124,10 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     if (startingUp && !demoMode) {
       return (
         <div className="cmd-idle">
-          <div className="cmd-idle__header flex flex-col items-center justify-center">
-            <TorchLogo size={36} />
+          <div className="cmd-idle__header">
+            <div className="cmd-idle__logo">
+              <TorchLogo width={180} />
+            </div>
             <p className="cmd-idle__title mt-4">Starting TORCH…</p>
             <p className="cmd-idle__subtitle mt-2">
               Waking up the local agent server. This takes a few seconds.
@@ -143,7 +145,9 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchLogo size={36} />
+          <div className="cmd-idle__logo">
+            <TorchLogo width={180} />
+          </div>
           <p className="cmd-idle__title">Command Center</p>
           <p className="cmd-idle__subtitle">
             Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.

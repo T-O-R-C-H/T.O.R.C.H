@@ -14,13 +14,32 @@ interface TorchAPI {
   closeWindow: () => void
   showOverlay: () => void
   hideOverlay: () => void
+  openMainWindow: () => void
   openExternal: (url: string) => void
+  getDesktopContext: () => Promise<{
+    windowTitle: string
+    appName: string
+    clipboardText: string
+    focusLabel?: string
+  }>
   getBackendHealth: () => Promise<BackendHealth>
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void) => void
   onBackendStatus: (callback: (status: 'online' | 'offline') => void) => void
   onOverlayActivate: (callback: () => void) => void
+  onClipboardChanged: (
+    callback: (
+      _e: unknown,
+      change: {
+        id: string
+        text: string
+        timestamp: number
+        kind: 'code' | 'url' | 'email' | 'text'
+      }
+    ) => void
+  ) => void
   onScreenWatchToggle: (callback: (_e: unknown, enabled: boolean) => void) => void
   removeOverlayActivate: () => void
+  removeClipboardChanged: () => void
   removeScreenWatchToggle: () => void
   removeBackendHealth: () => void
   removeBackendStatus: () => void

@@ -9,6 +9,20 @@ type BackendHealth = {
   error?: string
 }
 
+type DesktopContext = {
+  windowTitle: string
+  appName: string
+  clipboardText: string
+  focusLabel?: string
+}
+
+type ClipboardChangeEvent = {
+  id: string
+  text: string
+  timestamp: number
+  kind: 'code' | 'url' | 'email' | 'text'
+}
+
 // TORCH API exposed to renderer
 const torchAPI = {
   // Window controls
@@ -19,9 +33,13 @@ const torchAPI = {
   // Overlay controls
   showOverlay: (): void => ipcRenderer.send('overlay:show'),
   hideOverlay: (): void => ipcRenderer.send('overlay:hide'),
+  openMainWindow: (): void => ipcRenderer.send('overlay:openMain'),
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
+
+  // Desktop context
+  getDesktopContext: (): Promise<DesktopContext> => ipcRenderer.invoke('context:getDesktop'),
 
   // Backend health
   getBackendHealth: (): Promise<BackendHealth> => ipcRenderer.invoke('backend:getHealth'),
@@ -36,6 +54,9 @@ const torchAPI = {
   onOverlayActivate: (callback: () => void): void => {
     ipcRenderer.on('overlay:activate', callback)
   },
+  onClipboardChanged: (callback: (_e: unknown, change: ClipboardChangeEvent) => void): void => {
+    ipcRenderer.on('clipboard:changed', callback)
+  },
   onScreenWatchToggle: (callback: (_e: unknown, enabled: boolean) => void): void => {
     ipcRenderer.on('screenwatch:toggle', callback)
   },
@@ -43,6 +64,9 @@ const torchAPI = {
   // Remove listeners
   removeOverlayActivate: (): void => {
     ipcRenderer.removeAllListeners('overlay:activate')
+  },
+  removeClipboardChanged: (): void => {
+    ipcRenderer.removeAllListeners('clipboard:changed')
   },
   removeScreenWatchToggle: (): void => {
     ipcRenderer.removeAllListeners('screenwatch:toggle')

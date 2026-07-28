@@ -688,17 +688,32 @@
 
 .cmd-idle {
   flex: 1;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 32px 24px 140px;
-  background: linear-gradient(180deg, var(--color-torch-blue-light) 0%, var(--color-torch-bg) 40%);
+  background: var(--color-torch-bg);
 }
 
 .cmd-idle__header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
+  width: 100%;
+  max-width: 560px;
   margin-bottom: 28px;
+}
+
+.cmd-idle__logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 16px;
 }
 
 .cmd-idle__title {
@@ -2069,4 +2084,230 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ─── Floating overlay (system tray companion) ─── */
+.overlay-shell {
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  overflow: hidden;
+}
+
+.overlay-shell body,
+.overlay-shell #root {
+  background: transparent;
+}
+
+.floating-overlay {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-torch-surface);
+  border: 1px solid var(--color-torch-border);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+  overflow: hidden;
+}
+
+.floating-overlay__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-torch-border-subtle);
+  background: var(--color-torch-muted);
+  -webkit-app-region: drag;
+}
+
+.floating-overlay__context {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.floating-overlay__context-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-torch-text-tertiary);
+}
+
+.floating-overlay__context-app {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-torch-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-overlay__context-focus {
+  font-size: 10px;
+  color: var(--color-torch-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-overlay__header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.floating-overlay__icon-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-torch-text-secondary);
+  border-radius: var(--radius-torch-sm);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.floating-overlay__icon-btn:hover {
+  background: var(--color-torch-border-subtle);
+  color: var(--color-torch-text);
+}
+
+.overlay-drag {
+  -webkit-app-region: drag;
+}
+
+.overlay-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.floating-overlay__clipboard {
+  margin: 10px 12px 0;
+  padding: 10px;
+  background: var(--color-torch-blue-light);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: var(--radius-torch);
+}
+
+.floating-overlay__clipboard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-torch-blue-dark);
+  margin-bottom: 6px;
+}
+
+.floating-overlay__clipboard-head button {
+  border: none;
+  background: transparent;
+  color: var(--color-torch-text-tertiary);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.floating-overlay__clipboard-preview {
+  font-size: 11px;
+  color: var(--color-torch-text-secondary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.floating-overlay__clipboard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.floating-overlay__clipboard-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  background: var(--color-torch-surface);
+  color: var(--color-torch-blue-dark);
+  border-radius: var(--radius-torch-sm);
+  cursor: pointer;
+}
+
+.floating-overlay__clipboard-actions button:hover {
+  background: var(--color-torch-blue-light);
+}
+
+.floating-overlay__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  min-height: 80px;
+}
+
+.floating-overlay__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-torch-text-secondary);
+}
+
+.floating-overlay__status--warn {
+  color: var(--color-torch-warning);
+}
+
+.floating-overlay__reply {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-torch-text);
+  white-space: pre-wrap;
+}
+
+.floating-overlay__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.floating-overlay__chips button {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-torch-border);
+  background: var(--color-torch-muted);
+  color: var(--color-torch-text-secondary);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.floating-overlay__chips button:hover {
+  border-color: var(--color-torch-blue-muted);
+  color: var(--color-torch-blue-dark);
+  background: var(--color-torch-blue-light);
+}
+
+.floating-overlay__input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--color-torch-border-subtle);
+  background: var(--color-torch-muted);
+}
+
+.floating-overlay__input textarea {
+  flex: 1;
+  resize: none;
+  min-height: 44px;
+  max-height: 88px;
+  border-radius: var(--radius-torch);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.4;
 }

@@ -238,7 +238,7 @@ export function Sidebar(): JSX.Element {
     <aside className="sidebar">
       <div className="sidebar-header drag-region">
         <div className="no-drag">
-          <TorchLogo size={28} />
+          <TorchLogo width={120} />
         </div>
       </div>
 
