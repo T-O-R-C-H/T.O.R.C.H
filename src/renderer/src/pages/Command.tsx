@@ -1,6 +1,5 @@
 import { ChatArea } from '../components/chat/ChatArea'
 import { CommandInput } from '../components/input/CommandInput'
-import { MetricsBar } from '../components/layout/MetricsBar'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -154,8 +153,6 @@ export function Command(): JSX.Element {
           </button>
         </div>
       )}
-
-      <MetricsBar />
 
       <div className="cmd-main">
         <ChatArea

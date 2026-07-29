@@ -3,6 +3,7 @@ import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from './AgentActivity'
 import { useTorchStore } from '../../store/torchStore'
 import { TorchLogo } from '../ui/TorchLogo'
+import { TorchBootAnimation } from '../ui/TorchBootAnimation'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -126,17 +127,12 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
         <div className="cmd-idle">
           <div className="cmd-idle__header">
             <div className="cmd-idle__logo">
-              <TorchLogo width={180} />
+              <TorchBootAnimation width={160} />
             </div>
-            <p className="cmd-idle__title mt-4">Starting TORCH…</p>
-            <p className="cmd-idle__subtitle mt-2">
+            <p className="cmd-idle__title">Starting TORCH…</p>
+            <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
             </p>
-            <div className="flex gap-1.5 mt-8">
-              <span className="typing-square animate-pulse" />
-              <span className="typing-square animate-pulse" style={{ animationDelay: '0.12s' }} />
-              <span className="typing-square animate-pulse" style={{ animationDelay: '0.24s' }} />
-            </div>
           </div>
         </div>
       )
@@ -146,7 +142,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       <div className="cmd-idle">
         <div className="cmd-idle__header">
           <div className="cmd-idle__logo">
-            <TorchLogo width={180} />
+            <TorchLogo width={160} />
           </div>
           <p className="cmd-idle__title">Command Center</p>
           <p className="cmd-idle__subtitle">

@@ -396,6 +396,12 @@
   margin-top: 1px;
 }
 
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .topbar-pill {
   display: inline-flex;
   align-items: center;
@@ -705,7 +711,7 @@
   text-align: center;
   width: 100%;
   max-width: 560px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
 }
 
 .cmd-idle__logo {
@@ -713,14 +719,14 @@
   justify-content: center;
   align-items: center;
   width: 100%;
-  margin-bottom: 16px;
+  margin-bottom: 2px;
 }
 
 .cmd-idle__title {
   font-size: 12px;
   font-weight: 500;
   color: var(--color-torch-text-secondary);
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .cmd-idle__subtitle {
@@ -2084,6 +2090,66 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ─── TORCH boot animation (Duolingo-style) ─── */
+.torch-boot {
+  position: relative;
+  margin: 0 auto;
+}
+
+.torch-boot__track {
+  position: relative;
+  padding-bottom: 30px;
+}
+
+.torch-boot__logo-stack {
+  position: relative;
+  line-height: 0;
+}
+
+.torch-boot__logo-img {
+  display: block;
+  height: auto;
+}
+
+.torch-boot__logo-img--ghost {
+  opacity: 0.1;
+}
+
+.torch-boot__logo-reveal {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.torch-boot__cat {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+}
+
+.torch-boot__spark {
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #60a5fa, #ffd166, transparent);
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.torch-boot__glow {
+  position: absolute;
+  inset: -8px -12px;
+  background: radial-gradient(ellipse at center, rgba(96, 165, 250, 0.12) 0%, transparent 70%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 /* ─── Floating overlay (system tray companion) ─── */
