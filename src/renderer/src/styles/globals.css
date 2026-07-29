@@ -2100,12 +2100,14 @@
 
 .torch-boot__track {
   position: relative;
-  padding-bottom: 30px;
+  padding-bottom: 34px;
 }
 
 .torch-boot__logo-stack {
   position: relative;
   line-height: 0;
+  overflow: hidden;
+  border-radius: 4px;
 }
 
 .torch-boot__logo-img {
@@ -2114,7 +2116,7 @@
 }
 
 .torch-boot__logo-img--ghost {
-  opacity: 0.1;
+  opacity: 0.08;
 }
 
 .torch-boot__logo-reveal {
@@ -2123,33 +2125,65 @@
   overflow: hidden;
 }
 
-.torch-boot__cat {
+.torch-boot__shine {
   position: absolute;
-  bottom: 0;
+  top: 0;
   left: 0;
-  z-index: 3;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+  width: 36px;
+  height: 100%;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(96, 165, 250, 0.15) 45%,
+    rgba(255, 209, 102, 0.35) 55%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 2;
 }
 
-.torch-boot__spark {
+.torch-boot__cat {
   position: absolute;
-  bottom: 26px;
+  bottom: -2px;
   left: 0;
-  width: 28px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, #60a5fa, #ffd166, transparent);
   z-index: 4;
+}
+
+.torch-boot__spark-trail {
+  position: absolute;
+  bottom: 38px;
+  left: 0;
+  width: 32px;
+  height: 6px;
+  z-index: 3;
   pointer-events: none;
-  opacity: 0.85;
+}
+
+.torch-boot__spark-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffd166 0%, #60a5fa 100%);
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.6);
 }
 
 .torch-boot__glow {
   position: absolute;
-  inset: -8px -12px;
-  background: radial-gradient(ellipse at center, rgba(96, 165, 250, 0.12) 0%, transparent 70%);
+  inset: -12px -16px;
+  background: radial-gradient(ellipse at center, rgba(96, 165, 250, 0.14) 0%, transparent 72%);
   z-index: 0;
   pointer-events: none;
+}
+
+.torch-boot__caption {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-torch-text-tertiary);
+  text-align: center;
+  font-family: var(--font-mono);
 }
 
 /* ─── Floating overlay (system tray companion) ─── */
