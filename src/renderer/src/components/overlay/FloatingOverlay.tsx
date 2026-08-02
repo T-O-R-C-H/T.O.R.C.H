@@ -64,7 +64,7 @@ export function FloatingOverlay(): JSX.Element {
 
   useEffect(() => {
     if (!overlayReply || overlayStatus !== 'speaking') return
-    speakWithNaturalVoice(overlayReply)
+    void speakWithNaturalVoice(overlayReply)
     return stopSpeaking
   }, [overlayReply, overlayStatus])
 

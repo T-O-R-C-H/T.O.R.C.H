@@ -1,4 +1,8 @@
+import { API_BASE } from '../config/api'
+
 let activeUtterance: SpeechSynthesisUtterance | null = null
+let activeAudio: HTMLAudioElement | null = null
+let playbackGeneration = 0
 
 const preferredVoicePatterns = [
   /microsoft.*natural/i,
@@ -20,15 +24,19 @@ export function selectPreferredVoice(voices: SpeechSynthesisVoice[]): SpeechSynt
 }
 
 export function stopSpeaking(): void {
+  playbackGeneration += 1
   window.speechSynthesis?.cancel()
+  activeAudio?.pause()
+  if (activeAudio?.src.startsWith('blob:')) URL.revokeObjectURL(activeAudio.src)
+  activeAudio = null
   activeUtterance = null
 }
 
-export function speakWithNaturalVoice(text: string): void {
+function speakLocally(text: string, generation: number): void {
   if (!window.speechSynthesis || !text.trim()) return
-  stopSpeaking()
 
   const speak = (): void => {
+    if (generation !== playbackGeneration) return
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.voice = selectPreferredVoice(window.speechSynthesis.getVoices())
     utterance.lang = utterance.voice?.lang || 'en-US'
@@ -57,4 +65,42 @@ export function speakWithNaturalVoice(text: string): void {
     window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
     if (!activeUtterance) speak()
   }, 500)
+}
+
+export async function speakWithNaturalVoice(text: string): Promise<void> {
+  if (!text.trim()) return
+  stopSpeaking()
+  const generation = playbackGeneration
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 7000)
+
+  try {
+    const response = await fetch(`${API_BASE}/api/voice/synthesize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: controller.signal
+    })
+    if (!response.ok) throw new Error('Neural voice unavailable')
+    const audioUrl = URL.createObjectURL(await response.blob())
+    if (generation !== playbackGeneration) {
+      URL.revokeObjectURL(audioUrl)
+      return
+    }
+    const audio = new Audio(audioUrl)
+    activeAudio = audio
+    audio.onended = (): void => {
+      URL.revokeObjectURL(audioUrl)
+      if (activeAudio === audio) activeAudio = null
+    }
+    audio.onerror = (): void => {
+      URL.revokeObjectURL(audioUrl)
+      if (generation === playbackGeneration) speakLocally(text, generation)
+    }
+    await audio.play()
+  } catch {
+    if (generation === playbackGeneration) speakLocally(text, generation)
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }

@@ -12,6 +12,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -484,6 +485,22 @@ async def listen_for_companion_voice():
     if transcript.startswith("Listen failed:"):
         raise HTTPException(status_code=503, detail=transcript)
     return {"transcript": transcript}
+
+
+@app.post("/api/voice/synthesize")
+async def synthesize_companion_voice(data: dict):
+    """Generate a neural companion voice, leaving the renderer free to fall back locally."""
+    from agent.voice_synthesis import synthesize_voice
+
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    try:
+        wav = await asyncio.wait_for(asyncio.to_thread(synthesize_voice, text), timeout=20)
+    except Exception as error:
+        logger.warning(f"Neural voice unavailable: {error}")
+        raise HTTPException(status_code=503, detail="Neural voice unavailable") from error
+    return Response(content=wav, media_type="audio/wav")
 
 
 # ─── WEBSOCKET ───
