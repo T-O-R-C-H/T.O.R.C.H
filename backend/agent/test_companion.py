@@ -1,4 +1,4 @@
-from agent.companion import _normalize_result
+from agent.companion import _clean_json, _normalize_result
 
 
 SCREENS = [
@@ -34,3 +34,12 @@ def test_normalize_rejects_malformed_guidance():
     )
 
     assert result == {"speech": "Nothing to point at.", "guidance": {"type": "none"}}
+
+
+def test_malformed_coordinate_json_keeps_spoken_answer():
+    result = _clean_json("{'speech': 'The search box is at the top.', 'guidance': {bad json}}")
+
+    assert result == {
+        "speech": "The search box is at the top.",
+        "guidance": {"type": "none"},
+    }

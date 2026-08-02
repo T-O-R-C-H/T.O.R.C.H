@@ -1,9 +1,9 @@
 """Screen-aware conversational guidance for the TORCH desktop companion."""
 
 import asyncio
-import base64
 import json
 import logging
+import re
 from typing import Any
 
 from config.settings import settings
@@ -41,7 +41,15 @@ def _clean_json(text: str) -> dict[str, Any]:
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1]
         cleaned = cleaned.rsplit("```", 1)[0].strip()
-    return json.loads(cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Preserve the useful spoken answer when a model emits slightly malformed
+        # coordinate JSON. Guidance is optional; the whole response should not fail.
+        speech_match = re.search(r'["\']speech["\']\s*:\s*["\'](.+?)["\']\s*[,}]', cleaned, re.DOTALL)
+        if speech_match:
+            return {"speech": speech_match.group(1).replace("\\n", " ").strip(), "guidance": {"type": "none"}}
+        raise
 
 
 def _normalize_result(result: dict[str, Any], screenshots: list[dict[str, Any]]) -> dict[str, Any]:
@@ -117,6 +125,28 @@ def _generate_with_gemini(
                 "temperature": 0.2,
                 "maxOutputTokens": 700,
                 "responseMimeType": "application/json",
+                "responseJsonSchema": {
+                    "type": "object",
+                    "required": ["speech", "guidance"],
+                    "properties": {
+                        "speech": {"type": "string"},
+                        "guidance": {
+                            "type": "object",
+                            "required": ["type"],
+                            "properties": {
+                                "type": {"type": "string", "enum": ["point", "none"]},
+                                "screen_index": {"type": "integer"},
+                                "box_2d": {
+                                    "type": "array",
+                                    "minItems": 4,
+                                    "maxItems": 4,
+                                    "items": {"type": "number"},
+                                },
+                                "label": {"type": "string"},
+                            },
+                        },
+                    },
+                },
             },
         },
         timeout=(5, 22),
