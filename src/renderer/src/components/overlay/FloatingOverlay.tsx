@@ -1,16 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { TorchLogo } from '../ui/TorchLogo'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CmdArrowUp } from '../icons/cleanIcons'
-import { ApprovalCard } from '../chat/ApprovalCard'
-import { LinkifiedText } from '../chat/LinkifiedText'
+import { TorchCatRive } from '../ui/TorchCatRive'
 import { useWebSocket } from '../../hooks/useWebSocket'
-import { useTorchStore, type Step } from '../../store/torchStore'
-import { formatAgentContent } from '../../utils/plainLanguage'
-import {
-  enrichOverlayCommand,
-  getClipboardActions,
-  getContextSuggestions
-} from '../../utils/overlayContext'
+import { useTorchStore } from '../../store/torchStore'
+import { Mic, MicOff } from 'lucide-react'
 
 interface DesktopContext {
   windowTitle: string
@@ -19,245 +12,225 @@ interface DesktopContext {
   focusLabel?: string
 }
 
-interface ClipboardChange {
-  id: string
-  text: string
-  timestamp: number
-  kind: 'code' | 'url' | 'email' | 'text'
-}
-
-const CLIPBOARD_LABELS: Record<string, string> = {
-  code: 'Copied Code',
-  url: 'Copied URL',
-  email: 'Copied Email',
-  text: 'Copied Text'
-}
+type CompanionMode = 'guide' | 'act'
 
 export function FloatingOverlay(): JSX.Element {
   const [input, setInput] = useState('')
+  const [mode, setMode] = useState<CompanionMode>('guide')
   const [context, setContext] = useState<DesktopContext>({
     windowTitle: '',
     appName: 'Desktop',
     clipboardText: ''
   })
-  const [clipboardPopup, setClipboardPopup] = useState<ClipboardChange | null>(null)
-  const [reply, setReply] = useState('')
-  const [pendingApproval, setPendingApproval] = useState<{
-    messageId: string
-    stepId: string
-    summary: string
-  } | null>(null)
-
-  const { sendCommand, sendApproval } = useWebSocket()
-  const wsConnected = useTorchStore((s) => s.wsConnected)
-  const agentStatus = useTorchStore((s) => s.agentStatus)
-  const messages = useTorchStore((s) => s.messages)
+  const [localBusy, setLocalBusy] = useState(false)
+  const [isListening, setIsListening] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const popupTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const lastReplyId = useRef<string | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const microphoneStreamRef = useRef<MediaStream | null>(null)
+  const { sendCommand, sendCompanionCommand } = useWebSocket()
+  const wsConnected = useTorchStore((state) => state.wsConnected)
+  const agentStatus = useTorchStore((state) => state.agentStatus)
+  const overlayStatus = useTorchStore((state) => state.overlayStatus)
+  const overlayReply = useTorchStore((state) => state.overlayReply)
 
   const isBusy =
+    localBusy ||
+    overlayStatus === 'processing' ||
     agentStatus === 'processing' ||
     agentStatus === 'executing' ||
     agentStatus === 'awaiting_approval'
 
   const refreshContext = useCallback(async (): Promise<void> => {
-    const ctx = await window.torchAPI?.getDesktopContext()
-    if (ctx) setContext(ctx)
+    const nextContext = await window.torchAPI?.getDesktopContext()
+    if (nextContext) setContext(nextContext)
   }, [])
 
   useEffect(() => {
     void refreshContext()
-    const interval = setInterval(() => {
-      void refreshContext()
-    }, 4000)
-
+    const interval = setInterval(() => void refreshContext(), 4000)
     const handleActivate = (): void => {
       void refreshContext()
       inputRef.current?.focus()
     }
-
-    const handleClipboard = (_e: unknown, change: ClipboardChange): void => {
-      setClipboardPopup(change)
-      if (popupTimer.current) clearTimeout(popupTimer.current)
-      popupTimer.current = setTimeout(() => setClipboardPopup(null), 12000)
-    }
-
     window.torchAPI?.onOverlayActivate(handleActivate)
-    window.torchAPI?.onClipboardChanged(handleClipboard)
-
-    return (): void => {
+    return () => {
       clearInterval(interval)
-      if (popupTimer.current) clearTimeout(popupTimer.current)
       window.torchAPI?.removeOverlayActivate()
-      window.torchAPI?.removeClipboardChanged()
     }
   }, [refreshContext])
 
   useEffect(() => {
-    const lastAgent = [...messages].reverse().find((m) => m.role === 'torch')
-    if (!lastAgent || lastAgent.id === lastReplyId.current) return
+    if (overlayStatus === 'speaking') setLocalBusy(false)
+  }, [overlayStatus])
 
-    if (lastAgent.content) {
-      lastReplyId.current = lastAgent.id
-      setReply(formatAgentContent(lastAgent.content))
+  useEffect(() => {
+    if (!overlayReply || overlayStatus !== 'speaking' || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(overlayReply)
+    utterance.rate = 1.04
+    utterance.pitch = 0.98
+    window.speechSynthesis.speak(utterance)
+    return () => window.speechSynthesis.cancel()
+  }, [overlayReply, overlayStatus])
+
+  const listenForVoice = useCallback(async (): Promise<void> => {
+    if (isBusy) return
+    if (recorderRef.current?.state === 'recording') {
+      recorderRef.current.stop()
+      return
     }
-
-    const hitlStep = lastAgent.steps?.find((s: Step) => s.status === 'hitl_required')
-    if (hitlStep) {
-      setPendingApproval({
-        messageId: lastAgent.id,
-        stepId: hitlStep.id,
-        summary: hitlStep.label
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       })
+      microphoneStreamRef.current = stream
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      const chunks: Blob[] = []
+      recorderRef.current = recorder
+      recorder.ondataavailable = (event): void => {
+        if (event.data.size > 0) chunks.push(event.data)
+      }
+      recorder.onstop = (): void => {
+        setIsListening(false)
+        microphoneStreamRef.current?.getTracks().forEach((track) => track.stop())
+        microphoneStreamRef.current = null
+        recorderRef.current = null
+        const blob = new Blob(chunks, { type: recorder.mimeType })
+        const reader = new FileReader()
+        reader.onloadend = async (): Promise<void> => {
+          setLocalBusy(true)
+          useTorchStore.getState().setOverlayReply('')
+          useTorchStore.getState().setOverlayStatus('processing')
+          try {
+            const screenshots = await window.torchAPI.captureScreens()
+            sendCompanionCommand('Answer the spoken request in the attached audio.', screenshots, {
+              dataUrl: String(reader.result),
+              mimeType: blob.type
+            })
+          } catch {
+            setLocalBusy(false)
+            useTorchStore.getState().setOverlayStatus('idle')
+            useTorchStore.getState().setOverlayReply("I couldn't capture that voice request. Try again.")
+          }
+        }
+        reader.readAsDataURL(blob)
+      }
+      recorder.start(250)
+      setIsListening(true)
+      useTorchStore.getState().setOverlayStatus('listening')
+    } catch {
+      useTorchStore.getState().setOverlayReply('I could not hear you. Check microphone access and try again.')
+      setIsListening(false)
+      useTorchStore.getState().setOverlayStatus('idle')
     }
-  }, [messages])
+  }, [isBusy, sendCompanionCommand])
 
-  const handleSend = useCallback(
-    (rawCommand: string): void => {
-      const command = rawCommand.trim()
-      if (!command || isBusy) return
+  useEffect(() => {
+    return () => microphoneStreamRef.current?.getTracks().forEach((track) => track.stop())
+  }, [])
 
-      setClipboardPopup(null)
-      setReply('')
-      setPendingApproval(null)
-      lastReplyId.current = null
+  const handleSend = useCallback(async (): Promise<void> => {
+    const command = input.trim()
+    if (!command || isBusy || !wsConnected) return
+    setInput('')
 
-      const enriched = enrichOverlayCommand(command, context)
+    if (mode === 'act') {
       useTorchStore.getState().setAgentStatus('processing')
-      sendCommand(enriched)
-      setInput('')
-    },
-    [context, isBusy, sendCommand]
-  )
+      sendCommand(`${command}\n\nActive desktop: ${context.appName} — ${context.windowTitle}`)
+      return
+    }
 
-  const suggestions = getContextSuggestions(context.appName, clipboardPopup?.kind)
-  const clipboardActions = clipboardPopup ? getClipboardActions(clipboardPopup.kind) : []
+    setLocalBusy(true)
+    useTorchStore.getState().setOverlayReply('')
+    useTorchStore.getState().setOverlayStatus('processing')
+    window.torchAPI?.hideGuidance()
+    try {
+      const screenshots = await window.torchAPI.captureScreens()
+      sendCompanionCommand(command, screenshots)
+    } catch {
+      setLocalBusy(false)
+      useTorchStore.getState().setOverlayStatus('idle')
+      useTorchStore.getState().setOverlayReply("I couldn't capture the desktop. Try once more.")
+    }
+  }, [context, input, isBusy, mode, sendCommand, sendCompanionCommand, wsConnected])
 
   return (
-    <div className="floating-overlay">
-      <div className="floating-overlay__header overlay-drag">
-        <TorchLogo width={72} />
-        <div className="floating-overlay__context">
-          <span className="floating-overlay__context-label">Active</span>
-          <span className="floating-overlay__context-app">{context.appName}</span>
-          {context.focusLabel && (
-            <span className="floating-overlay__context-focus">{context.focusLabel}</span>
-          )}
-        </div>
-        <div className="floating-overlay__header-actions overlay-no-drag">
-          <button
-            type="button"
-            className="floating-overlay__icon-btn"
-            onClick={() => window.torchAPI?.openMainWindow()}
-            aria-label="Open main window"
-            title="Open TORCH"
-          >
-            ↗
-          </button>
-          <button
-            type="button"
-            className="floating-overlay__icon-btn"
-            onClick={() => window.torchAPI?.hideOverlay()}
-            aria-label="Hide overlay"
-            title="Hide"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
-      {clipboardPopup && (
-        <div className="floating-overlay__clipboard overlay-no-drag">
-          <div className="floating-overlay__clipboard-head">
-            <span>{CLIPBOARD_LABELS[clipboardPopup.kind] || 'Copied'}</span>
-            <button type="button" onClick={() => setClipboardPopup(null)}>
-              ×
-            </button>
-          </div>
-          <p className="floating-overlay__clipboard-preview">{clipboardPopup.text.slice(0, 120)}</p>
-          <div className="floating-overlay__clipboard-actions">
-            {clipboardActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => handleSend(action.command)}
-              >
-                {action.label}
-              </button>
-            ))}
+    <div className="floating-overlay floating-overlay--companion">
+      <header className="companion-head overlay-drag">
+        <div className="companion-identity">
+          <span className="companion-identity__pulse" />
+          <div>
+            <strong>TORCH</strong>
+            <span>{context.appName}</span>
           </div>
         </div>
-      )}
+        <div className="companion-head__actions overlay-no-drag">
+          <button onClick={() => window.torchAPI?.openMainWindow()} title="Open TORCH">↗</button>
+          <button onClick={() => window.torchAPI?.hideOverlay()} title="Hide">×</button>
+        </div>
+      </header>
 
-      <div className="floating-overlay__body overlay-no-drag">
-        {!wsConnected && (
-          <p className="floating-overlay__status floating-overlay__status--warn">
-            Connecting to TORCH…
+      <main className="companion-body overlay-no-drag">
+        <div className={`companion-avatar ${isBusy ? 'companion-avatar--thinking' : ''}`}>
+          <TorchCatRive height={116} />
+        </div>
+        {!wsConnected ? (
+          <p className="companion-response companion-response--muted">Waking up the companion…</p>
+        ) : overlayReply ? (
+          <p className="companion-response">{overlayReply}</p>
+        ) : isBusy ? (
+          <div className="companion-thinking">
+            <span /> <span /> <span />
+            <em>Looking at your screen</em>
+          </div>
+        ) : (
+          <p className="companion-response companion-response--muted">
+            I can see what you see. Ask where something is, how it works, or tell me to handle it.
           </p>
         )}
+      </main>
 
-        {isBusy && !reply && (
-          <div className="floating-overlay__status">
-            <span className="typing-square" />
-            <span className="typing-square" style={{ animationDelay: '0.12s' }} />
-            <span className="typing-square" style={{ animationDelay: '0.24s' }} />
-            <span>Working on it…</span>
-          </div>
-        )}
-
-        {reply && (
-          <div className="floating-overlay__reply">
-            <LinkifiedText text={reply} />
-          </div>
-        )}
-
-        {pendingApproval && (
-          <ApprovalCard
-            summary={pendingApproval.summary}
-            onApprove={() => {
-              sendApproval(pendingApproval.messageId, pendingApproval.stepId, 'approve')
-              setPendingApproval(null)
-            }}
-            onEdit={() => {}}
-            onCancel={() => {
-              sendApproval(pendingApproval.messageId, pendingApproval.stepId, 'cancel')
-              setPendingApproval(null)
-            }}
-          />
-        )}
+      <div className="companion-mode overlay-no-drag" role="tablist" aria-label="Companion mode">
+        <button className={mode === 'guide' ? 'is-active' : ''} onClick={() => setMode('guide')}>
+          Guide me
+        </button>
+        <button className={mode === 'act' ? 'is-active' : ''} onClick={() => setMode('act')}>
+          Do it
+        </button>
       </div>
 
-      <div className="floating-overlay__chips overlay-no-drag">
-        {suggestions.slice(0, 3).map((s) => (
-          <button key={s.label} type="button" onClick={() => handleSend(s.command)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="floating-overlay__input overlay-no-drag">
+      <div className={`companion-input overlay-no-drag ${isListening ? 'companion-input--listening' : ''}`}>
         <textarea
           ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={`Ask TORCH in ${context.appName}…`}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={mode === 'guide' ? 'What am I looking at?' : 'Tell TORCH what to do…'}
           rows={2}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              handleSend(input)
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              void handleSend()
             }
           }}
         />
         <button
           type="button"
-          className="cmd-input-send"
-          disabled={!input.trim() || isBusy}
-          onClick={() => handleSend(input)}
+          className="companion-input__mic"
+          disabled={isBusy}
+          onClick={() => void listenForVoice()}
+          aria-label={isListening ? 'Listening' : 'Speak to TORCH'}
+          title={isListening ? 'Listening…' : 'Speak'}
+        >
+          {isListening ? <MicOff size={15} /> : <Mic size={15} />}
+        </button>
+        <button
+          type="button"
+          className="companion-input__send"
+          disabled={!input.trim() || isBusy || !wsConnected}
+          onClick={() => void handleSend()}
           aria-label="Send"
         >
-          <CmdArrowUp size={14} />
+          <CmdArrowUp size={16} />
         </button>
       </div>
     </div>

@@ -15,6 +15,7 @@ export function useWebSocket(): {
   reconnect: () => void
   sendStopCommand: () => void
   sendUndoCommand: (messageId: string) => void
+  sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<any>(undefined)
@@ -134,6 +135,11 @@ export function useWebSocket(): {
         if (data.status)
           store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
         if (data.reply) store.setOverlayReply(data.reply as string)
+        if (data.guidance) {
+          const guidance = data.guidance as { type: 'point' | 'none'; x?: number; y?: number; label?: string }
+          if (guidance.type === 'point') window.torchAPI?.showGuidance(guidance)
+          else window.torchAPI?.hideGuidance()
+        }
         break
       }
       case 'metrics': {
@@ -180,6 +186,12 @@ export function useWebSocket(): {
     }
   }, [])
 
+  const sendCompanionCommand = useCallback((command: string, screenshots: unknown[], audio?: unknown): void => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'companion_command', content: command, screenshots, audio }))
+    }
+  }, [])
+
   const sendApproval = useCallback(
     (
       messageId: string,
@@ -215,5 +227,12 @@ export function useWebSocket(): {
     connect()
   }, [connect])
 
-  return { sendCommand, sendApproval, reconnect, sendStopCommand, sendUndoCommand }
+  return {
+    sendCommand,
+    sendCompanionCommand,
+    sendApproval,
+    reconnect,
+    sendStopCommand,
+    sendUndoCommand
+  }
 }

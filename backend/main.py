@@ -475,6 +475,17 @@ async def get_metrics():
     return await get_current_metrics()
 
 
+@app.post("/api/voice/listen")
+async def listen_for_companion_voice():
+    """Capture one voice turn without blocking the FastAPI event loop."""
+    from tools.voice import listen
+
+    transcript = await asyncio.to_thread(listen, 8)
+    if transcript.startswith("Listen failed:"):
+        raise HTTPException(status_code=503, detail=transcript)
+    return {"transcript": transcript}
+
+
 # ─── WEBSOCKET ───
 
 
@@ -562,6 +573,13 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         content = message.get("content", "")
         logger.info(f"Overlay command: {content[:80]}")
         asyncio.create_task(process_overlay_command(content, client_id))
+
+    elif msg_type == "companion_command":
+        content = message.get("content", "")
+        screenshots = message.get("screenshots", [])
+        audio = message.get("audio")
+        logger.info(f"Visual companion command: {content[:80]} ({len(screenshots)} screens)")
+        asyncio.create_task(process_companion_command(content, screenshots, client_id, audio))
 
     else:
         logger.warning(f"Unknown message type: {msg_type}")
@@ -825,6 +843,44 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         await ws_manager.send_overlay_event(
             status="speaking",
             reply=reply_err[:100],
+            client_id=client_id,
+        )
+
+
+async def process_companion_command(
+    command: str,
+    screenshots: list[dict],
+    client_id: str,
+    audio: dict | None = None,
+) -> None:
+    """Answer a contextual question and optionally point to a visible desktop element."""
+    try:
+        await ws_manager.send_overlay_event(status="processing", client_id=client_id)
+        from agent.companion import answer_with_screen
+        from agent.context import ConversationContext
+
+        context = ConversationContext.get_context(client_id)
+        result = await answer_with_screen(command, screenshots, context, audio)
+        reply = result["speech"]
+        await ws_manager.send_overlay_event(
+            status="speaking",
+            reply=reply,
+            guidance=result.get("guidance"),
+            client_id=client_id,
+        )
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=reply,
+            step_results=[],
+        )
+    except Exception as error:
+        logger.error(f"Visual companion failed: {error}", exc_info=True)
+        translated = translate_error(str(error))
+        await ws_manager.send_overlay_event(
+            status="speaking",
+            reply=f"Sorry, {translated['what_happened'].lower()} {translated['what_to_do']}",
+            guidance={"type": "none"},
             client_id=client_id,
         )
 

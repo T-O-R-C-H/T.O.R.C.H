@@ -153,6 +153,7 @@ class ConnectionManager:
         self,
         status: Optional[str] = None,
         reply: Optional[str] = None,
+        guidance: Optional[dict] = None,
         client_id: str = "main",
     ) -> None:
         """Send overlay state update."""
@@ -161,6 +162,8 @@ class ConnectionManager:
             data["status"] = status
         if reply:
             data["reply"] = reply
+        if guidance:
+            data["guidance"] = guidance
         await self.send_message(data, client_id)
 
     async def send_metrics(self, metrics: dict, client_id: str = "main") -> None:

@@ -23,6 +23,16 @@ type ClipboardChangeEvent = {
   kind: 'code' | 'url' | 'email' | 'text'
 }
 
+export type ScreenCapture = {
+  displayId: string
+  width: number
+  height: number
+  bounds: { x: number; y: number; width: number; height: number }
+  dataUrl: string
+}
+
+export type VisualGuidance = { type: 'point' | 'none'; x?: number; y?: number; label?: string }
+
 // TORCH API exposed to renderer
 const torchAPI = {
   // Window controls
@@ -34,6 +44,15 @@ const torchAPI = {
   showOverlay: (): void => ipcRenderer.send('overlay:show'),
   hideOverlay: (): void => ipcRenderer.send('overlay:hide'),
   openMainWindow: (): void => ipcRenderer.send('overlay:openMain'),
+  captureScreens: (): Promise<ScreenCapture[]> => ipcRenderer.invoke('companion:captureScreens'),
+  showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
+  hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
+  onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void): void => {
+    ipcRenderer.on('guidance:update', callback)
+  },
+  removeGuidance: (): void => {
+    ipcRenderer.removeAllListeners('guidance:update')
+  },
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),

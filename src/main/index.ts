@@ -1,4 +1,16 @@
-import { app, shell, BrowserWindow, ipcMain, Tray, Menu, nativeImage, screen, clipboard } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Tray,
+  Menu,
+  nativeImage,
+  screen,
+  clipboard,
+  desktopCapturer,
+  session
+} from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
@@ -14,6 +26,7 @@ import { loadOverlayPosition, saveOverlayPosition } from './overlayPosition'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
+let guidanceWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let backendProcess: ChildProcess | null = null
 let backendHealthTimer: NodeJS.Timeout | null = null
@@ -406,6 +419,73 @@ function createOverlayWindow(): void {
   }
 }
 
+function createGuidanceWindow(): void {
+  const displays = screen.getAllDisplays()
+  const left = Math.min(...displays.map((display) => display.bounds.x))
+  const top = Math.min(...displays.map((display) => display.bounds.y))
+  const right = Math.max(...displays.map((display) => display.bounds.x + display.bounds.width))
+  const bottom = Math.max(...displays.map((display) => display.bounds.y + display.bounds.height))
+
+  guidanceWindow = new BrowserWindow({
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  guidanceWindow.setIgnoreMouseEvents(true, { forward: true })
+  guidanceWindow.setAlwaysOnTop(true, 'screen-saver')
+  guidanceWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    guidanceWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/guide')
+  } else {
+    guidanceWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/guide' })
+  }
+}
+
+async function captureDesktopScreens(): Promise<unknown[]> {
+  const overlayWasVisible = overlayWindow?.isVisible() ?? false
+  overlayWindow?.hide()
+  await new Promise((resolve) => setTimeout(resolve, 90))
+
+  try {
+    const displays = screen.getAllDisplays()
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1280, height: 1280 },
+      fetchWindowIcons: false
+    })
+    return sources.map((source, index) => {
+      const display = displays.find((candidate) => String(candidate.id) === source.display_id) ?? displays[index]
+      const thumbnail = source.thumbnail
+      const size = thumbnail.getSize()
+      return {
+        displayId: source.display_id || String(display?.id ?? index),
+        width: size.width,
+        height: size.height,
+        bounds: display?.bounds ?? { x: 0, y: 0, width: size.width, height: size.height },
+        dataUrl: thumbnail.toJPEG(82).toString('base64').replace(/^/, 'data:image/jpeg;base64,')
+      }
+    })
+  } finally {
+    if (overlayWasVisible) overlayWindow?.showInactive()
+  }
+}
+
 function createTray(): void {
   const logoPath = join(getProjectRoot(), 'resources', 'logo.png')
   const trayIcon = existsSync(logoPath)
@@ -445,6 +525,7 @@ function createTray(): void {
       click: (): void => {
         mainWindow?.destroy()
         overlayWindow?.destroy()
+        guidanceWindow?.destroy()
         app.quit()
       }
     }
@@ -468,6 +549,10 @@ function createTray(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.torch.agent')
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media')
+  })
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -498,6 +583,20 @@ app.whenReady().then(() => {
     mainWindow?.focus()
     hideFloatingOverlay()
   })
+  ipcMain.handle('companion:captureScreens', captureDesktopScreens)
+  ipcMain.on('guidance:show', (_, guidance) => {
+    if (!guidanceWindow || guidanceWindow.isDestroyed()) createGuidanceWindow()
+    const displays = screen.getAllDisplays()
+    const left = Math.min(...displays.map((display) => display.bounds.x))
+    const top = Math.min(...displays.map((display) => display.bounds.y))
+    guidanceWindow?.showInactive()
+    guidanceWindow?.webContents.send('guidance:update', {
+      ...guidance,
+      x: Number(guidance.x) - left,
+      y: Number(guidance.y) - top
+    })
+  })
+  ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
 
   ipcMain.handle('context:getDesktop', () => {
     const clipboardText = clipboard.readText() || ''
@@ -516,6 +615,7 @@ app.whenReady().then(() => {
 
   createMainWindow()
   createOverlayWindow()
+  createGuidanceWindow()
   createTray()
   startBackend()
   startClipboardMonitor()

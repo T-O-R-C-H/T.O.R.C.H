@@ -15,6 +15,19 @@ interface TorchAPI {
   showOverlay: () => void
   hideOverlay: () => void
   openMainWindow: () => void
+  captureScreens: () => Promise<
+    Array<{
+      displayId: string
+      width: number
+      height: number
+      bounds: { x: number; y: number; width: number; height: number }
+      dataUrl: string
+    }>
+  >
+  showGuidance: (guidance: VisualGuidance) => void
+  hideGuidance: () => void
+  onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
+  removeGuidance: () => void
   openExternal: (url: string) => void
   getDesktopContext: () => Promise<{
     windowTitle: string
@@ -47,6 +60,13 @@ interface TorchAPI {
     Array<{ id: string; text: string; timestamp: number; dateKey: string }>
   >
   copyToClipboard: (text: string) => void
+}
+
+interface VisualGuidance {
+  type: 'point' | 'none'
+  x?: number
+  y?: number
+  label?: string
 }
 
 declare global {
