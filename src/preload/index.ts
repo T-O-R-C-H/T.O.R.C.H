@@ -31,7 +31,14 @@ export type ScreenCapture = {
   dataUrl: string
 }
 
-export type VisualGuidance = { type: 'point' | 'none'; x?: number; y?: number; label?: string }
+export type VisualGuidance = {
+  type: 'point' | 'none'
+  x?: number
+  y?: number
+  homeX?: number
+  homeY?: number
+  label?: string
+}
 
 // TORCH API exposed to renderer
 const torchAPI = {

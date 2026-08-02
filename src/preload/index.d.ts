@@ -66,6 +66,8 @@ interface VisualGuidance {
   type: 'point' | 'none'
   x?: number
   y?: number
+  homeX?: number
+  homeY?: number
   label?: string
 }
 

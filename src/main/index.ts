@@ -438,12 +438,14 @@ function createGuidanceWindow(): void {
     skipTaskbar: true,
     focusable: false,
     hasShadow: false,
+    roundedCorners: false,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   })
   guidanceWindow.setIgnoreMouseEvents(true, { forward: true })
@@ -589,11 +591,16 @@ app.whenReady().then(() => {
     const displays = screen.getAllDisplays()
     const left = Math.min(...displays.map((display) => display.bounds.x))
     const top = Math.min(...displays.map((display) => display.bounds.y))
+    const overlayBounds = overlayWindow?.getBounds()
+    const homeX = overlayBounds ? overlayBounds.x + overlayBounds.width / 2 : left + 80
+    const homeY = overlayBounds ? overlayBounds.y + overlayBounds.height / 2 : top + 80
     guidanceWindow?.showInactive()
     guidanceWindow?.webContents.send('guidance:update', {
       ...guidance,
       x: Number(guidance.x) - left,
-      y: Number(guidance.y) - top
+      y: Number(guidance.y) - top,
+      homeX: homeX - left,
+      homeY: homeY - top
     })
   })
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())

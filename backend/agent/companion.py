@@ -25,13 +25,14 @@ Return JSON only:
   "guidance": {
     "type": "point" or "none",
     "screen_index": integer starting at 0,
-    "x": number,
-    "y": number,
+    "box_2d": [y_min, x_min, y_max, x_max],
     "label": "one to four words"
   }
 }
-Use type "none" when no precise visible target is useful. Coordinates use a top-left
-origin. Do not invent a target that is not clearly visible.
+The box_2d coordinates are normalized from 0 to 1000 relative to that screenshot,
+with a top-left origin. Make the box tightly surround the exact visible control, not
+its panel, row, or nearby text. Use type "none" when no precise target is clearly
+visible. Never invent a target.
 """.strip()
 
 
@@ -52,13 +53,19 @@ def _normalize_result(result: dict[str, Any], screenshots: list[dict[str, Any]])
     try:
         screen_index = max(0, min(int(raw_guidance.get("screen_index", 0)), len(screenshots) - 1))
         screenshot = screenshots[screen_index]
-        source_width = max(1.0, float(screenshot["width"]))
-        source_height = max(1.0, float(screenshot["height"]))
-        x = max(0.0, min(float(raw_guidance["x"]), source_width))
-        y = max(0.0, min(float(raw_guidance["y"]), source_height))
+        box = raw_guidance.get("box_2d")
+        if isinstance(box, list) and len(box) == 4:
+            y_min, x_min, y_max, x_max = (max(0.0, min(float(value), 1000.0)) for value in box)
+            normalized_x = (x_min + x_max) / 2000.0
+            normalized_y = (y_min + y_max) / 2000.0
+        else:
+            source_width = max(1.0, float(screenshot["width"]))
+            source_height = max(1.0, float(screenshot["height"]))
+            normalized_x = max(0.0, min(float(raw_guidance["x"]), source_width)) / source_width
+            normalized_y = max(0.0, min(float(raw_guidance["y"]), source_height)) / source_height
         bounds = screenshot["bounds"]
-        desktop_x = float(bounds["x"]) + x * float(bounds["width"]) / source_width
-        desktop_y = float(bounds["y"]) + y * float(bounds["height"]) / source_height
+        desktop_x = float(bounds["x"]) + normalized_x * float(bounds["width"])
+        desktop_y = float(bounds["y"]) + normalized_y * float(bounds["height"])
     except (KeyError, TypeError, ValueError):
         return {"speech": speech, "guidance": {"type": "none"}}
 

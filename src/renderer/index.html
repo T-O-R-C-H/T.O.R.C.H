@@ -7,6 +7,14 @@
       name="description"
       content="Thinking, Observing, Reasoning, Creating & Handling — Your personal AI agent"
     />
+    <script>
+      if (location.hash.startsWith('#/guide')) document.documentElement.classList.add('transparent-route')
+    </script>
+    <style>
+      html.transparent-route,
+      html.transparent-route body,
+      html.transparent-route #root { background: transparent !important; }
+    </style>
   </head>
 
   <body>

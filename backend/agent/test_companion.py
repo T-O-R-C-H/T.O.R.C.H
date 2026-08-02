@@ -14,7 +14,12 @@ def test_normalize_maps_image_pixels_to_desktop_coordinates():
     result = _normalize_result(
         {
             "speech": "Open this.",
-            "guidance": {"type": "point", "screen_index": 0, "x": 640, "y": 360, "label": "Open"},
+            "guidance": {
+                "type": "point",
+                "screen_index": 0,
+                "box_2d": [450, 450, 550, 550],
+                "label": "Open",
+            },
         },
         SCREENS,
     )
