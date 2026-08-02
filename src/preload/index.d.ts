@@ -69,6 +69,7 @@ interface VisualGuidance {
   homeX?: number
   homeY?: number
   label?: string
+  transcript?: string
 }
 
 declare global {

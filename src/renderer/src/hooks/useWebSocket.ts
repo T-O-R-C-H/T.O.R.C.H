@@ -145,7 +145,10 @@ export function useWebSocket(): {
           store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
         if (data.reply) store.setOverlayReply(data.reply as string)
         if (data.guidance) {
-          const guidance = data.guidance as { type: 'point' | 'none'; x?: number; y?: number; label?: string }
+          const guidance = {
+            ...(data.guidance as { type: 'point' | 'none'; x?: number; y?: number; label?: string }),
+            transcript: data.reply as string | undefined
+          }
           if (guidance.type === 'point') window.torchAPI?.showGuidance(guidance)
           else window.torchAPI?.hideGuidance()
         }

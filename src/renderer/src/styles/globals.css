@@ -2766,3 +2766,24 @@ button:not(:disabled):active,
   color: var(--color-torch-text); background: rgba(255,255,255,.97);
   border-color: var(--color-torch-border); box-shadow: 0 12px 32px rgba(24,24,27,.16);
 }
+.guidance-cursor {
+  position: absolute; width: 34px; height: 42px; overflow: visible;
+  filter: drop-shadow(0 5px 7px rgba(24,24,27,.28));
+}
+.guidance-cursor path { fill: #18181b; stroke: white; stroke-width: 2.2; stroke-linejoin: round; }
+.guidance-companion__speech {
+  position: absolute; left: 72px; bottom: 52px; width: max-content; max-width: 330px;
+  padding: 10px 13px; border: 1px solid var(--color-torch-border); border-radius: 13px 13px 13px 4px;
+  color: var(--color-torch-text); background: rgba(255,255,255,.97);
+  box-shadow: 0 14px 38px rgba(24,24,27,.17); font-size: 12px; line-height: 1.45;
+}
+.guidance-companion__caret {
+  display: inline-block; width: 2px; height: 1em; margin-left: 3px; vertical-align: -2px;
+  border-radius: 2px; background: var(--color-torch-blue-dark); animation: guidance-caret .7s steps(1) infinite;
+}
+.guidance-companion__target {
+  position: absolute; left: 72px; top: 54px; width: max-content; padding: 5px 9px;
+  border-radius: 999px; color: white; background: #18181b; font-size: 10px; font-weight: 600;
+  box-shadow: 0 6px 16px rgba(24,24,27,.2);
+}
+@keyframes guidance-caret { 50% { opacity: 0; } }

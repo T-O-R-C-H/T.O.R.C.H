@@ -38,6 +38,7 @@ export type VisualGuidance = {
   homeX?: number
   homeY?: number
   label?: string
+  transcript?: string
 }
 
 // TORCH API exposed to renderer

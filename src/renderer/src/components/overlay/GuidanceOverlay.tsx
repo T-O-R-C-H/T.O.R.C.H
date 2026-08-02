@@ -9,6 +9,7 @@ type Guidance = {
   homeX?: number
   homeY?: number
   label?: string
+  transcript?: string
 }
 
 type MotionPhase = 'travelling' | 'pointing' | 'returning'
@@ -19,6 +20,7 @@ const wait = (milliseconds: number): Promise<void> =>
 export function GuidanceOverlay(): JSX.Element {
   const [guidance, setGuidance] = useState<Guidance | null>(null)
   const [phase, setPhase] = useState<MotionPhase>('travelling')
+  const [spokenWords, setSpokenWords] = useState(0)
   const companionControls = useAnimation()
   const sequenceId = useRef(0)
 
@@ -35,6 +37,7 @@ export function GuidanceOverlay(): JSX.Element {
       const targetX = next.x ?? homeX
       const targetY = next.y ?? homeY
       setGuidance(next)
+      setSpokenWords(0)
       setPhase('travelling')
       companionControls.set({ x: homeX, y: homeY, opacity: 0, scale: 0.72, rotate: -10 })
       await companionControls.start({
@@ -72,6 +75,26 @@ export function GuidanceOverlay(): JSX.Element {
     }
   }, [companionControls])
 
+  useEffect(() => {
+    const words = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
+    if (words.length === 0) return
+    const interval = window.setInterval(() => {
+      setSpokenWords((count) => {
+        if (count >= words.length) {
+          window.clearInterval(interval)
+          return count
+        }
+        return count + 1
+      })
+    }, Math.max(90, Math.min(190, 5200 / words.length)))
+    return () => window.clearInterval(interval)
+  }, [guidance?.transcript])
+
+  const transcriptWords = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
+  const pointerAngle = guidance
+    ? Math.atan2((guidance.y ?? 0) - (guidance.homeY ?? 0), (guidance.x ?? 0) - (guidance.homeX ?? 0)) * 180 / Math.PI
+    : 0
+
   return (
     <div className="guidance-stage">
       <AnimatePresence>
@@ -86,6 +109,15 @@ export function GuidanceOverlay(): JSX.Element {
             <span className="guidance-target__ring" />
             <span className="guidance-target__ring guidance-target__ring--delay" />
             <span className="guidance-marker__dot" />
+            <motion.svg
+              className="guidance-cursor"
+              viewBox="0 0 34 42"
+              style={{ rotate: pointerAngle + 35 }}
+              initial={{ opacity: 0, scale: 0.5, x: -18, y: -18 }}
+              animate={{ opacity: 1, scale: 1, x: -10, y: -10 }}
+            >
+              <path d="M3 2.5 29 22l-12 2.2 6.8 12.1-6.2 3.2-6.5-12.3L3 36Z" />
+            </motion.svg>
           </motion.div>
         )}
       </AnimatePresence>
@@ -94,17 +126,19 @@ export function GuidanceOverlay(): JSX.Element {
         <motion.div className="guidance-companion" animate={companionControls}>
           <TorchCatRive className="guidance-companion__cat" />
           <AnimatePresence>
-            {phase === 'pointing' && (
+            {transcriptWords.length > 0 && phase !== 'returning' && (
               <motion.span
-                className="guidance-companion__label"
+                className="guidance-companion__speech"
                 initial={{ opacity: 0, x: -8, scale: 0.92 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: -5, scale: 0.95 }}
               >
-                {guidance.label || 'Look here'}
+                {transcriptWords.slice(0, spokenWords).join(' ')}
+                <i className="guidance-companion__caret" />
               </motion.span>
             )}
           </AnimatePresence>
+          {phase === 'pointing' && <span className="guidance-companion__target">{guidance.label || 'Look here'}</span>}
         </motion.div>
       )}
     </div>
