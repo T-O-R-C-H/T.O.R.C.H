@@ -466,12 +466,14 @@ async function captureDesktopScreens(): Promise<unknown[]> {
 
   try {
     const displays = screen.getAllDisplays()
+    const activeDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 1280, height: 1280 },
+      thumbnailSize: { width: 960, height: 960 },
       fetchWindowIcons: false
     })
-    return sources.map((source, index) => {
+    const activeSources = sources.filter((source) => source.display_id === String(activeDisplay.id))
+    return (activeSources.length > 0 ? activeSources : sources.slice(0, 1)).map((source, index) => {
       const display = displays.find((candidate) => String(candidate.id) === source.display_id) ?? displays[index]
       const thumbnail = source.thumbnail
       const size = thumbnail.getSize()
@@ -480,7 +482,7 @@ async function captureDesktopScreens(): Promise<unknown[]> {
         width: size.width,
         height: size.height,
         bounds: display?.bounds ?? { x: 0, y: 0, width: size.width, height: size.height },
-        dataUrl: thumbnail.toJPEG(82).toString('base64').replace(/^/, 'data:image/jpeg;base64,')
+        dataUrl: thumbnail.toJPEG(68).toString('base64').replace(/^/, 'data:image/jpeg;base64,')
       }
     })
   } finally {

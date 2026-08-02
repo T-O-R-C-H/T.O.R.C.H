@@ -876,10 +876,20 @@ async def process_companion_command(
         )
     except Exception as error:
         logger.error(f"Visual companion failed: {error}", exc_info=True)
-        translated = translate_error(str(error))
+        error_text = str(error).lower()
+        if "gemini api 401" in error_text or "gemini api 403" in error_text:
+            reply = "Gemini rejected the API key. Replace it in Settings, then try again."
+        elif "gemini api 429" in error_text:
+            reply = "Gemini is rate-limiting this key right now. Wait briefly and try again."
+        elif "timeout" in error_text or "timed out" in error_text:
+            reply = "Gemini took too long to respond. I stopped the request so TORCH stays responsive."
+        elif "connection" in error_text or "resolve" in error_text:
+            reply = "I could not reach Gemini. Check this laptop's internet connection and try again."
+        else:
+            reply = "I read the screen but could not finish the visual answer. Please try that once more."
         await ws_manager.send_overlay_event(
             status="speaking",
-            reply=f"Sorry, {translated['what_happened'].lower()} {translated['what_to_do']}",
+            reply=reply,
             guidance={"type": "none"},
             client_id=client_id,
         )

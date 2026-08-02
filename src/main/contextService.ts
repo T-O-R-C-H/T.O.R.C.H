@@ -32,7 +32,8 @@ $title.ToString()
     return execFileSync('powershell.exe', ['-NoProfile', '-EncodedCommand', encodedScript], {
       encoding: 'utf-8',
       timeout: 3000,
-      windowsHide: true
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore']
     }).trim()
   } catch {
     return ''

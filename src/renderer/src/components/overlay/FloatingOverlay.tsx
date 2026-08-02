@@ -47,14 +47,12 @@ export function FloatingOverlay(): JSX.Element {
 
   useEffect(() => {
     void refreshContext()
-    const interval = setInterval(() => void refreshContext(), 4000)
     const handleActivate = (): void => {
       void refreshContext()
       inputRef.current?.focus()
     }
     window.torchAPI?.onOverlayActivate(handleActivate)
     return () => {
-      clearInterval(interval)
       window.torchAPI?.removeOverlayActivate()
     }
   }, [refreshContext])

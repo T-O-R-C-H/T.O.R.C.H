@@ -4,6 +4,10 @@ import { WS_URL } from '../config/api'
 import { formatAgentContent } from '../utils/plainLanguage'
 import { streamMessageContent } from '../utils/streamContent'
 
+let sharedSocket: WebSocket | null = null
+let sharedReconnectTimer: ReturnType<typeof setTimeout> | undefined
+let sharedConsumerCount = 0
+
 export function useWebSocket(): {
   sendCommand: (command: string) => void
   sendApproval: (
@@ -18,7 +22,6 @@ export function useWebSocket(): {
   sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimer = useRef<any>(undefined)
   const { setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine } = useTorchStore.getState()
 
   const connect = useCallback(() => {
@@ -26,9 +29,14 @@ export function useWebSocket(): {
     if (useTorchStore.getState().demoMode) {
       return
     }
+    if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) {
+      wsRef.current = sharedSocket
+      return
+    }
     try {
       setWsPhase('connecting')
       const ws = new WebSocket(WS_URL)
+      sharedSocket = ws
       wsRef.current = ws
 
       ws.onopen = (): void => {
@@ -44,10 +52,11 @@ export function useWebSocket(): {
       }
 
       ws.onclose = (): void => {
+        if (sharedSocket === ws) sharedSocket = null
         setWsConnected(false)
         setWsPhase('disconnected')
-        if (!useTorchStore.getState().demoMode) {
-          reconnectTimer.current = setTimeout(connect, 3000)
+        if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
+          sharedReconnectTimer = setTimeout(connect, 3000)
         }
       }
 
@@ -67,7 +76,7 @@ export function useWebSocket(): {
     } catch {
       setWsPhase('disconnected')
       if (!useTorchStore.getState().demoMode) {
-        reconnectTimer.current = setTimeout(connect, 3000)
+        sharedReconnectTimer = setTimeout(connect, 3000)
       }
     }
   }, [setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine])
@@ -172,10 +181,15 @@ export function useWebSocket(): {
   }, [])
 
   useEffect(() => {
+    sharedConsumerCount += 1
     connect()
     return (): void => {
-      clearTimeout(reconnectTimer.current)
-      wsRef.current?.close()
+      sharedConsumerCount = Math.max(0, sharedConsumerCount - 1)
+      if (sharedConsumerCount === 0) {
+        clearTimeout(sharedReconnectTimer)
+        sharedSocket?.close()
+        sharedSocket = null
+      }
     }
   }, [connect])
 
