@@ -4,6 +4,7 @@ import { TorchCatRive } from '../ui/TorchCatRive'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useTorchStore } from '../../store/torchStore'
 import { Mic, MicOff } from 'lucide-react'
+import { speakWithNaturalVoice, stopSpeaking } from '../../utils/voicePlayback'
 
 interface DesktopContext {
   windowTitle: string
@@ -62,13 +63,9 @@ export function FloatingOverlay(): JSX.Element {
   }, [overlayStatus])
 
   useEffect(() => {
-    if (!overlayReply || overlayStatus !== 'speaking' || !window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(overlayReply)
-    utterance.rate = 1.04
-    utterance.pitch = 0.98
-    window.speechSynthesis.speak(utterance)
-    return () => window.speechSynthesis.cancel()
+    if (!overlayReply || overlayStatus !== 'speaking') return
+    speakWithNaturalVoice(overlayReply)
+    return stopSpeaking
   }, [overlayReply, overlayStatus])
 
   const listenForVoice = useCallback(async (): Promise<void> => {
