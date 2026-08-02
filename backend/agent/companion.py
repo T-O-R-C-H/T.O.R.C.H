@@ -49,6 +49,13 @@ def _clean_json(text: str) -> dict[str, Any]:
         speech_match = re.search(r'["\']speech["\']\s*:\s*["\'](.+?)["\']\s*[,}]', cleaned, re.DOTALL)
         if speech_match:
             return {"speech": speech_match.group(1).replace("\\n", " ").strip(), "guidance": {"type": "none"}}
+        partial_speech_match = re.search(r'["\']speech["\']\s*:\s*["\'](.*)', cleaned, re.DOTALL)
+        if partial_speech_match:
+            partial = partial_speech_match.group(1)
+            partial = re.split(r'["\']\s*,\s*["\']guidance["\']', partial, maxsplit=1)[0]
+            partial = partial.rstrip('"\' },\n\r\t').replace('\\n', ' ').replace('\\"', '"').strip()
+            if partial:
+                return {"speech": partial, "guidance": {"type": "none"}}
         raise
 
 
@@ -124,12 +131,13 @@ def _generate_with_gemini(
             "generationConfig": {
                 "temperature": 0.2,
                 "maxOutputTokens": 700,
+                "thinkingConfig": {"thinkingBudget": 0},
                 "responseMimeType": "application/json",
                 "responseJsonSchema": {
                     "type": "object",
                     "required": ["speech", "guidance"],
                     "properties": {
-                        "speech": {"type": "string"},
+                        "speech": {"type": "string", "maxLength": 320},
                         "guidance": {
                             "type": "object",
                             "required": ["type"],
@@ -142,7 +150,7 @@ def _generate_with_gemini(
                                     "maxItems": 4,
                                     "items": {"type": "number"},
                                 },
-                                "label": {"type": "string"},
+                                "label": {"type": "string", "maxLength": 48},
                             },
                         },
                     },

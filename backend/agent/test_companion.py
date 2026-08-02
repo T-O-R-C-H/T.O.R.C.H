@@ -43,3 +43,12 @@ def test_malformed_coordinate_json_keeps_spoken_answer():
         "speech": "The search box is at the top.",
         "guidance": {"type": "none"},
     }
+
+
+def test_truncated_speech_json_keeps_partial_answer():
+    result = _clean_json('{"speech": "The search bar is at the top of the window')
+
+    assert result == {
+        "speech": "The search bar is at the top of the window",
+        "guidance": {"type": "none"},
+    }
