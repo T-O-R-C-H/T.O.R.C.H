@@ -4,11 +4,57 @@ Converts user commands into structured execution plans using the active LLM prov
 """
 
 import logging
+import re
 from typing import List, Dict, Any, Optional
 from config.settings import settings
 from agent.providers import get_provider
 
 logger = logging.getLogger("torch.brain")
+
+
+_SPOTIFY_PLAY_REQUEST = re.compile(
+    r"^(?:(?:please\s+)?(?:can|could|would|will)\s+you\s+)?"
+    r"(?:please\s+)?play\s+(?P<query>.+?)\s+on\s+spotify"
+    r"(?:\s+please)?[.!?]*$",
+    re.IGNORECASE,
+)
+
+
+def _spotify_play_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
+    """Return the canonical Spotify plan for an exact play request.
+
+    The desktop status block is appended to planner input after a blank line.
+    Matching only the first request line keeps that context out of the search
+    query while still allowing the deterministic route to be used.
+    """
+    request_line = user_command.splitlines()[0].strip() if user_command else ""
+    match = _SPOTIFY_PLAY_REQUEST.fullmatch(request_line)
+    if not match:
+        return None
+
+    query = match.group("query").strip()
+    if not query:
+        return None
+
+    return [
+        {
+            "tool": "open_app",
+            "label": "Opening Chrome",
+            "args": {"name": "chrome"},
+            "requires_approval": False,
+        },
+        {
+            "tool": "vision_control",
+            "label": "Finding and playing your track on Spotify",
+            "args": {
+                "task": (
+                    "Navigate to open.spotify.com, search for "
+                    f"{query}, and play the track"
+                )
+            },
+            "requires_approval": False,
+        },
+    ]
 
 
 async def plan_command(
@@ -27,7 +73,10 @@ async def plan_command(
         List of step dictionaries with tool, label, args, requires_approval
     """
     try:
-        import re
+        spotify_plan = _spotify_play_plan(user_command)
+        if spotify_plan is not None:
+            return spotify_plan
+
         # 1. Detect: "Save this as a skill called [Name]"
         save_match = re.search(r"save this as a skill called (.+)", user_command, re.IGNORECASE)
         if save_match:
@@ -69,8 +118,39 @@ async def plan_command(
                 # Recursively plan the stored command
                 return await plan_command(stored_command, context)
 
+        # Teaching and explanatory questions do not need the heavyweight tool planner.
+        # Route them through a compact text-generation prompt for a much faster reply.
+        teaching_request = re.search(
+            r"\b(teach me|can you teach|how (?:do|can) i (?:use|learn)|explain how|show me how)\b",
+            user_command,
+            re.IGNORECASE,
+        )
+        if teaching_request:
+            provider = get_provider(model)
+            if not provider:
+                return [{
+                    "tool": "error",
+                    "label": "No AI provider configured",
+                    "args": {},
+                    "requires_approval": False,
+                    "error": "No AI provider configured. Add an API key in Settings.",
+                }]
+            lesson = await provider.generate_text(
+                "You are TORCH, a patient expert teacher. Answer the user's request directly. "
+                "Start with a useful beginner lesson, use short clear steps, include one practical "
+                "exercise they can do now, and end with one focused question. Do not disclaim that "
+                "you are not a human teacher and do not redirect them to tutorials.\n\n"
+                f"User request: {user_command}"
+            )
+            return [{
+                "tool": "respond",
+                "label": "Teaching",
+                "args": {"message": lesson},
+                "requires_approval": False,
+            }]
+
         # Determine the active provider
-        provider = get_provider()
+        provider = get_provider(model)
         if not provider:
             return [{
                 "tool": "error",

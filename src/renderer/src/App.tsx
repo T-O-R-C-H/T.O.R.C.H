@@ -45,6 +45,7 @@ import { Files } from './pages/tools/Files'
 import { Messaging } from './pages/tools/Messaging'
 
 import { Browser } from './pages/tools/Browser'
+import ControlBorder from './pages/ControlBorder'
 
 function OverlayRoute(): JSX.Element {
   useEffect(() => {
@@ -135,6 +136,7 @@ function App(): JSX.Element {
       <Routes>
         <Route path="/overlay" element={<OverlayRoute />} />
         <Route path="/guide" element={<GuidanceRoute />} />
+        <Route path="/control-border" element={<ControlBorder />} />
 
         <Route path="/*" element={onboardingComplete ? <AppLayout /> : <Onboarding />} />
       </Routes>

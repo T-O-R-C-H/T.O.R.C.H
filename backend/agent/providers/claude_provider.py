@@ -9,6 +9,7 @@ To activate this provider:
 
 import json
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 
 from agent.providers.base import LLMProvider
@@ -36,7 +37,12 @@ class ClaudeProvider(LLMProvider):
         self.model = model
         self.client = anthropic.Anthropic(api_key=self.api_key)
 
-    async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    async def plan_command(
+        self,
+        user_command: str,
+        context: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         try:
             # Build tools description
             tools_desc = "\n".join(
@@ -85,8 +91,10 @@ class ClaudeProvider(LLMProvider):
                 contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
             # Call Anthropic Claude
-            response = self.client.messages.create(
-                model=self.model,
+            active_model = model if model and model.startswith("claude-") else self.model
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model=active_model,
                 max_tokens=4096,
                 temperature=0.1,
                 messages=[
@@ -136,7 +144,8 @@ class ClaudeProvider(LLMProvider):
 
     async def generate_text(self, prompt: str) -> str:
         try:
-            response = self.client.messages.create(
+            response = await asyncio.to_thread(
+                self.client.messages.create,
                 model=self.model,
                 max_tokens=4096,
                 messages=[

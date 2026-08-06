@@ -9,6 +9,7 @@ To activate this provider:
 
 import json
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 
 from agent.providers.base import LLMProvider
@@ -36,7 +37,12 @@ class OpenAIProvider(LLMProvider):
         self.model = model
         self.client = openai.OpenAI(api_key=self.api_key)
 
-    async def plan_command(self, user_command: str, context: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    async def plan_command(
+        self,
+        user_command: str,
+        context: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         try:
             # Build tools description
             tools_desc = "\n".join(
@@ -85,8 +91,9 @@ class OpenAIProvider(LLMProvider):
                 contents = system + "\n\nConversation context:\n" + ctx_text + "\n\nUser command: " + user_command
 
             # Call OpenAI GPT-4o
-            response = self.client.chat.completions.create(
-                model=self.model,
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=model if model and model.startswith(("gpt-", "o1", "o3", "o4")) else self.model,
                 messages=[
                     {"role": "user", "content": contents}
                 ],
@@ -136,7 +143,8 @@ class OpenAIProvider(LLMProvider):
 
     async def generate_text(self, prompt: str) -> str:
         try:
-            response = self.client.chat.completions.create(
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
                 model=self.model,
                 messages=[
                     {"role": "user", "content": prompt}

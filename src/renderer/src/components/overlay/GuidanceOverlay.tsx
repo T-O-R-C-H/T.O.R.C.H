@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion, useAnimation } from 'framer-motion'
-import { TorchCatRive } from '../ui/TorchCatRive'
+import { TorchMark } from '../TorchMark'
 
 type Guidance = {
   type: 'point' | 'none'
@@ -124,7 +124,7 @@ export function GuidanceOverlay(): JSX.Element {
 
       {guidance?.type === 'point' && (
         <motion.div className="guidance-companion" animate={companionControls}>
-          <TorchCatRive className="guidance-companion__cat" />
+          <TorchMark size={64} animate />
           <AnimatePresence>
             {transcriptWords.length > 0 && phase !== 'returning' && (
               <motion.span

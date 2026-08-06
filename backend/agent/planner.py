@@ -5,6 +5,7 @@ Validates and enriches the execution plan from the brain.
 
 import uuid
 import logging
+import re
 from typing import List, Dict, Any
 
 logger = logging.getLogger("torch.planner")
@@ -25,8 +26,63 @@ VALID_TOOLS = {
     "type_text", "screenshot", "analyse_screen", "search_web",
     "download_file", "open_app", "post_social", "send_message",
     "run_terminal", "move_file", "delete_file", "create_folder",
-    "zip_files", "error", "save_skill", "respond",
+    "zip_files", "vision_control", "error", "save_skill", "respond",
 }
+
+
+# Vision control can otherwise reach consequential UI paths that have dedicated
+# HITL tools. Keep ordinary navigation approval-free, but require confirmation
+# when the actual vision task clearly asks for an external or system change.
+VISION_HITL_PATTERNS = (
+    re.compile(
+        r"\b(?:buy|purchase|checkout|pay|donate|subscribe)\b|"
+        r"\bplace\s+(?:the|an?|my|your)\s+order\b|"
+        r"\b(?:complete|make|confirm|authorize|send)\s+"
+        r"(?:the\s+|an?\s+)?(?:payment|purchase|transaction)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:send|upload)\b|"
+        r"\b(?:post|publish|share)\s+(?:this|that|the|an?|my|our|your|it)\b|"
+        r"\bsubmit\s+(?:this|that|the|an?|my|our|your)\s+"
+        r"(?:form|application|document|file|message|post)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:delete|erase|uninstall)\b|"
+        r"\bempty\s+(?:the\s+)?(?:trash|recycle\s+bin)\b|"
+        r"\bremove\s+(?:the\s+|an?\s+|my\s+|your\s+)?"
+        r"(?:file|folder|account|application|app|program|extension|document|data)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:terminal|powershell|command\s+prompt|cmd(?:\.exe)?|"
+        r"regedit|registry|execution\s+policy)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:disable|enable|turn\s+(?:on|off)|change|modify|configure|reset)\b"
+        r".{0,80}\b(?:security\s+settings?|firewall|windows\s+defender|antivirus)\b|"
+        r"\b(?:security\s+settings?|firewall|windows\s+defender|antivirus)\b"
+        r".{0,80}\b(?:disable|enable|turn\s+(?:on|off)|change|modify|configure|reset)\b",
+        re.IGNORECASE,
+    ),
+)
+
+SPOTIFY_PLAYBACK_VISION_TASK = re.compile(
+    r"^navigate\s+to\s+(?:https?://)?open\.spotify\.com,\s*"
+    r"search\s+for\s+.+,\s*and\s+play\s+the\s+track[.!]?$",
+    re.IGNORECASE,
+)
+
+
+def _vision_task_requires_approval(tool: str, tool_args: Any) -> bool:
+    if tool != "vision_control" or not isinstance(tool_args, dict):
+        return False
+    task = str(tool_args.get("task") or "").strip()
+    if SPOTIFY_PLAYBACK_VISION_TASK.fullmatch(task):
+        return False
+    return bool(task) and any(pattern.search(task) for pattern in VISION_HITL_PATTERNS)
 
 
 def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -53,13 +109,15 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             step["tool"] = "error"
             step["error"] = f"Unknown tool: {tool}"
 
-        # Force HITL for dangerous tools
+        tool_args = step.get("args", {})
+
+        # Force HITL for dangerous tools and consequential vision tasks.
         requires_approval = step.get("requires_approval", False)
-        if tool in HITL_TOOLS:
+        if tool in HITL_TOOLS or _vision_task_requires_approval(tool, tool_args):
             requires_approval = True
 
-        tool_args = step.get("args", {})
-        plain_label = get_plain_phrase(tool, tool_args, "pending")
+        provided_label = str(step.get("label") or "").strip()
+        plain_label = provided_label or get_plain_phrase(tool, tool_args, "pending")
 
         validated_step = {
             "id": str(uuid.uuid4()),

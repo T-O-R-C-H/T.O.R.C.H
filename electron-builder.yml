@@ -9,10 +9,31 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+extraResources:
+  - from: backend
+    to: backend
+    filter:
+      - '**/*'
+      - '!venv/**'
+      - '!data/**'
+      - '!**/__pycache__/**'
+      - '!**/.pytest_cache/**'
+      - '!**/*.pyc'
+      - '!**/*.pyo'
+      - '!**/test_*.py'
 asarUnpack:
   - resources/**
 win:
   executableName: torch
+  extraResources:
+    - from: backend/venv
+      to: backend/venv
+      filter:
+        - '**/*'
+        - '!**/__pycache__/**'
+        - '!**/.pytest_cache/**'
+        - '!**/*.pyc'
+        - '!**/*.pyo'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}

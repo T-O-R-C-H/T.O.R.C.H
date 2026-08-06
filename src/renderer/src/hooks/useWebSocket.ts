@@ -7,6 +7,7 @@ import { streamMessageContent } from '../utils/streamContent'
 let sharedSocket: WebSocket | null = null
 let sharedReconnectTimer: ReturnType<typeof setTimeout> | undefined
 let sharedConsumerCount = 0
+let sharedTaskOwnerSocket: WebSocket | null = null
 
 export function useWebSocket(): {
   sendCommand: (command: string) => void
@@ -22,9 +23,12 @@ export function useWebSocket(): {
   sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
+  const handleMessageRef = useRef<
+    (data: Record<string, unknown>, sourceSocket: WebSocket | null) => void
+  >(() => undefined)
   const { setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine } = useTorchStore.getState()
 
-  const connect = useCallback(() => {
+  const connect = useCallback(function connectSocket(): void {
     // Skip WebSocket connection in demo mode
     if (useTorchStore.getState().demoMode) {
       return
@@ -53,35 +57,40 @@ export function useWebSocket(): {
 
       ws.onclose = (): void => {
         if (sharedSocket === ws) sharedSocket = null
+        if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
         setWsConnected(false)
         setWsPhase('disconnected')
+        window.torchAPI?.hideControlBorder()
         if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
-          sharedReconnectTimer = setTimeout(connect, 3000)
+          sharedReconnectTimer = setTimeout(connectSocket, 3000)
         }
       }
 
       ws.onerror = (): void => {
         setWsConnected(false)
         setWsPhase('disconnected')
+        window.torchAPI?.hideControlBorder()
       }
 
       ws.onmessage = (event): void => {
         try {
           const data = JSON.parse(event.data)
-          handleMessage(data)
+          handleMessageRef.current(data, ws)
+          window.torchAPI?.publishTaskEvent(data)
         } catch {
           // ignore parse errors
         }
       }
     } catch {
       setWsPhase('disconnected')
+      window.torchAPI?.hideControlBorder()
       if (!useTorchStore.getState().demoMode) {
-        sharedReconnectTimer = setTimeout(connect, 3000)
+        sharedReconnectTimer = setTimeout(connectSocket, 3000)
       }
     }
   }, [setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine])
 
-  const handleMessage = useCallback((data: Record<string, unknown>): void => {
+  const handleMessage = useCallback((data: Record<string, unknown>, sourceSocket: WebSocket | null): void => {
     const store = useTorchStore.getState()
 
     switch (data.type) {
@@ -113,6 +122,20 @@ export function useWebSocket(): {
       }
       case 'status': {
         store.setAgentStatus(data.status as typeof store.agentStatus)
+        if (data.status === 'idle') {
+          if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
+            sharedTaskOwnerSocket = null
+          }
+          window.torchAPI?.hideControlBorder()
+        }
+        break
+      }
+      case 'vision_control_start': {
+        window.torchAPI?.showControlBorder()
+        break
+      }
+      case 'vision_control_end': {
+        window.torchAPI?.hideControlBorder()
         break
       }
       case 'hitl_request': {
@@ -133,7 +156,12 @@ export function useWebSocket(): {
             ? { status: 'active' }
             : { status: 'failed', error: error || 'Approval was not accepted' }
         )
-        if (!accepted) store.setAgentStatus('idle')
+        if (!accepted) {
+          if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
+            sharedTaskOwnerSocket = null
+          }
+          store.setAgentStatus('idle')
+        }
         break
       }
       case 'terminal': {
@@ -184,11 +212,26 @@ export function useWebSocket(): {
   }, [])
 
   useEffect(() => {
+    const isFirstConsumer = sharedConsumerCount === 0
     sharedConsumerCount += 1
+    if (isFirstConsumer) {
+      window.torchAPI?.onTaskEvent((_event, taskEvent) => handleMessage(taskEvent, null))
+      window.torchAPI?.onTaskCommand((_event, command) => {
+        if (
+          command === 'stop_task' &&
+          sharedTaskOwnerSocket === sharedSocket &&
+          sharedSocket?.readyState === WebSocket.OPEN
+        ) {
+          sharedSocket.send(JSON.stringify({ type: 'stop_task' }))
+        }
+      })
+    }
     connect()
     return (): void => {
       sharedConsumerCount = Math.max(0, sharedConsumerCount - 1)
       if (sharedConsumerCount === 0) {
+        window.torchAPI?.removeTaskEvent()
+        window.torchAPI?.removeTaskCommand()
         clearTimeout(sharedReconnectTimer)
         sharedSocket?.close()
         sharedSocket = null
@@ -200,8 +243,13 @@ export function useWebSocket(): {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       const model = useTorchStore.getState().selectedModel
       wsRef.current.send(JSON.stringify({ type: 'command', content: command, model }))
+      sharedTaskOwnerSocket = wsRef.current
     }
   }, [])
+
+  useEffect(() => {
+    handleMessageRef.current = handleMessage
+  }, [handleMessage])
 
   const sendCompanionCommand = useCallback((command: string, screenshots: unknown[], audio?: unknown): void => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -228,9 +276,14 @@ export function useWebSocket(): {
   )
 
   const sendStopCommand = useCallback((): void => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (
+      sharedTaskOwnerSocket === wsRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
       wsRef.current.send(JSON.stringify({ type: 'stop_task' }))
+      return
     }
+    window.torchAPI?.publishTaskCommand('stop_task')
   }, [])
 
   const sendUndoCommand = useCallback((messageId: string): void => {

@@ -3,7 +3,6 @@ import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from './AgentActivity'
 import { useTorchStore } from '../../store/torchStore'
 import { TorchLogo } from '../ui/TorchLogo'
-import { TorchBootAnimation } from '../ui/TorchBootAnimation'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -73,14 +72,15 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   const demoMode = useTorchStore((s) => s.demoMode)
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const previousMessageCount = useRef(messages.length)
   const { sendStopCommand } = useWebSocket()
   
   const [startingUp, setStartingUp] = useState(true)
 
   useEffect(() => {
-    if (wsConnected || demoMode) {
-      setStartingUp(false)
-    }
+    if (!wsConnected && !demoMode) return
+    const timer = window.setTimeout(() => setStartingUp(false), 0)
+    return () => window.clearTimeout(timer)
   }, [wsConnected, demoMode])
 
   const turns = buildChatTurns(messages)
@@ -89,6 +89,9 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     agentStatus === 'processing' ||
     agentStatus === 'executing' ||
     agentStatus === 'awaiting_approval'
+  const visionControlActive = Boolean(
+    lastTurn?.agent?.steps?.some((step) => step.tool === 'vision_control')
+  )
   const pendingLastTurn = Boolean(isBusy && lastTurn?.user && !lastTurn?.agent)
   const activityStartedAt = lastTurn?.user?.timestamp
 
@@ -113,11 +116,19 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     useTorchStore.getState().setAgentStatus('idle')
   }, [demoMode, sendStopCommand, wsConnected])
 
-  useAgentWatchdog(isBusy, activityStartedAt, handleActivityTimeout)
+  // Local multimodal inference can legitimately take minutes on CPU. Vision
+  // control already has a visible Stop button and a hard 25-step limit, so the
+  // short watchdog remains for ordinary tasks but must not cancel vision work.
+  useAgentWatchdog(isBusy && !visionControlActive, activityStartedAt, handleActivityTimeout)
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      const isNewMessage = messages.length !== previousMessageCount.current
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: isNewMessage ? 'smooth' : 'auto'
+      })
+      previousMessageCount.current = messages.length
     }
   }, [messages, agentStatus])
 
@@ -126,9 +137,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header">
-            <div className="cmd-idle__logo">
-              <TorchBootAnimation width={160} />
-            </div>
+            <TorchLogo size={72} />
             <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
@@ -141,9 +150,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <div className="cmd-idle__logo">
-            <TorchLogo width={160} />
-          </div>
+          <TorchLogo size={72} />
           <p className="cmd-idle__title">Command Center</p>
           <p className="cmd-idle__subtitle">
             Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.
