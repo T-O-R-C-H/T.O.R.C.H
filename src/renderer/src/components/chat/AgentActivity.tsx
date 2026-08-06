@@ -1,11 +1,44 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
+import { TorchMark } from '../TorchMark'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
 const TIMEOUT_MS = 28000
 const OFFLINE_STOP_MS = 20000
+const CIPHER_GLYPHS = '01#@$%&*+=<>/\\[]{}'
+
+function CipherText({ text }: { text: string }): JSX.Element {
+  const [display, setDisplay] = useState('')
+
+  useEffect(() => {
+    let frame = 0
+    const totalFrames = Math.max(18, text.length * 2)
+    const timer = window.setInterval(() => {
+      const resolved = Math.floor((frame / totalFrames) * text.length)
+      setDisplay(
+        text
+          .split('')
+          .map((character, index) => {
+            if (character === ' ') return ' '
+            if (index < resolved) return character
+            return CIPHER_GLYPHS[Math.floor(Math.random() * CIPHER_GLYPHS.length)]
+          })
+          .join('')
+      )
+      frame += 1
+      if (frame > totalFrames) {
+        window.clearInterval(timer)
+        setDisplay(text)
+      }
+    }, 34)
+    return () => window.clearInterval(timer)
+  }, [text])
+
+  return <>{display || CIPHER_GLYPHS.slice(0, Math.min(text.length, 8))}</>
+}
 
 function statusLabel(
   status: AgentStatus,
@@ -152,23 +185,30 @@ export function AgentActivity({
     <div className="flex flex-col gap-2">
       <div className={activityClasses}>
         {!timedOut && (
-          <span className="chat-turn__activity-dots">
-            <span className="typing-square" />
-            <span className="typing-square" />
-            <span className="typing-square" />
-          </span>
+          <TorchMark size={42} animate color="var(--color-torch-text-secondary)" />
         )}
-        <span className="chat-turn__activity-label">
-          {statusLabel(
-            status,
-            slow,
-            showOffline,
-            timedOut,
-            reconnected,
-            wsPhase,
-            hasConnectedOnce
-          )}
-        </span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={`${status}-${slow}-${showOffline}-${timedOut}-${reconnected}`}
+            className="chat-turn__activity-label"
+            initial={{ opacity: 0, y: 4, filter: 'blur(3px)' }}
+            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: -3, filter: 'blur(2px)' }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <CipherText
+              text={statusLabel(
+                status,
+                slow,
+                showOffline,
+                timedOut,
+                reconnected,
+                wsPhase,
+                hasConnectedOnce
+              )}
+            />
+          </motion.span>
+        </AnimatePresence>
       </div>
 
       {verySlow && !timedOut && onStop && (

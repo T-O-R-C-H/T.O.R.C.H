@@ -22,11 +22,13 @@ import {
   copyToClipboard
 } from './clipboardManager'
 import { getDesktopContext } from './contextService'
-import { loadOverlayPosition, saveOverlayPosition } from './overlayPosition'
+import { loadOverlayState, saveOverlayState } from './overlayPosition'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let guidanceWindow: BrowserWindow | null = null
+let controlBorderWindow: BrowserWindow | null = null
+let controlBorderDisplayListenersRegistered = false
 let tray: Tray | null = null
 let backendProcess: ChildProcess | null = null
 let backendHealthTimer: NodeJS.Timeout | null = null
@@ -35,6 +37,7 @@ let backendStopping = false
 let backendRestarting = false
 let backendFailedChecks = 0
 let backendStartTime = 0
+let isQuitting = false
 
 const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVAL_MS'] ?? 10000)
 const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
@@ -82,12 +85,16 @@ function startBackend(): void {
   backendStopping = false
   backendStartTime = Date.now()
 
-  // In dev, __dirname is in out/main, so go up 2 levels to project root, then into backend
-  // In production, backend is bundled next to the app
-  const projectRoot = is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
-  const backendDir = join(projectRoot, 'backend')
-  const venvPython = join(backendDir, 'venv', 'Scripts', 'python.exe')
-  const pythonExe = existsSync(venvPython) ? venvPython : 'python'
+  // In production, electron-builder places the backend in resources/backend.
+  const runtimeRoot = is.dev ? join(__dirname, '..', '..') : process.resourcesPath
+  const backendDir = join(runtimeRoot, 'backend')
+  const backendVenvPython = join(backendDir, 'venv', 'Scripts', 'python.exe')
+  const projectVenvPython = join(runtimeRoot, '.venv', 'Scripts', 'python.exe')
+  const pythonExe = existsSync(backendVenvPython)
+    ? backendVenvPython
+    : is.dev && existsSync(projectVenvPython)
+      ? projectVenvPython
+      : 'python'
 
   console.log('[TORCH] Starting backend from:', backendDir)
   console.log('[TORCH] Using Python:', pythonExe)
@@ -279,7 +286,8 @@ function getProjectRoot(): string {
 }
 
 function showFloatingOverlay(): void {
-  if (!overlayWindow) return
+  if (!overlayWindow || overlayWindow.isDestroyed() || isQuitting) return
+  positionOverlayBottomRight()
   overlayWindow.showInactive()
   overlayWindow.webContents.send('overlay:activate')
 }
@@ -288,28 +296,132 @@ function hideFloatingOverlay(): void {
   overlayWindow?.hide()
 }
 
+const OVERLAY_DEFAULT_WIDTH = 360
+const OVERLAY_DEFAULT_HEIGHT = 480
+const OVERLAY_MIN_WIDTH = 300
+const OVERLAY_MIN_HEIGHT = 360
+
 function positionOverlayBottomRight(): void {
   if (!overlayWindow) return
 
-  const saved = loadOverlayPosition()
+  const saved = loadOverlayState()
   if (saved) {
-    overlayWindow.setPosition(saved.x, saved.y)
-    return
+    if (saved.width && saved.height) {
+      overlayWindow.setSize(
+        Math.max(OVERLAY_MIN_WIDTH, saved.width),
+        Math.max(OVERLAY_MIN_HEIGHT, saved.height)
+      )
+    }
+    const savedBounds = {
+      x: saved.x,
+      y: saved.y,
+      width: saved.width ?? OVERLAY_DEFAULT_WIDTH,
+      height: saved.height ?? OVERLAY_DEFAULT_HEIGHT
+    }
+    const isOnScreen = screen.getAllDisplays().some((display) => {
+      const area = display.workArea
+      return (
+        savedBounds.x < area.x + area.width &&
+        savedBounds.x + savedBounds.width > area.x &&
+        savedBounds.y < area.y + area.height &&
+        savedBounds.y + savedBounds.height > area.y
+      )
+    })
+    if (isOnScreen) {
+      overlayWindow.setPosition(saved.x, saved.y)
+      return
+    }
   }
 
   const display = screen.getPrimaryDisplay()
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize
+  const area = display.workArea
   const [width, height] = overlayWindow.getSize()
-  overlayWindow.setPosition(Math.round(screenWidth - width - 24), Math.round(screenHeight - height - 24))
+  overlayWindow.setPosition(
+    Math.round(area.x + area.width - width - 24),
+    Math.round(area.y + area.height - height - 24)
+  )
 }
 
-function scheduleOverlayPositionSave(): void {
+function hideGuidanceOverlay(): void {
+  if (!guidanceWindow || guidanceWindow.isDestroyed()) return
+  guidanceWindow.hide()
+  guidanceWindow.webContents.send('guidance:clear')
+}
+
+function getVirtualDisplayBounds(): { x: number; y: number; width: number; height: number } {
+  const displays = screen.getAllDisplays()
+  const left = Math.min(...displays.map((display) => display.bounds.x))
+  const top = Math.min(...displays.map((display) => display.bounds.y))
+  const right = Math.max(...displays.map((display) => display.bounds.x + display.bounds.width))
+  const bottom = Math.max(...displays.map((display) => display.bounds.y + display.bounds.height))
+
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+function updateControlBorderBounds(): void {
+  if (!controlBorderWindow || controlBorderWindow.isDestroyed()) return
+  controlBorderWindow.setBounds(getVirtualDisplayBounds())
+}
+
+function registerControlBorderDisplayListeners(): void {
+  if (controlBorderDisplayListenersRegistered) return
+  controlBorderDisplayListenersRegistered = true
+
+  screen.on('display-added', updateControlBorderBounds)
+  screen.on('display-removed', updateControlBorderBounds)
+  screen.on('display-metrics-changed', updateControlBorderBounds)
+}
+
+function createControlBorderWindow(): void {
+  const bounds = getVirtualDisplayBounds()
+  controlBorderWindow = new BrowserWindow({
+    ...bounds,
+    show: false, transparent: true, frame: false, alwaysOnTop: true,
+    skipTaskbar: true, focusable: false, hasShadow: false, roundedCorners: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'), sandbox: false,
+      contextIsolation: true, nodeIntegration: false, backgroundThrottling: false
+    }
+  })
+  registerControlBorderDisplayListeners()
+  controlBorderWindow.setIgnoreMouseEvents(true, { forward: true })
+  controlBorderWindow.setAlwaysOnTop(true, 'screen-saver')
+  controlBorderWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    controlBorderWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/control-border')
+  } else {
+    controlBorderWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/control-border' })
+  }
+}
+
+function showControlBorder(): void {
+  if (!controlBorderWindow || controlBorderWindow.isDestroyed()) createControlBorderWindow()
+  updateControlBorderBounds()
+  controlBorderWindow?.showInactive()
+}
+
+function hideControlBorder(): void {
+  controlBorderWindow?.hide()
+}
+
+function quitTorch(): void {
+  if (isQuitting) return
+  isQuitting = true
+  hideGuidanceOverlay()
+  hideControlBorder()
+  overlayWindow?.hide()
+  app.quit()
+}
+
+function scheduleOverlayStateSave(): void {
   if (!overlayWindow) return
   if (overlaySaveTimer) clearTimeout(overlaySaveTimer)
   overlaySaveTimer = setTimeout(() => {
     if (!overlayWindow) return
     const [x, y] = overlayWindow.getPosition()
-    saveOverlayPosition({ x, y })
+    const [width, height] = overlayWindow.getSize()
+    saveOverlayState({ x, y, width, height })
   }, 300)
 }
 
@@ -349,17 +461,21 @@ function createMainWindow(): void {
   })
 
   mainWindow.on('close', (e) => {
-    // Minimize to tray instead of closing
-    e.preventDefault()
-    mainWindow?.hide()
+    if (!isQuitting) {
+      e.preventDefault()
+      quitTorch()
+    }
   })
 
   mainWindow.on('hide', () => {
-    showFloatingOverlay()
+    hideGuidanceOverlay()
+    if (!isQuitting) showFloatingOverlay()
   })
 
   mainWindow.on('minimize', () => {
     mainWindow?.hide()
+    hideGuidanceOverlay()
+    showFloatingOverlay()
   })
 
   mainWindow.on('show', () => {
@@ -380,17 +496,21 @@ function createMainWindow(): void {
 }
 
 function createOverlayWindow(): void {
+  const saved = loadOverlayState()
   overlayWindow = new BrowserWindow({
-    width: 380,
-    height: 520,
+    width: saved?.width ?? OVERLAY_DEFAULT_WIDTH,
+    height: saved?.height ?? OVERLAY_DEFAULT_HEIGHT,
+    minWidth: OVERLAY_MIN_WIDTH,
+    minHeight: OVERLAY_MIN_HEIGHT,
     show: false,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    resizable: true,
     focusable: true,
     hasShadow: true,
+    thickFrame: true,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -404,7 +524,11 @@ function createOverlayWindow(): void {
   positionOverlayBottomRight()
 
   overlayWindow.on('moved', () => {
-    scheduleOverlayPositionSave()
+    scheduleOverlayStateSave()
+  })
+
+  overlayWindow.on('resized', () => {
+    scheduleOverlayStateSave()
   })
 
   overlayWindow.webContents.on('did-finish-load', () => {
@@ -527,10 +651,7 @@ function createTray(): void {
     {
       label: 'Quit TORCH',
       click: (): void => {
-        mainWindow?.destroy()
-        overlayWindow?.destroy()
-        guidanceWindow?.destroy()
-        app.quit()
+        quitTorch()
       }
     }
   ])
@@ -573,7 +694,7 @@ app.whenReady().then(() => {
       mainWindow?.maximize()
     }
   })
-  ipcMain.on('window:close', () => mainWindow?.hide())
+  ipcMain.on('window:close', () => quitTorch())
 
   // Overlay controls
   ipcMain.on('overlay:show', () => {
@@ -586,6 +707,13 @@ app.whenReady().then(() => {
     mainWindow?.show()
     mainWindow?.focus()
     hideFloatingOverlay()
+  })
+  ipcMain.on('overlay:setSize', (_, size: { width: number; height: number }) => {
+    if (!overlayWindow) return
+    const width = Math.max(OVERLAY_MIN_WIDTH, Math.round(size.width))
+    const height = Math.max(OVERLAY_MIN_HEIGHT, Math.round(size.height))
+    overlayWindow.setSize(width, height)
+    scheduleOverlayStateSave()
   })
   ipcMain.handle('companion:captureScreens', captureDesktopScreens)
   ipcMain.on('guidance:show', (_, guidance) => {
@@ -606,6 +734,44 @@ app.whenReady().then(() => {
     })
   })
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
+  ipcMain.on('control-border:show', () => showControlBorder())
+  ipcMain.on('control-border:hide', () => hideControlBorder())
+  ipcMain.on('task-event:publish', (ipcEvent, taskEvent: unknown) => {
+    if (!taskEvent || typeof taskEvent !== 'object' || Array.isArray(taskEvent)) return
+
+    const eventType = (taskEvent as { type?: unknown }).type
+    const relayedEventTypes = new Set([
+      'agent_response',
+      'content_delta',
+      'content_done',
+      'step_update',
+      'status',
+      'vision_control_start',
+      'vision_control_end',
+      'hitl_request',
+      'approval_result',
+      'terminal',
+      'overlay',
+      'metrics',
+      'task_completed_metadata',
+      'undo_result'
+    ])
+    if (typeof eventType !== 'string' || !relayedEventTypes.has(eventType)) return
+
+    for (const target of [mainWindow, overlayWindow]) {
+      if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
+        target.webContents.send('task-event:update', taskEvent)
+      }
+    }
+  })
+  ipcMain.on('task-command:publish', (ipcEvent, command: unknown) => {
+    if (command !== 'stop_task') return
+    for (const target of [mainWindow, overlayWindow]) {
+      if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
+        target.webContents.send('task-command:update', command)
+      }
+    }
+  })
 
   ipcMain.handle('context:getDesktop', () => {
     const clipboardText = clipboard.readText() || ''
@@ -625,6 +791,7 @@ app.whenReady().then(() => {
   createMainWindow()
   createOverlayWindow()
   createGuidanceWindow()
+  createControlBorderWindow()
   createTray()
   startBackend()
   startClipboardMonitor()
@@ -641,6 +808,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  hideControlBorder()
+  isQuitting = true
+  guidanceWindow?.setIgnoreMouseEvents(true, { forward: true })
+  guidanceWindow?.hide()
+  overlayWindow?.hide()
   stopClipboardMonitor()
   stopBackend()
 })

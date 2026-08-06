@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CmdArrowUp } from '../icons/cleanIcons'
-import { TorchCatRive } from '../ui/TorchCatRive'
+import { TorchMark } from '../TorchMark'
+import { NarrationView } from './NarrationView'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useTorchStore } from '../../store/torchStore'
-import { Mic, MicOff } from 'lucide-react'
+import { Mic, MicOff, ArrowUpRight, X } from 'lucide-react'
 import { speakWithNaturalVoice, stopSpeaking } from '../../utils/voicePlayback'
 
 interface DesktopContext {
@@ -15,6 +16,12 @@ interface DesktopContext {
 
 type CompanionMode = 'guide' | 'act'
 
+const QUICK_ACTIONS = [
+  { label: "What's on my screen?", mode: 'guide' as const },
+  { label: 'Read my clipboard', mode: 'guide' as const },
+  { label: 'Summarize this', mode: 'guide' as const }
+]
+
 export function FloatingOverlay(): JSX.Element {
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<CompanionMode>('guide')
@@ -25,10 +32,14 @@ export function FloatingOverlay(): JSX.Element {
   })
   const [localBusy, setLocalBusy] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [displayedReply, setDisplayedReply] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const microphoneStreamRef = useRef<MediaStream | null>(null)
-  const { sendCommand, sendCompanionCommand } = useWebSocket()
+  const replyContainerRef = useRef<HTMLDivElement>(null)
+  const typewriterRef = useRef<number | undefined>(undefined)
+  const { sendCommand, sendCompanionCommand, sendStopCommand } = useWebSocket()
   const wsConnected = useTorchStore((state) => state.wsConnected)
   const agentStatus = useTorchStore((state) => state.agentStatus)
   const overlayStatus = useTorchStore((state) => state.overlayStatus)
@@ -41,33 +52,88 @@ export function FloatingOverlay(): JSX.Element {
     agentStatus === 'executing' ||
     agentStatus === 'awaiting_approval'
 
+  // ── Live clock ──
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const timeString = currentTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+
+  const dayString = currentTime.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  })
+
+  // ── Desktop context ──
   const refreshContext = useCallback(async (): Promise<void> => {
     const nextContext = await window.torchAPI?.getDesktopContext()
     if (nextContext) setContext(nextContext)
   }, [])
 
   useEffect(() => {
-    void refreshContext()
+    const initialRefresh = window.setTimeout(() => void refreshContext(), 0)
     const handleActivate = (): void => {
       void refreshContext()
       inputRef.current?.focus()
     }
     window.torchAPI?.onOverlayActivate(handleActivate)
     return () => {
+      window.clearTimeout(initialRefresh)
       window.torchAPI?.removeOverlayActivate()
     }
   }, [refreshContext])
 
   useEffect(() => {
-    if (overlayStatus === 'speaking') setLocalBusy(false)
+    if (overlayStatus !== 'speaking') return
+    const timer = window.setTimeout(() => setLocalBusy(false), 0)
+    return () => window.clearTimeout(timer)
   }, [overlayStatus])
 
+  // ── Typewriter effect for reply ──
+  useEffect(() => {
+    const resetTimer = window.setTimeout(() => {
+      if (overlayReply && (overlayStatus === 'speaking' || overlayStatus === 'idle')) {
+        setDisplayedReply('')
+        let charIndex = 0
+        typewriterRef.current = window.setInterval(() => {
+          if (charIndex < overlayReply.length) {
+            setDisplayedReply(overlayReply.slice(0, charIndex + 1))
+            charIndex++
+          } else {
+            window.clearInterval(typewriterRef.current)
+          }
+        }, 20)
+      } else if (!overlayReply) {
+        setDisplayedReply('')
+      }
+    }, 0)
+    return () => {
+      window.clearTimeout(resetTimer)
+      window.clearInterval(typewriterRef.current)
+    }
+  }, [overlayReply, overlayStatus])
+
+  // ── Auto-scroll reply container ──
+  useEffect(() => {
+    if (replyContainerRef.current) {
+      replyContainerRef.current.scrollTop = replyContainerRef.current.scrollHeight
+    }
+  }, [displayedReply])
+
+  // ── Voice playback ──
   useEffect(() => {
     if (!overlayReply || overlayStatus !== 'speaking') return
     void speakWithNaturalVoice(overlayReply)
     return stopSpeaking
   }, [overlayReply, overlayStatus])
 
+  // ── Voice recording ──
   const listenForVoice = useCallback(async (): Promise<void> => {
     if (isBusy) return
     if (recorderRef.current?.state === 'recording') {
@@ -105,7 +171,9 @@ export function FloatingOverlay(): JSX.Element {
           } catch {
             setLocalBusy(false)
             useTorchStore.getState().setOverlayStatus('idle')
-            useTorchStore.getState().setOverlayReply("I couldn't capture that voice request. Try again.")
+            useTorchStore
+              .getState()
+              .setOverlayReply("I couldn't capture that voice request. Try again.")
           }
         }
         reader.readAsDataURL(blob)
@@ -114,7 +182,9 @@ export function FloatingOverlay(): JSX.Element {
       setIsListening(true)
       useTorchStore.getState().setOverlayStatus('listening')
     } catch {
-      useTorchStore.getState().setOverlayReply('I could not hear you. Check microphone access and try again.')
+      useTorchStore
+        .getState()
+        .setOverlayReply('I could not hear you. Check microphone access and try again.')
       setIsListening(false)
       useTorchStore.getState().setOverlayStatus('idle')
     }
@@ -124,12 +194,17 @@ export function FloatingOverlay(): JSX.Element {
     return () => microphoneStreamRef.current?.getTracks().forEach((track) => track.stop())
   }, [])
 
+  // ── Send message ──
   const handleSend = useCallback(async (): Promise<void> => {
     const command = input.trim()
     if (!command || isBusy || !wsConnected) return
     setInput('')
 
     if (mode === 'act') {
+      stopSpeaking()
+      setDisplayedReply('')
+      useTorchStore.getState().setOverlayReply('')
+      useTorchStore.getState().setOverlayStatus('idle')
       useTorchStore.getState().setAgentStatus('processing')
       sendCommand(`${command}\n\nActive desktop: ${context.appName} — ${context.windowTitle}`)
       return
@@ -145,62 +220,179 @@ export function FloatingOverlay(): JSX.Element {
     } catch {
       setLocalBusy(false)
       useTorchStore.getState().setOverlayStatus('idle')
-      useTorchStore.getState().setOverlayReply("I couldn't capture the desktop. Try once more.")
+      useTorchStore
+        .getState()
+        .setOverlayReply("I couldn't capture the desktop. Try once more.")
     }
   }, [context, input, isBusy, mode, sendCommand, sendCompanionCommand, wsConnected])
 
+  // ── Quick action handler ──
+  const handleQuickAction = useCallback(
+    (action: (typeof QUICK_ACTIONS)[number]): void => {
+      if (isBusy || !wsConnected) return
+      setMode(action.mode)
+      setInput('')
+      setLocalBusy(true)
+      useTorchStore.getState().setOverlayReply('')
+      useTorchStore.getState().setOverlayStatus('processing')
+      window.torchAPI?.hideGuidance()
+      void (async (): Promise<void> => {
+        try {
+          const screenshots = await window.torchAPI.captureScreens()
+          sendCompanionCommand(action.label, screenshots)
+        } catch {
+          setLocalBusy(false)
+          useTorchStore.getState().setOverlayStatus('idle')
+          useTorchStore
+            .getState()
+            .setOverlayReply("I couldn't capture the desktop. Try once more.")
+        }
+      })()
+    },
+    [isBusy, wsConnected, sendCompanionCommand]
+  )
+
+  const connectionStatus = wsConnected ? 'connected' : 'disconnected'
+
+  if (agentStatus !== 'idle') {
+    return (
+      <div className="floating-overlay floating-overlay--companion">
+        <NarrationView
+          onStop={() => {
+            sendStopCommand()
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="floating-overlay floating-overlay--companion">
-      <header className="companion-head overlay-drag">
-        <div className="companion-identity">
-          <span className="companion-identity__pulse" />
-          <div>
-            <strong>TORCH</strong>
-            <span>{context.appName}</span>
-          </div>
+      {/* ── Header ── */}
+      <header className="fo-header overlay-drag">
+        <div className="fo-header__brand">
+          <span className={`fo-status-dot fo-status-dot--${connectionStatus}`} />
+          <strong className="fo-header__title">TORCH</strong>
         </div>
-        <div className="companion-head__actions overlay-no-drag">
-          <button onClick={() => window.torchAPI?.openMainWindow()} title="Open TORCH">↗</button>
-          <button onClick={() => window.torchAPI?.hideOverlay()} title="Hide">×</button>
+        <div className="fo-header__clock">
+          <span className="fo-clock__time">{timeString}</span>
+          <span className="fo-clock__date">{dayString}</span>
+        </div>
+        <div className="fo-header__actions overlay-no-drag">
+          <button
+            onClick={() => window.torchAPI?.openMainWindow()}
+            title="Open TORCH"
+            className="fo-action-btn"
+          >
+            <ArrowUpRight size={14} />
+          </button>
+          <button
+            onClick={() => window.torchAPI?.hideOverlay()}
+            title="Hide"
+            className="fo-action-btn fo-action-btn--close"
+          >
+            <X size={14} />
+          </button>
         </div>
       </header>
 
-      <main className="companion-body overlay-no-drag">
-        <div className={`companion-avatar ${isBusy ? 'companion-avatar--thinking' : ''}`}>
-          <TorchCatRive height={116} />
+      {/* ── Context Bar ── */}
+      <div className="fo-context">
+        <span className="fo-context__icon">◉</span>
+        <span className="fo-context__app">{context.appName}</span>
+        {context.windowTitle && (
+          <>
+            <span className="fo-context__sep">·</span>
+            <span className="fo-context__title">{context.windowTitle}</span>
+          </>
+        )}
+      </div>
+
+      {/* ── Body ── */}
+      <main className="fo-body overlay-no-drag">
+        {/* Avatar */}
+        <div className={`fo-avatar ${isBusy ? 'fo-avatar--thinking' : ''}`}>
+          <TorchMark size={48} activeNode={0} animate={isBusy} />
         </div>
-        {!wsConnected ? (
-          <p className="companion-response companion-response--muted">Waking up the companion…</p>
-        ) : overlayReply ? (
-          <p className="companion-response">{overlayReply}</p>
-        ) : isBusy ? (
-          <div className="companion-thinking">
-            <span /> <span /> <span />
-            <em>Looking at your screen</em>
+
+        {/* Response / Status Area */}
+        <div className="fo-response-area" ref={replyContainerRef}>
+          {!wsConnected ? (
+            <p className="fo-response fo-response--muted">
+              <span className="fo-response__connecting-dots">
+                <span />
+                <span />
+                <span />
+              </span>
+              Waking up…
+            </p>
+          ) : displayedReply ? (
+            <p
+              className={`fo-response fo-response--active ${
+                displayedReply.length < (overlayReply?.length || 0)
+                  ? 'fo-response--typing'
+                  : ''
+              }`}
+            >
+              {displayedReply}
+            </p>
+          ) : isBusy ? (
+            <div className="fo-thinking">
+              <div className="fo-thinking__dots">
+                <span />
+                <span />
+                <span />
+              </div>
+              <span className="fo-thinking__label">Looking at your screen…</span>
+            </div>
+          ) : (
+            <p className="fo-response fo-response--muted">
+              I can see what you see. Ask anything or tell me to act.
+            </p>
+          )}
+        </div>
+
+        {/* Quick Action Chips */}
+        {!isBusy && wsConnected && !displayedReply && (
+          <div className="fo-chips">
+            {QUICK_ACTIONS.map((action) => (
+              <button key={action.label} onClick={() => handleQuickAction(action)}>
+                {action.label}
+              </button>
+            ))}
           </div>
-        ) : (
-          <p className="companion-response companion-response--muted">
-            I can see what you see. Ask where something is, how it works, or tell me to handle it.
-          </p>
         )}
       </main>
 
-      <div className="companion-mode overlay-no-drag" role="tablist" aria-label="Companion mode">
-        <button className={mode === 'guide' ? 'is-active' : ''} onClick={() => setMode('guide')}>
-          Guide me
-        </button>
-        <button className={mode === 'act' ? 'is-active' : ''} onClick={() => setMode('act')}>
-          Do it
-        </button>
+      {/* ── Mode Tabs ── */}
+      <div className="fo-mode overlay-no-drag" role="tablist" aria-label="Companion mode">
+        <div className="fo-mode__track">
+          <div
+            className={`fo-mode__indicator ${mode === 'act' ? 'fo-mode__indicator--right' : ''}`}
+          />
+          <button
+            className={`fo-mode__tab ${mode === 'guide' ? 'fo-mode__tab--active' : ''}`}
+            onClick={() => setMode('guide')}
+          >
+            Guide me
+          </button>
+          <button
+            className={`fo-mode__tab ${mode === 'act' ? 'fo-mode__tab--active' : ''}`}
+            onClick={() => setMode('act')}
+          >
+            Take control
+          </button>
+        </div>
       </div>
 
-      <div className={`companion-input overlay-no-drag ${isListening ? 'companion-input--listening' : ''}`}>
+      {/* ── Input ── */}
+      <div className={`fo-input overlay-no-drag ${isListening ? 'fo-input--listening' : ''}`}>
         <textarea
           ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
           placeholder={mode === 'guide' ? 'What am I looking at?' : 'Tell TORCH what to do…'}
-          rows={2}
+          rows={1}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault()
@@ -210,7 +402,7 @@ export function FloatingOverlay(): JSX.Element {
         />
         <button
           type="button"
-          className="companion-input__mic"
+          className="fo-input__mic"
           disabled={isBusy}
           onClick={() => void listenForVoice()}
           aria-label={isListening ? 'Listening' : 'Speak to TORCH'}
@@ -220,12 +412,12 @@ export function FloatingOverlay(): JSX.Element {
         </button>
         <button
           type="button"
-          className="companion-input__send"
+          className="fo-input__send"
           disabled={!input.trim() || isBusy || !wsConnected}
           onClick={() => void handleSend()}
           aria-label="Send"
         >
-          <CmdArrowUp size={16} />
+          <CmdArrowUp size={15} />
         </button>
       </div>
     </div>

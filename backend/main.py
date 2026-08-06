@@ -149,9 +149,14 @@ async def list_models():
     return {
         "models": [
             {"id": "auto", "label": "Auto"},
+            {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
+            {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
             {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
             {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
             {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
+            {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
+            {"id": "claude-opus-4-8", "label": "Claude Opus 4.8"},
+            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5"},
         ],
         "current": settings.gemini_model,
     }
@@ -223,6 +228,8 @@ async def get_settings():
         "gemini_configured": is_gemini_configured,
         "openai_configured": bool(settings.openai_api_key),
         "anthropic_configured": bool(settings.anthropic_api_key),
+        "deepseek_configured": bool(settings.deepseek_api_key),
+        "deepseek_model": settings.deepseek_model,
         "active_provider": active_provider,
         "gmail_configured": bool(settings.gmail_address and settings.gmail_app_password),
         "gmail_password_set": bool(settings.gmail_app_password),
@@ -247,6 +254,7 @@ async def update_settings(data: dict):
         "gemini_api_key",
         "openai_api_key",
         "anthropic_api_key",
+        "deepseek_api_key",
         "gmail_app_password",
     }
     filtered = {}
@@ -275,6 +283,8 @@ async def update_settings(data: dict):
         "gemini_model": "GEMINI_MODEL",
         "openai_api_key": "OPENAI_API_KEY",
         "anthropic_api_key": "ANTHROPIC_API_KEY",
+        "deepseek_api_key": "DEEPSEEK_API_KEY",
+        "deepseek_model": "DEEPSEEK_MODEL",
         "gmail_address": "GMAIL_ADDRESS",
         "gmail_app_password": "GMAIL_APP_PASSWORD",
         "gmail_smtp_host": "GMAIL_SMTP_HOST",
@@ -539,10 +549,15 @@ async def websocket_endpoint(websocket: WebSocket):
             await handle_ws_message(message, client_id)
 
     except WebSocketDisconnect:
-        await ws_manager.disconnect(client_id)
         logger.info(f"Client disconnected: {client_id}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+    finally:
+        # A command is processed in a background task, so closing its owning
+        # socket does not cancel it automatically. Signal the executor before
+        # removing the connection: this covers active execution/vision/HITL as
+        # well as commands that are still waiting for the planner to return.
+        executor.stop_task(client_id)
         await ws_manager.disconnect(client_id)
 
 
@@ -554,7 +569,11 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         content = message.get("content", "")
         model = message.get("model", "auto")
         logger.info(f"Command received: {content[:80]}")
-        asyncio.create_task(process_command(content, client_id, model=model))
+        planning_id = str(uuid.uuid4())
+        executor.begin_planning(client_id, planning_id, "command")
+        asyncio.create_task(
+            process_command(content, client_id, model=model, planning_id=planning_id)
+        )
 
     elif msg_type == "hitl_response":
         message_id = message.get("messageId")
@@ -572,7 +591,17 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
 
     elif msg_type == "stop_task":
         logger.info("Stop task received")
-        executor.stop_task()
+        cancelled_channels = executor.stop_task(client_id) or set()
+        # A planner call runs in a worker thread and cannot be force-killed, but
+        # the UI should stop waiting immediately. Its eventual result is
+        # discarded by the scoped check in the command pipeline below.
+        await ws_manager.send_status("idle", client_id)
+        if "overlay" in cancelled_channels:
+            await ws_manager.send_overlay_event(
+                status="idle",
+                reply="Stopped.",
+                client_id=client_id,
+            )
 
     elif msg_type == "undo_task":
         message_id = message.get("messageId")
@@ -589,7 +618,11 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
     elif msg_type == "overlay_command":
         content = message.get("content", "")
         logger.info(f"Overlay command: {content[:80]}")
-        asyncio.create_task(process_overlay_command(content, client_id))
+        planning_id = str(uuid.uuid4())
+        executor.begin_planning(client_id, planning_id, "overlay")
+        asyncio.create_task(
+            process_overlay_command(content, client_id, planning_id=planning_id)
+        )
 
     elif msg_type == "companion_command":
         content = message.get("content", "")
@@ -602,9 +635,40 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         logger.warning(f"Unknown message type: {msg_type}")
 
 
-async def process_command(command: str, client_id: str, model: str = "auto") -> None:
+async def _discard_cancelled_plan(
+    client_id: str,
+    planning_id: str,
+    channel: str,
+) -> bool:
+    """Discard a late planner result after Stop without resurfacing task state."""
+    if not executor.consume_pending_cancellation(client_id, planning_id):
+        return False
+
+    await ws_manager.send_status("idle", client_id)
+    if channel == "overlay":
+        await ws_manager.send_overlay_event(
+            status="idle",
+            reply="Stopped.",
+            client_id=client_id,
+        )
+    return True
+
+
+async def process_command(
+    command: str,
+    client_id: str,
+    model: str = "auto",
+    planning_id: str | None = None,
+) -> None:
     """Process a user command through the full agent pipeline."""
+    planning_id = planning_id or str(uuid.uuid4())
+    executor.begin_planning(client_id, planning_id, "command")
     try:
+        # The WebSocket handler registers the planning id before scheduling
+        # this coroutine, so an immediately-following Stop can arrive first.
+        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+            return
+
         # 1. Set status to processing
         await ws_manager.send_status("processing", client_id)
         await ws_manager.send_terminal_line(f"Processing: {command[:80]}", "info", client_id)
@@ -623,9 +687,13 @@ async def process_command(command: str, client_id: str, model: str = "auto") -> 
             model=model,
         )
 
+        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+            return
+
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
         respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
         if respond_steps:
+            executor.finish_planning(client_id, planning_id)
             natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
             response_msg = create_response_message(natural_response, [])
             await ws_manager.send_agent_response(response_msg, client_id)
@@ -644,6 +712,7 @@ async def process_command(command: str, client_id: str, model: str = "auto") -> 
         # 4. Create response message and send to frontend
         step_labels = [s["label"] for s in validated_steps]
         if len(step_labels) == 0:
+            executor.finish_planning(client_id, planning_id)
             natural_response = "I am not sure how to help with that. Try rephrasing."
             response_msg = create_response_message(natural_response, [])
             await ws_manager.send_agent_response(response_msg, client_id)
@@ -666,9 +735,17 @@ async def process_command(command: str, client_id: str, model: str = "auto") -> 
 
         # 5. Execute plan
         message_id = response_msg["id"]
-        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+            return
+        executor.finish_planning(client_id, planning_id)
+        executed_steps = await executor.execute_plan(
+            message_id,
+            validated_steps,
+            client_id,
+            channel="command",
+        )
 
-        if executor._is_cancelled:
+        if executor.is_cancelled(client_id, message_id):
             completed_count = sum(1 for s in executed_steps if s["status"] == "done")
             cancelled_count = len(executed_steps) - completed_count
             recap_sentence = f"I've stopped the task. Completed {completed_count} step(s) and cancelled the remaining {cancelled_count} step(s)."
@@ -781,6 +858,8 @@ async def process_command(command: str, client_id: str, model: str = "auto") -> 
             logger.warning(f"Metrics update failed: {e}")
 
     except Exception as e:
+        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+            return
         logger.error(f"Command processing failed: {e}", exc_info=True)
         
         # Record failure in database for accurate success rate metrics
@@ -807,11 +886,22 @@ async def process_command(command: str, client_id: str, model: str = "auto") -> 
             "steps": [],
         }
         await ws_manager.send_agent_response(error_msg, client_id)
+    finally:
+        executor.finish_planning(client_id, planning_id)
 
 
-async def process_overlay_command(command: str, client_id: str) -> None:
+async def process_overlay_command(
+    command: str,
+    client_id: str,
+    planning_id: str | None = None,
+) -> None:
     """Process a voice command from the Hey TORCH overlay."""
+    planning_id = planning_id or str(uuid.uuid4())
+    executor.begin_planning(client_id, planning_id, "overlay")
     try:
+        if await _discard_cancelled_plan(client_id, planning_id, "overlay"):
+            return
+
         await ws_manager.send_overlay_event(status="processing", client_id=client_id)
 
         # Get conversation context
@@ -820,6 +910,9 @@ async def process_overlay_command(command: str, client_id: str) -> None:
 
         # Plan and get simple response
         raw_steps = await plan_command(command, context=context)
+
+        if await _discard_cancelled_plan(client_id, planning_id, "overlay"):
+            return
 
         # Intercept respond tool for conversational replies (like greetings)
         respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
@@ -844,7 +937,15 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         response_msg = create_response_message(reply, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
         message_id = response_msg["id"]
-        executed_steps = await executor.execute_plan(message_id, validated_steps, client_id)
+        if await _discard_cancelled_plan(client_id, planning_id, "overlay"):
+            return
+        executor.finish_planning(client_id, planning_id)
+        executed_steps = await executor.execute_plan(
+            message_id,
+            validated_steps,
+            client_id,
+            channel="overlay",
+        )
 
         # Save exchange to context
         ConversationContext.add_exchange(
@@ -855,6 +956,8 @@ async def process_overlay_command(command: str, client_id: str) -> None:
         )
 
     except Exception as e:
+        if await _discard_cancelled_plan(client_id, planning_id, "overlay"):
+            return
         translated = translate_error(str(e))
         reply_err = f"Sorry, {translated['what_happened'].lower()} {translated['what_to_do']}"
         await ws_manager.send_overlay_event(
@@ -862,6 +965,8 @@ async def process_overlay_command(command: str, client_id: str) -> None:
             reply=reply_err[:100],
             client_id=client_id,
         )
+    finally:
+        executor.finish_planning(client_id, planning_id)
 
 
 async def process_companion_command(

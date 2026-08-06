@@ -15,6 +15,7 @@ interface TorchAPI {
   showOverlay: () => void
   hideOverlay: () => void
   openMainWindow: () => void
+  setOverlaySize: (width: number, height: number) => void
   captureScreens: () => Promise<
     Array<{
       displayId: string
@@ -26,6 +27,14 @@ interface TorchAPI {
   >
   showGuidance: (guidance: VisualGuidance) => void
   hideGuidance: () => void
+  showControlBorder: () => void
+  hideControlBorder: () => void
+  publishTaskEvent: (event: Record<string, unknown>) => void
+  onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void) => void
+  removeTaskEvent: () => void
+  publishTaskCommand: (command: 'stop_task') => void
+  onTaskCommand: (callback: (_e: unknown, command: 'stop_task') => void) => void
+  removeTaskCommand: () => void
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
   removeGuidance: () => void
   openExternal: (url: string) => void

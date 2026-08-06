@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from google import genai
 from config.settings import settings
@@ -26,6 +27,7 @@ AVAILABLE_TOOLS = [
     {"name": "search_web", "description": "Search the web and return results", "params": ["query"], "hitl": True},
     {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
+    {"name": "vision_control", "description": "Visually control any application by clicking, typing, scrolling, and navigating", "params": ["task"]},
     {"name": "post_social", "description": "Post content to a social media platform", "params": ["platform", "message", "image"], "hitl": True},
     {"name": "send_message", "description": "Send a message on a messaging platform", "params": ["platform", "contact", "message"], "hitl": True},
     {"name": "run_terminal", "description": "Run a terminal/command-line command", "params": ["command"]},
@@ -72,7 +74,7 @@ requires_approval: true MUST ONLY be set for these exact 7 tools:
 
 ALL OTHER TOOLS must have requires_approval: false — including:
   - read_inbox, find_file, screenshot, open_app,
-    move_file, create_folder, zip_files, run_terminal, analyse_screen, respond
+    move_file, create_folder, zip_files, run_terminal, analyse_screen, vision_control, respond
 
 NEVER set requires_approval: true on any tool not in the list of 7 above.
 
@@ -81,6 +83,11 @@ For greetings (hey, hi, hello), small talk, "what can you do?", "who are you?",
 thanks, or any message that does NOT require computer actions, use ONLY the 'respond' tool.
 Always call yourself an "AI agent", never "AI assistant":
   [{{"tool": "respond", "label": "Replying to greeting", "args": {{"message": "Hey! I'm TORCH, your AI agent. What can I help you with today?"}}, "requires_approval": false}}]
+
+When the user asks to learn, understand, or be taught a topic, teach it directly and confidently.
+Do not say you cannot teach because you are not a human instructor. Start with a useful first lesson,
+explain at the user's level, include a practical exercise, and ask one focused follow-up question.
+Only offer web tutorials as an optional supplement, never as a substitute for your own explanation.
 
 NEVER use 'respond' when the user asks you to move, create, delete, open, find, read, run,
 or change anything on their computer. Those requests MUST use the real tools below.
@@ -98,6 +105,16 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - open_app opens apps by name (e.g. "code" for VS Code, "notepad", "explorer").
 - To open VS Code with a folder: find_file or list_directory first, then run_terminal with: code "FULL_PATH"
 - Do not use respond to ask for a path if you can search for it with find_file or list_directory.
+
+- Use vision_control for application interactions that require visual clicking, typing, scrolling, or navigation.
+- For Spotify requests, first open Chrome with open_app, then use vision_control to navigate to
+  open.spotify.com, search for the requested song and artist, and play it.
+
+Example - play music on Spotify:
+[
+  {{"tool": "open_app", "label": "Opening Chrome", "args": {{"name": "chrome"}}, "requires_approval": false}},
+  {{"tool": "vision_control", "label": "Finding and playing your track on Spotify", "args": {{"task": "Navigate to open.spotify.com, search for Doja by Central Cee, and play the track"}}, "requires_approval": false}}
+]
 
 Example — create folder:
 [
@@ -210,7 +227,8 @@ class GeminiProvider(LLMProvider):
 
             # Call Gemini
             active_model = model if model and model != "auto" else settings.gemini_model
-            response = self.client.models.generate_content(
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=active_model,
                 contents=contents,
                 config={
@@ -261,8 +279,11 @@ class GeminiProvider(LLMProvider):
 
     async def generate_text(self, prompt: str) -> str:
         try:
-            response = self.client.models.generate_content(
-                model=settings.gemini_model,
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                # Keep conversational/teaching replies on the low-latency model;
+                # the heavier configured model remains available for agent planning.
+                model="gemini-3.5-flash-lite",
                 contents=prompt,
             )
             return response.text

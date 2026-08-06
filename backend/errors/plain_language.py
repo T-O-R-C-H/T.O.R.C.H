@@ -9,6 +9,20 @@ def translate_error(error_str: str) -> dict:
     Returns a dictionary with 'what_happened' and 'what_to_do'.
     """
     err = str(error_str).lower()
+
+    # Local vision model errors should remain specific and actionable rather than
+    # being collapsed into the generic network message below.
+    if "ollama" in err or "qwen2.5vl" in err:
+        return {
+            "what_happened": (
+                "Vision control requires the local AI model. "
+                "Ollama could not be reached or load qwen2.5vl:7b."
+            ),
+            "what_to_do": (
+                "Make sure Ollama is running, run 'ollama pull qwen2.5vl:7b', "
+                "then try again."
+            ),
+        }
     
     # 1. File Not Found
     if any(marker in err for marker in ["file not found", "no such file", "cannot find the file", "filenotfounderror"]):

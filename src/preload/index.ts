@@ -52,9 +52,29 @@ const torchAPI = {
   showOverlay: (): void => ipcRenderer.send('overlay:show'),
   hideOverlay: (): void => ipcRenderer.send('overlay:hide'),
   openMainWindow: (): void => ipcRenderer.send('overlay:openMain'),
+  setOverlaySize: (width: number, height: number): void =>
+    ipcRenderer.send('overlay:setSize', { width, height }),
   captureScreens: (): Promise<ScreenCapture[]> => ipcRenderer.invoke('companion:captureScreens'),
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
+  showControlBorder: (): void => ipcRenderer.send('control-border:show'),
+  hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
+  publishTaskEvent: (event: Record<string, unknown>): void =>
+    ipcRenderer.send('task-event:publish', event),
+  onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void): void => {
+    ipcRenderer.on('task-event:update', callback)
+  },
+  removeTaskEvent: (): void => {
+    ipcRenderer.removeAllListeners('task-event:update')
+  },
+  publishTaskCommand: (command: 'stop_task'): void =>
+    ipcRenderer.send('task-command:publish', command),
+  onTaskCommand: (callback: (_e: unknown, command: 'stop_task') => void): void => {
+    ipcRenderer.on('task-command:update', callback)
+  },
+  removeTaskCommand: (): void => {
+    ipcRenderer.removeAllListeners('task-command:update')
+  },
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void): void => {
     ipcRenderer.on('guidance:update', callback)
   },
