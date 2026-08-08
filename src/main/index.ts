@@ -31,6 +31,7 @@ let controlBorderWindow: BrowserWindow | null = null
 let controlBorderDisplayListenersRegistered = false
 let tray: Tray | null = null
 let backendProcess: ChildProcess | null = null
+let backendExternal = false
 let backendHealthTimer: NodeJS.Timeout | null = null
 let backendRestartTimer: NodeJS.Timeout | null = null
 let backendStopping = false
@@ -43,6 +44,7 @@ const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVA
 const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
 const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
 const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
+const backendStatusUrl = 'http://127.0.0.1:8000/api/status'
 
 type BackendHealth = {
   status: 'starting' | 'running' | 'stopped' | 'unhealthy' | 'restarting'
@@ -71,19 +73,56 @@ function publishBackendHealth(update: Partial<BackendHealth>): void {
   }
 }
 
-function startBackend(): void {
+async function isBackendReachable(): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
+
+  try {
+    const response = await fetch(backendStatusUrl, { signal: controller.signal })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function startBackend(): Promise<void> {
   if (backendRestartTimer) {
     clearTimeout(backendRestartTimer)
     backendRestartTimer = null
   }
 
-  if (backendProcess) {
+  if (backendProcess || backendExternal) {
     console.log('[TORCH] Backend already running')
+    startBackendHealthMonitor()
+    void checkBackendHealth()
     return
   }
 
   backendStopping = false
   backendStartTime = Date.now()
+
+  const backendAlreadyReachable = await isBackendReachable()
+  if (backendStopping || isQuitting) {
+    return
+  }
+
+  if (backendAlreadyReachable) {
+    console.log('[TORCH] Reusing backend already listening at http://127.0.0.1:8000')
+    backendExternal = true
+    backendFailedChecks = 0
+    publishBackendHealth({
+      status: 'running',
+      lastCheckedAt: Date.now(),
+      failureCount: 0,
+      error: undefined
+    })
+    startBackendHealthMonitor()
+    return
+  }
+
+  backendExternal = false
 
   // In production, electron-builder places the backend in resources/backend.
   const runtimeRoot = is.dev ? join(__dirname, '..', '..') : process.resourcesPath
@@ -161,6 +200,7 @@ function stopBackend(): void {
   }
 
   backendRestarting = false
+  backendExternal = false
 
   if (backendProcess) {
     console.log('[TORCH] Stopping backend...')
@@ -195,7 +235,7 @@ function stopBackendHealthMonitor(): void {
 }
 
 async function checkBackendHealth(): Promise<void> {
-  if (!backendProcess || backendStopping) {
+  if ((!backendProcess && !backendExternal) || backendStopping) {
     return
   }
 
@@ -203,7 +243,7 @@ async function checkBackendHealth(): Promise<void> {
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/status', {
+    const response = await fetch(backendStatusUrl, {
       signal: controller.signal
     })
 
@@ -266,6 +306,7 @@ function scheduleBackendRestart(reason: string): void {
   })
 
   const processToStop = backendProcess
+  backendExternal = false
   if (processToStop) {
     processToStop.kill()
     backendProcess = null
@@ -275,7 +316,7 @@ function scheduleBackendRestart(reason: string): void {
     backendRestartTimer = null
     backendFailedChecks = 0
     backendRestarting = false
-    startBackend()
+    void startBackend()
   }, backendRestartDelayMs)
 }
 
@@ -793,7 +834,7 @@ app.whenReady().then(() => {
   createGuidanceWindow()
   createControlBorderWindow()
   createTray()
-  startBackend()
+  void startBackend()
   startClipboardMonitor()
 
   app.on('activate', () => {
