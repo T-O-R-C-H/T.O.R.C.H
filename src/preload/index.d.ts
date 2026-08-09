@@ -35,6 +35,7 @@ interface TorchAPI {
   hideControlBorder: () => void
   suspendOverlayForVisionCapture: () => void
   restoreOverlayAfterVisionCapture: () => void
+  completeVisionControl: () => void
   publishTaskEvent: (event: Record<string, unknown>) => void
   onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void) => void
   removeTaskEvent: () => void

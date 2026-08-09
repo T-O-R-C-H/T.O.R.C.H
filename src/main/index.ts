@@ -335,6 +335,7 @@ function scheduleBackendRestart(reason: string): void {
 let overlaySaveTimer: NodeJS.Timeout | null = null
 let overlayCaptureSuspended = false
 let overlayWasVisibleBeforeCapture = false
+let overlayCaptureRestoreTimer: NodeJS.Timeout | null = null
 
 function getProjectRoot(): string {
   return is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
@@ -343,7 +344,13 @@ function getProjectRoot(): string {
 function showFloatingOverlay(): void {
   if (!overlayWindow || overlayWindow.isDestroyed() || isQuitting) return
   positionOverlayBottomRight()
+  // Chromium can temporarily demote an always-on-top BrowserWindow when a
+  // newly launched native application takes the foreground. Reassert the
+  // Windows z-order every time TORCH presents its compact command panel.
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   overlayWindow.show()
+  overlayWindow.moveTop()
   overlayWindow.focus()
   overlayWindow.webContents.send('overlay:activate')
 }
@@ -357,9 +364,16 @@ function suspendOverlayForVisionCapture(): void {
   overlayCaptureSuspended = true
   overlayWasVisibleBeforeCapture = overlayWindow.isVisible()
   if (overlayWasVisibleBeforeCapture) overlayWindow.hide()
+  if (overlayCaptureRestoreTimer) clearTimeout(overlayCaptureRestoreTimer)
+  // A lost renderer event must never strand the command panel off-screen.
+  overlayCaptureRestoreTimer = setTimeout(restoreOverlayAfterVisionCapture, 1500)
 }
 
 function restoreOverlayAfterVisionCapture(): void {
+  if (overlayCaptureRestoreTimer) {
+    clearTimeout(overlayCaptureRestoreTimer)
+    overlayCaptureRestoreTimer = null
+  }
   if (!overlayCaptureSuspended) return
   overlayCaptureSuspended = false
   if (
@@ -371,6 +385,24 @@ function restoreOverlayAfterVisionCapture(): void {
     overlayWindow.showInactive()
   }
   overlayWasVisibleBeforeCapture = false
+}
+
+function completeVisionControl(): void {
+  restoreOverlayAfterVisionCapture()
+  hideControlBorder()
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isVisible() &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    !isQuitting
+  ) {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    overlayWindow.showInactive()
+    overlayWindow.moveTop()
+  }
 }
 
 function minimizeToOverlay(): void {
@@ -485,6 +517,17 @@ function showControlBorder(): void {
   if (!controlBorderWindow || controlBorderWindow.isDestroyed()) createControlBorderWindow()
   updateControlBorderBounds()
   controlBorderWindow?.showInactive()
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isVisible() &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    overlayWindow.isVisible()
+  ) {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+    overlayWindow.moveTop()
+  }
 }
 
 function hideControlBorder(): void {
@@ -612,6 +655,8 @@ function createOverlayWindow(): void {
   })
 
   positionOverlayBottomRight()
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   overlayWindow.on('moved', () => {
     scheduleOverlayStateSave()
@@ -808,6 +853,9 @@ app.whenReady().then(() => {
   })
   ipcMain.on('vision-capture:end', () => {
     restoreOverlayAfterVisionCapture()
+  })
+  ipcMain.on('vision-control:complete', () => {
+    completeVisionControl()
   })
   ipcMain.on('overlay:openMain', () => {
     mainWindow?.show()

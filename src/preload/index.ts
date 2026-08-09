@@ -65,6 +65,7 @@ const torchAPI = {
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
   suspendOverlayForVisionCapture: (): void => ipcRenderer.send('vision-capture:start'),
   restoreOverlayAfterVisionCapture: (): void => ipcRenderer.send('vision-capture:end'),
+  completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),
   publishTaskEvent: (event: Record<string, unknown>): void =>
     ipcRenderer.send('task-event:publish', event),
   onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void): void => {

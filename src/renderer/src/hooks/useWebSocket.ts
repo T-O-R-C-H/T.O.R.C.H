@@ -86,7 +86,7 @@ export function useWebSocket(): {
         resetInterruptedTaskUi()
         setWsConnected(false)
         setWsPhase('disconnected')
-        window.torchAPI?.hideControlBorder()
+        window.torchAPI?.completeVisionControl()
         if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
           sharedReconnectTimer = setTimeout(connectSocket, 3000)
         }
@@ -96,7 +96,7 @@ export function useWebSocket(): {
         resetInterruptedTaskUi()
         setWsConnected(false)
         setWsPhase('disconnected')
-        window.torchAPI?.hideControlBorder()
+        window.torchAPI?.completeVisionControl()
       }
 
       ws.onmessage = (event): void => {
@@ -111,7 +111,7 @@ export function useWebSocket(): {
     } catch {
       resetInterruptedTaskUi()
       setWsPhase('disconnected')
-      window.torchAPI?.hideControlBorder()
+      window.torchAPI?.completeVisionControl()
       if (!useTorchStore.getState().demoMode) {
         sharedReconnectTimer = setTimeout(connectSocket, 3000)
       }
@@ -154,7 +154,7 @@ export function useWebSocket(): {
           if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
             sharedTaskOwnerSocket = null
           }
-          window.torchAPI?.hideControlBorder()
+          window.torchAPI?.completeVisionControl()
           store.setClarificationRequest(null)
         }
         break
@@ -164,7 +164,7 @@ export function useWebSocket(): {
         break
       }
       case 'vision_control_end': {
-        window.torchAPI?.hideControlBorder()
+        window.torchAPI?.completeVisionControl()
         break
       }
       case 'vision_capture_start': {

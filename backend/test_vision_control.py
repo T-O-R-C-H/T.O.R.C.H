@@ -4,7 +4,7 @@ import sys
 import threading
 import types
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, call, patch
 
 from errors.plain_language import translate_error
 from agent.executor import Executor
@@ -27,6 +27,12 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         settle_patch = patch.object(vc, "CAPTURE_OVERLAY_SETTLE_SECONDS", 0)
         settle_patch.start()
         self.addCleanup(settle_patch.stop)
+        browser_chooser_patch = patch.object(vc, "BROWSER_CHOOSER_SETTLE_SECONDS", 0)
+        browser_chooser_patch.start()
+        self.addCleanup(browser_chooser_patch.stop)
+        browser_window_patch = patch.object(vc, "BROWSER_WINDOW_SETTLE_SECONDS", 0)
+        browser_window_patch.start()
+        self.addCleanup(browser_window_patch.stop)
 
     async def test_failed_action_raises_and_always_emits_end(self):
         ollama = _ollama_module({"action": "failed", "reason": "button missing"})
@@ -275,7 +281,12 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             patch.object(vc.pyautogui, "click") as click,
         ):
             vc.execute_action({"action": "click", "x": 200, "y": 300})
-        move.assert_called_once_with(-1720, 420, duration=0.3)
+        move.assert_called_once_with(
+            -1720,
+            420,
+            duration=0.65,
+            tween=vc.pyautogui.easeInOutQuad,
+        )
         click.assert_called_once_with(-1720, 420)
 
     def test_positive_scroll_amount_means_down(self):
@@ -448,12 +459,6 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("vision_capture_end", event_types)
 
     async def test_structured_browser_search_asks_immediately_then_opens_selected_profile(self):
-        frame = vc.ScreenFrame(
-            image="image",
-            capture_bounds=(0, 0, 1920, 1080),
-            model_size=(960, 540),
-            monitor_bounds=((0, 0, 1920, 1080),),
-        )
         profiles = [
             ("Your Chrome", "Default"),
             ("Yusuf", "Profile 1"),
@@ -461,11 +466,13 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             ("Daniel", "Profile 7"),
         ]
         with (
-            patch.object(vc, "take_screenshot", return_value=frame),
             patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
             patch.object(vc, "_chrome_profiles", return_value=profiles),
-            patch.object(vc, "_launch_visible_browser_search") as launch,
-            patch.object(vc, "_browser_search_results_visible", return_value=True),
+            patch.object(
+                vc,
+                "_perform_human_browser_search",
+                new=AsyncMock(return_value=True),
+            ) as perform_search,
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
             patch.object(vc.ws_manager, "send_status", new=AsyncMock()),
             patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
@@ -494,7 +501,14 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
                 "Done: Google search results for 'cat' are visibly loaded in Chrome",
             )
 
-        launch.assert_called_once_with("chrome", "cat", "Profile 1")
+        perform_search.assert_awaited_once_with(
+            browser="chrome",
+            query="cat",
+            profile_directory="Profile 1",
+            cancel_event=ANY,
+            on_step=None,
+            first_step=2,
+        )
         clarification = next(
             call.args[0]
             for call in send.await_args_list
@@ -503,6 +517,90 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             clarification["options"],
             ["Your Chrome", "Yusuf", "yusuf", "Daniel"],
+        )
+        event_types = [call.args[0]["type"] for call in send.await_args_list]
+        self.assertNotIn("vision_capture_start", event_types)
+        self.assertNotIn("vision_capture_end", event_types)
+
+    async def test_human_browser_search_moves_clicks_types_and_submits(self):
+        target = vc.BrowserWindowTarget(
+            handle=42,
+            title="Google - Google Chrome",
+            bounds=(0, 0, 1920, 1040),
+        )
+        cancel_event = threading.Event()
+        on_step = AsyncMock()
+        with (
+            patch.object(vc, "_launch_browser_for_human_search") as launch,
+            patch.object(
+                vc, "_wait_for_browser_window", new=AsyncMock(return_value=target)
+            ),
+            patch.object(vc, "_focus_browser_search_bar") as focus,
+            patch.object(vc, "_type_humanly") as type_humanly,
+            patch.object(vc, "_press_enter") as press_enter,
+            patch.object(
+                vc,
+                "_wait_for_visible_browser_results",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            result = await vc._perform_human_browser_search(
+                browser="chrome",
+                query="cat",
+                profile_directory="Profile 1",
+                cancel_event=cancel_event,
+                on_step=on_step,
+                first_step=2,
+            )
+
+        self.assertTrue(result)
+        launch.assert_called_once_with("chrome", "Profile 1")
+        focus.assert_called_once_with(target, cancel_event)
+        type_humanly.assert_called_once_with("cat", cancel_event)
+        press_enter.assert_called_once_with(cancel_event)
+        self.assertEqual(
+            [entry.args[1] for entry in on_step.await_args_list],
+            ["click", "click", "type", "key"],
+        )
+
+    async def test_human_browser_search_recovers_without_title_error(self):
+        target = vc.BrowserWindowTarget(
+            handle=42,
+            title="Google - Google Chrome",
+            bounds=(0, 0, 1920, 1040),
+        )
+        cancel_event = threading.Event()
+        with (
+            patch.object(vc, "_launch_browser_for_human_search"),
+            patch.object(
+                vc, "_wait_for_browser_window", new=AsyncMock(return_value=target)
+            ),
+            patch.object(vc, "_top_browser_window", return_value=target),
+            patch.object(vc, "_focus_browser_search_bar"),
+            patch.object(vc, "_type_humanly") as type_humanly,
+            patch.object(vc, "_press_enter"),
+            patch.object(
+                vc,
+                "_wait_for_visible_browser_results",
+                new=AsyncMock(side_effect=[False, False]),
+            ),
+        ):
+            result = await vc._perform_human_browser_search(
+                browser="chrome",
+                query="cat",
+                profile_directory=None,
+                cancel_event=cancel_event,
+                on_step=None,
+                first_step=1,
+            )
+
+        self.assertFalse(result)
+        self.assertEqual(
+            type_humanly.call_args_list,
+            [
+                call("cat", cancel_event),
+                call("https://www.google.com/search?q=cat", cancel_event),
+            ],
         )
 
     async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
