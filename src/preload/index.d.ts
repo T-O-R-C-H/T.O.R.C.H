@@ -8,6 +8,10 @@ interface BackendHealth {
   error?: string
 }
 
+type TaskCommand =
+  | { type: 'stop_task' }
+  | { type: 'clarification_response'; taskId: string; response: string }
+
 interface TorchAPI {
   minimizeWindow: () => void
   maximizeWindow: () => void
@@ -29,11 +33,14 @@ interface TorchAPI {
   hideGuidance: () => void
   showControlBorder: () => void
   hideControlBorder: () => void
+  suspendOverlayForVisionCapture: () => void
+  restoreOverlayAfterVisionCapture: () => void
+  completeVisionControl: () => void
   publishTaskEvent: (event: Record<string, unknown>) => void
   onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void) => void
   removeTaskEvent: () => void
-  publishTaskCommand: (command: 'stop_task') => void
-  onTaskCommand: (callback: (_e: unknown, command: 'stop_task') => void) => void
+  publishTaskCommand: (command: TaskCommand) => void
+  onTaskCommand: (callback: (_e: unknown, command: TaskCommand) => void) => void
   removeTaskCommand: () => void
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
   removeGuidance: () => void

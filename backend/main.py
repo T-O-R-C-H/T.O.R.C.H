@@ -589,6 +589,20 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
             "error": None if accepted else "Approval request is invalid or has expired",
         }, client_id)
 
+    elif msg_type == "clarification_response":
+        task_id = str(message.get("taskId") or "")
+        response = str(message.get("response") or "")
+        from tools.vision_control import submit_vision_clarification
+
+        accepted = submit_vision_clarification(client_id, task_id, response)
+        logger.info("Clarification response for %s accepted=%s", task_id, accepted)
+        await ws_manager.send_message({
+            "type": "clarification_result",
+            "taskId": task_id,
+            "accepted": accepted,
+            "error": None if accepted else "That question is no longer active",
+        }, client_id)
+
     elif msg_type == "stop_task":
         logger.info("Stop task received")
         cancelled_channels = executor.stop_task(client_id) or set()

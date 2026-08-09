@@ -23,6 +23,10 @@ type ClipboardChangeEvent = {
   kind: 'code' | 'url' | 'email' | 'text'
 }
 
+type TaskCommand =
+  | { type: 'stop_task' }
+  | { type: 'clarification_response'; taskId: string; response: string }
+
 export type ScreenCapture = {
   displayId: string
   width: number
@@ -59,6 +63,9 @@ const torchAPI = {
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
+  suspendOverlayForVisionCapture: (): void => ipcRenderer.send('vision-capture:start'),
+  restoreOverlayAfterVisionCapture: (): void => ipcRenderer.send('vision-capture:end'),
+  completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),
   publishTaskEvent: (event: Record<string, unknown>): void =>
     ipcRenderer.send('task-event:publish', event),
   onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void): void => {
@@ -67,9 +74,9 @@ const torchAPI = {
   removeTaskEvent: (): void => {
     ipcRenderer.removeAllListeners('task-event:update')
   },
-  publishTaskCommand: (command: 'stop_task'): void =>
+  publishTaskCommand: (command: TaskCommand): void =>
     ipcRenderer.send('task-command:publish', command),
-  onTaskCommand: (callback: (_e: unknown, command: 'stop_task') => void): void => {
+  onTaskCommand: (callback: (_e: unknown, command: TaskCommand) => void): void => {
     ipcRenderer.on('task-command:update', callback)
   },
   removeTaskCommand: (): void => {

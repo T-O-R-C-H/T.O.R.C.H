@@ -31,6 +31,7 @@ let controlBorderWindow: BrowserWindow | null = null
 let controlBorderDisplayListenersRegistered = false
 let tray: Tray | null = null
 let backendProcess: ChildProcess | null = null
+let backendExternal = false
 let backendHealthTimer: NodeJS.Timeout | null = null
 let backendRestartTimer: NodeJS.Timeout | null = null
 let backendStopping = false
@@ -43,6 +44,19 @@ const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVA
 const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
 const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
 const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
+const backendStatusUrl = 'http://127.0.0.1:8000/api/status'
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  // A second dev launch briefly starts another Chromium process before the
+  // primary instance can be activated. Isolate that short-lived cache so it
+  // cannot contend with the running app's session directory.
+  const secondarySessionPath = join(app.getPath('temp'), `torch-secondary-${process.pid}`)
+  app.setPath('sessionData', secondarySessionPath)
+  app.commandLine.appendSwitch('disk-cache-dir', join(secondarySessionPath, 'Cache'))
+  console.log('[TORCH] TORCH is already running. Activating the existing window.')
+  app.exit(0)
+}
 
 type BackendHealth = {
   status: 'starting' | 'running' | 'stopped' | 'unhealthy' | 'restarting'
@@ -71,19 +85,56 @@ function publishBackendHealth(update: Partial<BackendHealth>): void {
   }
 }
 
-function startBackend(): void {
+async function isBackendReachable(): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
+
+  try {
+    const response = await fetch(backendStatusUrl, { signal: controller.signal })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function startBackend(): Promise<void> {
   if (backendRestartTimer) {
     clearTimeout(backendRestartTimer)
     backendRestartTimer = null
   }
 
-  if (backendProcess) {
+  if (backendProcess || backendExternal) {
     console.log('[TORCH] Backend already running')
+    startBackendHealthMonitor()
+    void checkBackendHealth()
     return
   }
 
   backendStopping = false
   backendStartTime = Date.now()
+
+  const backendAlreadyReachable = await isBackendReachable()
+  if (backendStopping || isQuitting) {
+    return
+  }
+
+  if (backendAlreadyReachable) {
+    console.log('[TORCH] Reusing backend already listening at http://127.0.0.1:8000')
+    backendExternal = true
+    backendFailedChecks = 0
+    publishBackendHealth({
+      status: 'running',
+      lastCheckedAt: Date.now(),
+      failureCount: 0,
+      error: undefined
+    })
+    startBackendHealthMonitor()
+    return
+  }
+
+  backendExternal = false
 
   // In production, electron-builder places the backend in resources/backend.
   const runtimeRoot = is.dev ? join(__dirname, '..', '..') : process.resourcesPath
@@ -161,6 +212,7 @@ function stopBackend(): void {
   }
 
   backendRestarting = false
+  backendExternal = false
 
   if (backendProcess) {
     console.log('[TORCH] Stopping backend...')
@@ -195,7 +247,7 @@ function stopBackendHealthMonitor(): void {
 }
 
 async function checkBackendHealth(): Promise<void> {
-  if (!backendProcess || backendStopping) {
+  if ((!backendProcess && !backendExternal) || backendStopping) {
     return
   }
 
@@ -203,7 +255,7 @@ async function checkBackendHealth(): Promise<void> {
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/api/status', {
+    const response = await fetch(backendStatusUrl, {
       signal: controller.signal
     })
 
@@ -266,6 +318,7 @@ function scheduleBackendRestart(reason: string): void {
   })
 
   const processToStop = backendProcess
+  backendExternal = false
   if (processToStop) {
     processToStop.kill()
     backendProcess = null
@@ -275,11 +328,14 @@ function scheduleBackendRestart(reason: string): void {
     backendRestartTimer = null
     backendFailedChecks = 0
     backendRestarting = false
-    startBackend()
+    void startBackend()
   }, backendRestartDelayMs)
 }
 
 let overlaySaveTimer: NodeJS.Timeout | null = null
+let overlayCaptureSuspended = false
+let overlayWasVisibleBeforeCapture = false
+let overlayCaptureRestoreTimer: NodeJS.Timeout | null = null
 
 function getProjectRoot(): string {
   return is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
@@ -288,7 +344,14 @@ function getProjectRoot(): string {
 function showFloatingOverlay(): void {
   if (!overlayWindow || overlayWindow.isDestroyed() || isQuitting) return
   positionOverlayBottomRight()
-  overlayWindow.showInactive()
+  // Chromium can temporarily demote an always-on-top BrowserWindow when a
+  // newly launched native application takes the foreground. Reassert the
+  // Windows z-order every time TORCH presents its compact command panel.
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  overlayWindow.show()
+  overlayWindow.moveTop()
+  overlayWindow.focus()
   overlayWindow.webContents.send('overlay:activate')
 }
 
@@ -296,10 +359,65 @@ function hideFloatingOverlay(): void {
   overlayWindow?.hide()
 }
 
+function suspendOverlayForVisionCapture(): void {
+  if (overlayCaptureSuspended || !overlayWindow || overlayWindow.isDestroyed()) return
+  overlayCaptureSuspended = true
+  overlayWasVisibleBeforeCapture = overlayWindow.isVisible()
+  if (overlayWasVisibleBeforeCapture) overlayWindow.hide()
+  if (overlayCaptureRestoreTimer) clearTimeout(overlayCaptureRestoreTimer)
+  // A lost renderer event must never strand the command panel off-screen.
+  overlayCaptureRestoreTimer = setTimeout(restoreOverlayAfterVisionCapture, 1500)
+}
+
+function restoreOverlayAfterVisionCapture(): void {
+  if (overlayCaptureRestoreTimer) {
+    clearTimeout(overlayCaptureRestoreTimer)
+    overlayCaptureRestoreTimer = null
+  }
+  if (!overlayCaptureSuspended) return
+  overlayCaptureSuspended = false
+  if (
+    overlayWasVisibleBeforeCapture &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    !isQuitting
+  ) {
+    overlayWindow.showInactive()
+  }
+  overlayWasVisibleBeforeCapture = false
+}
+
+function completeVisionControl(): void {
+  restoreOverlayAfterVisionCapture()
+  hideControlBorder()
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isVisible() &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    !isQuitting
+  ) {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    overlayWindow.showInactive()
+    overlayWindow.moveTop()
+  }
+}
+
+function minimizeToOverlay(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || isQuitting) return
+  hideGuidanceOverlay()
+  mainWindow.hide()
+  // Show on the next event-loop turn, after Windows has finished processing
+  // the native minimize transition.
+  setTimeout(showFloatingOverlay, 0)
+}
+
 const OVERLAY_DEFAULT_WIDTH = 360
-const OVERLAY_DEFAULT_HEIGHT = 480
+const OVERLAY_DEFAULT_HEIGHT = 180
 const OVERLAY_MIN_WIDTH = 300
-const OVERLAY_MIN_HEIGHT = 360
+const OVERLAY_MIN_HEIGHT = 160
 
 function positionOverlayBottomRight(): void {
   if (!overlayWindow) return
@@ -399,6 +517,17 @@ function showControlBorder(): void {
   if (!controlBorderWindow || controlBorderWindow.isDestroyed()) createControlBorderWindow()
   updateControlBorderBounds()
   controlBorderWindow?.showInactive()
+  if (
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.isVisible() &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    overlayWindow.isVisible()
+  ) {
+    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+    overlayWindow.moveTop()
+  }
 }
 
 function hideControlBorder(): void {
@@ -473,9 +602,10 @@ function createMainWindow(): void {
   })
 
   mainWindow.on('minimize', () => {
-    mainWindow?.hide()
-    hideGuidanceOverlay()
-    showFloatingOverlay()
+    setTimeout(() => {
+      if (mainWindow?.isMinimized()) mainWindow.restore()
+      minimizeToOverlay()
+    }, 0)
   })
 
   mainWindow.on('show', () => {
@@ -504,14 +634,17 @@ function createOverlayWindow(): void {
     minHeight: OVERLAY_MIN_HEIGHT,
     show: false,
     frame: false,
-    transparent: true,
+    // Transparent BrowserWindows can remain present but stop painting after a
+    // native minimize transition on Windows. The overlay is intentionally a
+    // solid TORCH surface, so an opaque window is both safer and equivalent.
+    transparent: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
     focusable: true,
     hasShadow: true,
-    thickFrame: true,
-    backgroundColor: '#00000000',
+    thickFrame: false,
+    backgroundColor: '#0d0d0d',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -522,6 +655,8 @@ function createOverlayWindow(): void {
   })
 
   positionOverlayBottomRight()
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   overlayWindow.on('moved', () => {
     scheduleOverlayStateSave()
@@ -534,6 +669,14 @@ function createOverlayWindow(): void {
   overlayWindow.webContents.on('did-finish-load', () => {
     overlayWindow?.webContents.setZoomFactor(1.0)
     overlayWindow?.webContents.setZoomLevel(0)
+  })
+
+  overlayWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`[TORCH] Overlay failed to load (${errorCode}): ${errorDescription}`)
+  })
+
+  overlayWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[TORCH] Overlay renderer exited: ${details.reason}`)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -673,6 +816,8 @@ function createTray(): void {
 // ─── APP LIFECYCLE ───
 
 app.whenReady().then(() => {
+  if (!gotTheLock) return
+
   electronApp.setAppUserModelId('com.torch.agent')
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
@@ -686,7 +831,7 @@ app.whenReady().then(() => {
   // ─── IPC HANDLERS ───
 
   // Window controls
-  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:minimize', minimizeToOverlay)
   ipcMain.on('window:maximize', () => {
     if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()
@@ -703,6 +848,15 @@ app.whenReady().then(() => {
   ipcMain.on('overlay:hide', () => {
     hideFloatingOverlay()
   })
+  ipcMain.on('vision-capture:start', () => {
+    suspendOverlayForVisionCapture()
+  })
+  ipcMain.on('vision-capture:end', () => {
+    restoreOverlayAfterVisionCapture()
+  })
+  ipcMain.on('vision-control:complete', () => {
+    completeVisionControl()
+  })
   ipcMain.on('overlay:openMain', () => {
     mainWindow?.show()
     mainWindow?.focus()
@@ -710,9 +864,21 @@ app.whenReady().then(() => {
   })
   ipcMain.on('overlay:setSize', (_, size: { width: number; height: number }) => {
     if (!overlayWindow) return
+    const previous = overlayWindow.getBounds()
     const width = Math.max(OVERLAY_MIN_WIDTH, Math.round(size.width))
     const height = Math.max(OVERLAY_MIN_HEIGHT, Math.round(size.height))
-    overlayWindow.setSize(width, height)
+    const area = screen.getDisplayMatching(previous).workArea
+    const right = previous.x + previous.width
+    const bottom = previous.y + previous.height
+    const x = Math.min(
+      Math.max(area.x, right - width),
+      area.x + Math.max(0, area.width - width)
+    )
+    const y = Math.min(
+      Math.max(area.y, bottom - height),
+      area.y + Math.max(0, area.height - height)
+    )
+    overlayWindow.setBounds({ x, y, width, height })
     scheduleOverlayStateSave()
   })
   ipcMain.handle('companion:captureScreens', captureDesktopScreens)
@@ -748,7 +914,11 @@ app.whenReady().then(() => {
       'status',
       'vision_control_start',
       'vision_control_end',
+      'vision_capture_start',
+      'vision_capture_end',
       'hitl_request',
+      'clarification_request',
+      'clarification_result',
       'approval_result',
       'terminal',
       'overlay',
@@ -765,10 +935,17 @@ app.whenReady().then(() => {
     }
   })
   ipcMain.on('task-command:publish', (ipcEvent, command: unknown) => {
-    if (command !== 'stop_task') return
+    if (!command || typeof command !== 'object') return
+    const taskCommand = command as { type?: unknown; taskId?: unknown; response?: unknown }
+    const validStop = taskCommand.type === 'stop_task'
+    const validClarification =
+      taskCommand.type === 'clarification_response' &&
+      typeof taskCommand.taskId === 'string' &&
+      typeof taskCommand.response === 'string'
+    if (!validStop && !validClarification) return
     for (const target of [mainWindow, overlayWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
-        target.webContents.send('task-command:update', command)
+        target.webContents.send('task-command:update', taskCommand)
       }
     }
   })
@@ -793,7 +970,7 @@ app.whenReady().then(() => {
   createGuidanceWindow()
   createControlBorderWindow()
   createTray()
-  startBackend()
+  void startBackend()
   startClipboardMonitor()
 
   app.on('activate', () => {
@@ -817,16 +994,13 @@ app.on('before-quit', () => {
   stopBackend()
 })
 
-// Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock()
-if (!gotTheLock) {
-  app.quit()
-} else {
+if (gotTheLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+      hideFloatingOverlay()
     }
   })
 }

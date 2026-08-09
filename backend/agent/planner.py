@@ -16,6 +16,7 @@ HITL_TOOLS = {
     "post_social",
     "send_message",
     "delete_file",
+    "download_file",
     "run_terminal",  # Terminal commands that modify system
 }
 
@@ -111,10 +112,12 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         tool_args = step.get("args", {})
 
-        # Force HITL for dangerous tools and consequential vision tasks.
-        requires_approval = step.get("requires_approval", False)
-        if tool in HITL_TOOLS or _vision_task_requires_approval(tool, tool_args):
-            requires_approval = True
+        # Approval is policy-controlled, not model-controlled. Otherwise an LLM
+        # can accidentally leave a read-only search waiting forever in clients
+        # that do not render an approval prompt (such as the compact overlay).
+        requires_approval = (
+            tool in HITL_TOOLS or _vision_task_requires_approval(tool, tool_args)
+        )
 
         provided_label = str(step.get("label") or "").strip()
         plain_label = provided_label or get_plain_phrase(tool, tool_args, "pending")

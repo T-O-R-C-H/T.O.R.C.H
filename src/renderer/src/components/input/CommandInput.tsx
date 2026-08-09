@@ -86,7 +86,11 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
   }
 
-  const isProcessing = agentStatus === 'processing' || agentStatus === 'executing'
+  const isProcessing =
+    agentStatus === 'processing' ||
+    agentStatus === 'executing' ||
+    agentStatus === 'awaiting_input' ||
+    agentStatus === 'awaiting_approval'
 
   const canSend = text.trim().length > 0 && !isProcessing
 

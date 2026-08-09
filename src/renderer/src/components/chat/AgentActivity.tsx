@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchMark } from '../TorchMark'
+import { TorchLogo } from '../ui/TorchLogo'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
@@ -63,6 +63,8 @@ function statusLabel(
       return 'Waiting for response…'
     case 'executing':
       return 'Planning next move…'
+    case 'awaiting_input':
+      return 'Waiting for your choice…'
     case 'awaiting_approval':
       return 'Waiting for your approval…'
     case 'listening':
@@ -185,7 +187,7 @@ export function AgentActivity({
     <div className="flex flex-col gap-2">
       <div className={activityClasses}>
         {!timedOut && (
-          <TorchMark size={42} animate color="var(--color-torch-text-secondary)" />
+          <TorchLogo tone="dark" width={84} animate />
         )}
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

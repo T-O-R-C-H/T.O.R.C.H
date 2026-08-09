@@ -19,12 +19,12 @@ AVAILABLE_TOOLS = [
     {"name": "read_excel", "description": "Extract data from an Excel spreadsheet", "params": ["filepath"]},
     {"name": "send_email", "description": "Send an email via Gmail SMTP", "params": ["to", "subject", "body", "attachment"], "hitl": True},
     {"name": "read_inbox", "description": "Read recent emails from Gmail inbox", "params": ["count"]},
-    {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"], "hitl": True},
+    {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"]},
     {"name": "click", "description": "Click at a screen position", "params": ["x", "y"]},
     {"name": "type_text", "description": "Type text using keyboard", "params": ["text"]},
     {"name": "screenshot", "description": "Take a screenshot of the screen", "params": []},
     {"name": "analyse_screen", "description": "Analyze the current screen content using AI vision", "params": []},
-    {"name": "search_web", "description": "Search the web and return results", "params": ["query"], "hitl": True},
+    {"name": "search_web", "description": "Search the web and return results", "params": ["query"]},
     {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
     {"name": "vision_control", "description": "Visually control any application by clicking, typing, scrolling, and navigating", "params": ["task"]},
@@ -63,20 +63,19 @@ Available tools:
 {tools}
 
 ━━━ CRITICAL APPROVAL RULES ━━━
-requires_approval: true MUST ONLY be set for these exact 7 tools:
+requires_approval: true MUST ONLY be set for these exact 6 tools:
   - send_email    (sends a real email — cannot be undone)
   - post_social   (posts publicly on social media — cannot be undone)
   - send_message  (sends a message to a real person — cannot be undone)
   - delete_file   (permanently deletes a file — cannot be undone)
-  - search_web    (searches the web / accesses internet)
-  - open_browser  (opens web browser / accesses internet)
   - download_file (downloads a file from internet)
+  - run_terminal  (runs a system command)
 
 ALL OTHER TOOLS must have requires_approval: false — including:
-  - read_inbox, find_file, screenshot, open_app,
-    move_file, create_folder, zip_files, run_terminal, analyse_screen, vision_control, respond
+  - read_inbox, find_file, screenshot, open_app, open_browser, search_web,
+    move_file, create_folder, zip_files, analyse_screen, vision_control, respond
 
-NEVER set requires_approval: true on any tool not in the list of 7 above.
+NEVER set requires_approval: true on any tool not in the list of 6 above.
 
 ━━━ CONVERSATIONAL RESPONSES ━━━
 For greetings (hey, hi, hello), small talk, "what can you do?", "who are you?",
@@ -107,6 +106,9 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - Do not use respond to ask for a path if you can search for it with find_file or list_directory.
 
 - Use vision_control for application interactions that require visual clicking, typing, scrolling, or navigation.
+- search_web is background-only. If the user explicitly says Chrome, Google, Edge, Firefox, or
+  "the browser", do not substitute search_web. Open the named browser with open_app and then use
+  vision_control so the requested search visibly happens in that application.
 - For Spotify requests, first open Chrome with open_app, then use vision_control to navigate to
   open.spotify.com, search for the requested song and artist, and play it.
 
