@@ -42,10 +42,28 @@ _VISIBLE_BROWSER_SEARCH_PATTERNS = (
     ),
 )
 
-_FACEBOOK_LOGIN_REQUEST = re.compile(
+_LOGIN_NAVIGATION_PREFIX = (
     r"\b(?:go\s+to|navigate\s+to|open|visit|take\s+me\s+to)\b.*"
-    r"\bfacebook\b.*\b(?:login|log\s+in|sign\s+in)\b",
-    re.IGNORECASE,
+)
+_KNOWN_LOGIN_DESTINATIONS = (
+    (
+        re.compile(
+            _LOGIN_NAVIGATION_PREFIX
+            + r"\bfacebook\b.*\b(?:login|log\s+in|sign\s+in)\b",
+            re.IGNORECASE,
+        ),
+        "Facebook login",
+        "https://www.facebook.com/login/",
+    ),
+    (
+        re.compile(
+            _LOGIN_NAVIGATION_PREFIX
+            + r"\bcanva\b.*\b(?:login|log\s+in|sign\s+in)\b",
+            re.IGNORECASE,
+        ),
+        "Canva login",
+        "https://www.canva.com/login/",
+    ),
 )
 
 
@@ -109,8 +127,17 @@ def _visible_browser_navigation_plan(
 ) -> Optional[List[Dict[str, Any]]]:
     """Route known visible destinations without waiting on the vision model."""
     request_line = user_command.splitlines()[0].strip() if user_command else ""
-    if not _FACEBOOK_LOGIN_REQUEST.search(request_line):
+    destination_match = next(
+        (
+            (destination, url)
+            for pattern, destination, url in _KNOWN_LOGIN_DESTINATIONS
+            if pattern.search(request_line)
+        ),
+        None,
+    )
+    if destination_match is None:
         return None
+    destination, url = destination_match
 
     surface_match = re.search(rf"\b({_BROWSER_SURFACE})\b", request_line, re.IGNORECASE)
     surface = (
@@ -125,8 +152,6 @@ def _visible_browser_navigation_plan(
     else:
         app_name, display_name = "chrome", "Chrome"
 
-    destination = "Facebook login"
-    url = "https://www.facebook.com/login/"
     return [
         {
             "tool": "open_app",
@@ -142,7 +167,7 @@ def _visible_browser_navigation_plan(
                     f"Use the visible {display_name} window to navigate to {url}. "
                     "If a browser profile or account chooser is visible, ask which named "
                     "profile to use and continue this same task after the answer. Do not "
-                    "enter login credentials. Finish when the Facebook login page is visible."
+                    f"enter login credentials. Finish when the {destination} page is visible."
                 ),
                 "browser": app_name,
                 "navigate_url": url,

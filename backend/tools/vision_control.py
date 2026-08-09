@@ -21,8 +21,9 @@ from urllib.parse import quote_plus
 logger = logging.getLogger("torch.vision_control")
 VISION_MODEL, MAX_STEPS, STEP_PAUSE = "qwen2.5vl:7b", 25, 0.6
 MAX_SCREENSHOT_WIDTH, MAX_SCREENSHOT_HEIGHT = 960, 540
-MODEL_ACTION_TIMEOUT_SECONDS = 360
-SESSION_TIMEOUT_SECONDS = 45 * 60
+SESSION_TIMEOUT_SECONDS = 5 * 60
+MODEL_ACTION_TIMEOUT_SECONDS = 4 * 60
+MODEL_PROGRESS_INTERVAL_SECONDS = 15
 CAPTURE_OVERLAY_SETTLE_SECONDS = 0.12
 BROWSER_CHOOSER_SETTLE_SECONDS = 0.6
 BROWSER_WINDOW_SETTLE_SECONDS = 0.8
@@ -247,6 +248,51 @@ async def _run_async_cancellable(
                 pass
 
 
+async def _await_model_action_with_progress(
+    awaitable: Awaitable[Any],
+    cancel_event: threading.Event,
+    timeout: float,
+    on_step: Optional[Callable[[int, str, str], Awaitable[None]]],
+    step: int,
+) -> Any:
+    """Await a slow local vision action with visible progress and a hard limit."""
+    work = asyncio.ensure_future(awaitable)
+    loop = asyncio.get_running_loop()
+    started_at = loop.time()
+    deadline = started_at + max(0.1, timeout)
+    try:
+        while not work.done():
+            _raise_if_cancelled(cancel_event)
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                work.cancel()
+                try:
+                    await work
+                except asyncio.CancelledError:
+                    pass
+                raise asyncio.TimeoutError
+            await asyncio.wait(
+                {work},
+                timeout=min(MODEL_PROGRESS_INTERVAL_SECONDS, remaining),
+            )
+            if not work.done() and on_step:
+                elapsed = max(1, round(loop.time() - started_at))
+                await on_step(
+                    step,
+                    "wait",
+                    f"Analyzing the screen locally with Qwen vision ({elapsed}s)",
+                )
+        _raise_if_cancelled(cancel_event)
+        return await work
+    finally:
+        if not work.done():
+            work.cancel()
+            try:
+                await work
+            except asyncio.CancelledError:
+                pass
+
+
 def _chrome_profile_chooser_visible() -> bool:
     """Detect Chrome's top-level profile chooser without trusting the model.
 
@@ -415,10 +461,12 @@ def _focus_browser_search_bar(
     """Move the real cursor to the omnibox and click it visibly."""
     _raise_if_cancelled(cancel_event)
     left, top, width, height = target.bounds
-    search_x = left + round(width * 0.52)
-    # Chrome/Edge's omnibox sits below the tab strip. Keep this inside that
-    # band across common Windows DPI scales instead of drifting into the page.
-    search_y = top + min(82, max(52, round(height * 0.07)))
+    # Use the left side of the address field. TORCH's expanded working panel
+    # occupies the center of the screen and must not intercept this real click.
+    search_x = left + round(width * 0.24)
+    # Chrome/Edge's omnibox sits below the tab strip. Keep the visible pointer
+    # move in that band for both maximized and restored Windows layouts.
+    search_y = top + min(88, max(68, round(height * 0.09)))
     pyautogui.moveTo(
         search_x,
         search_y,
@@ -428,6 +476,11 @@ def _focus_browser_search_bar(
     _raise_if_cancelled(cancel_event)
     pyautogui.click(search_x, search_y)
     time.sleep(0.18)
+    _raise_if_cancelled(cancel_event)
+    # The click makes the interaction visible; Ctrl+L guarantees focus even
+    # when browser DPI/theme changes move the omnibox by a few pixels.
+    pyautogui.hotkey("ctrl", "l")
+    time.sleep(0.12)
     _raise_if_cancelled(cancel_event)
     pyautogui.hotkey("ctrl", "a")
     time.sleep(0.12)
@@ -719,6 +772,7 @@ async def _perform_human_browser_navigation(
         browser,
         destination_label,
         cancel_event,
+        timeout=20,
     ):
         return True
 
@@ -1308,7 +1362,7 @@ async def vision_loop(
             _raise_if_cancelled(cancel_event)
             if asyncio.get_running_loop().time() >= session_deadline:
                 raise RuntimeError(
-                    "Vision control reached its 45-minute safety limit before completing the task."
+                    "Vision control reached its five-minute safety limit before completing the task."
                 )
             captured = await _take_vision_screenshot(client_id, cancel_event)
             if isinstance(captured, ScreenFrame):
@@ -1341,6 +1395,12 @@ async def vision_loop(
                 else ""
             )
             try:
+                if on_step:
+                    await on_step(
+                        step,
+                        "wait",
+                        "Analyzing the current screen locally with Qwen vision",
+                    )
                 request = {
                     "model": VISION_MODEL,
                     "messages": [
@@ -1357,26 +1417,36 @@ async def vision_loop(
                     "format": PROFILE_CHOICE_FORMAT if profile_choice_needed else "json",
                     "options": {"temperature": 0.1, "num_predict": 160},
                 }
+                model_timeout = min(
+                    MODEL_ACTION_TIMEOUT_SECONDS,
+                    max(0.1, session_deadline - asyncio.get_running_loop().time()),
+                )
                 if ollama_client is not None:
-                    response = await asyncio.wait_for(
+                    response = await _await_model_action_with_progress(
                         _run_async_cancellable(
                             ollama_client.chat(**request),
                             cancel_event,
                         ),
-                        timeout=MODEL_ACTION_TIMEOUT_SECONDS,
+                        cancel_event,
+                        model_timeout,
+                        on_step,
+                        step,
                     )
                 else:
-                    response = await asyncio.wait_for(
+                    response = await _await_model_action_with_progress(
                         _run_blocking_cancellable(
                             ollama.chat,
                             cancel_event,
                             **request,
                         ),
-                        timeout=MODEL_ACTION_TIMEOUT_SECONDS,
+                        cancel_event,
+                        model_timeout,
+                        on_step,
+                        step,
                     )
             except asyncio.TimeoutError as exc:
                 raise RuntimeError(
-                    "The local vision model took longer than 6 minutes to choose an action."
+                    "The local Qwen vision model reached TORCH's five-minute task limit."
                 ) from exc
             except Exception as exc:
                 _raise_if_cancelled(cancel_event)

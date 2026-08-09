@@ -289,6 +289,33 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         )
         click.assert_called_once_with(-1720, 420)
 
+    def test_browser_focus_visibly_clicks_then_guarantees_address_bar_focus(self):
+        target = vc.BrowserWindowTarget(
+            handle=42,
+            title="Google - Google Chrome",
+            bounds=(200, 160, 1320, 860),
+        )
+        cancel_event = threading.Event()
+        with (
+            patch.object(vc.pyautogui, "moveTo") as move,
+            patch.object(vc.pyautogui, "click") as click,
+            patch.object(vc.pyautogui, "hotkey") as hotkey,
+            patch.object(vc.time, "sleep"),
+        ):
+            vc._focus_browser_search_bar(target, cancel_event)
+
+        move.assert_called_once_with(
+            517,
+            237,
+            duration=0.8,
+            tween=vc.pyautogui.easeInOutQuad,
+        )
+        click.assert_called_once_with(517, 237)
+        self.assertEqual(
+            hotkey.call_args_list,
+            [call("ctrl", "l"), call("ctrl", "a")],
+        )
+
     def test_positive_scroll_amount_means_down(self):
         with (
             patch.object(vc, "virtual_screen_bounds", return_value=(0, 0, 1920, 1080)),
@@ -652,7 +679,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
                 vc,
                 "_wait_for_visible_browser_destination",
                 new=AsyncMock(return_value=True),
-            ),
+            ) as wait_for_destination,
         ):
             result = await vc._perform_human_browser_navigation(
                 browser="chrome",
@@ -672,6 +699,12 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             cancel_event,
         )
         press_enter.assert_called_once_with(cancel_event)
+        wait_for_destination.assert_awaited_once_with(
+            "chrome",
+            "Facebook login",
+            cancel_event,
+            timeout=20,
+        )
 
     async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
         actions = iter([

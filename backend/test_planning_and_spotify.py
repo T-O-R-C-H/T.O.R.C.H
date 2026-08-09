@@ -116,15 +116,46 @@ class VisibleBrowserPlanningTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, expected)
         provider.plan_command.assert_awaited_once()
 
-    async def test_facebook_login_navigation_bypasses_slow_vision_planning(self):
+    async def test_known_login_navigation_bypasses_slow_vision_planning(self):
         cases = (
-            ("go to chrome and go to facebook login", "chrome", "Chrome"),
-            ("go to Facebook login", "chrome", "Chrome"),
-            ("open Facebook login in Edge", "edge", "Microsoft Edge"),
-            ("navigate to Facebook log in using Firefox", "firefox", "Firefox"),
+            (
+                "go to chrome and go to facebook login",
+                "chrome",
+                "Chrome",
+                "Facebook login",
+                "https://www.facebook.com/login/",
+            ),
+            (
+                "go to Facebook login",
+                "chrome",
+                "Chrome",
+                "Facebook login",
+                "https://www.facebook.com/login/",
+            ),
+            (
+                "open Facebook login in Edge",
+                "edge",
+                "Microsoft Edge",
+                "Facebook login",
+                "https://www.facebook.com/login/",
+            ),
+            (
+                "navigate to Facebook log in using Firefox",
+                "firefox",
+                "Firefox",
+                "Facebook login",
+                "https://www.facebook.com/login/",
+            ),
+            (
+                "�Go to canva login",
+                "chrome",
+                "Chrome",
+                "Canva login",
+                "https://www.canva.com/login/",
+            ),
         )
 
-        for command, app_name, display_name in cases:
+        for command, app_name, display_name, destination, url in cases:
             with self.subTest(command=command), patch("agent.brain.get_provider") as get_provider:
                 result = await plan_command(command)
 
@@ -132,9 +163,9 @@ class VisibleBrowserPlanningTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result[0]["args"], {"name": app_name})
             self.assertEqual(
                 result[1]["args"]["navigate_url"],
-                "https://www.facebook.com/login/",
+                url,
             )
-            self.assertEqual(result[1]["args"]["destination_label"], "Facebook login")
+            self.assertEqual(result[1]["args"]["destination_label"], destination)
             self.assertEqual(result[1]["args"]["browser"], app_name)
             self.assertIn(display_name, result[1]["args"]["task"])
             get_provider.assert_not_called()
