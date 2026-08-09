@@ -167,6 +167,14 @@ export function useWebSocket(): {
         window.torchAPI?.hideControlBorder()
         break
       }
+      case 'vision_capture_start': {
+        window.torchAPI?.suspendOverlayForVisionCapture()
+        break
+      }
+      case 'vision_capture_end': {
+        window.torchAPI?.restoreOverlayAfterVisionCapture()
+        break
+      }
       case 'hitl_request': {
         store.setAgentStatus('awaiting_approval')
         break

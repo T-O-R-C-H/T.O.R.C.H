@@ -19,6 +19,84 @@ _SPOTIFY_PLAY_REQUEST = re.compile(
     re.IGNORECASE,
 )
 
+_BROWSER_SURFACE = (
+    r"google\s+chrome|chrome|microsoft\s+edge|edge|firefox|google|(?:the\s+)?browser"
+)
+_VISIBLE_BROWSER_SEARCH_PATTERNS = (
+    re.compile(
+        rf"^(?:please\s+)?(?:search|look\s+up|find)\s+(?:for\s+)?"
+        rf"(?P<query>.+?)\s+(?:(?:on|in|using|with)\s+)?"
+        rf"(?P<browser>{_BROWSER_SURFACE})[.!?]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?:please\s+)?(?:open\s+)?(?P<browser>{_BROWSER_SURFACE})"
+        rf"(?:\s+and)?\s+(?:search|look\s+up|find)\s+(?:for\s+)?"
+        rf"(?P<query>.+?)[.!?]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"^(?:please\s+)?search\s+(?P<browser>{_BROWSER_SURFACE})\s+for\s+"
+        rf"(?P<query>.+?)[.!?]*$",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _visible_browser_search_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
+    """Route explicit visible-browser searches through desktop control.
+
+    `search_web` is deliberately background-only. When a user names Chrome,
+    Google, Edge, Firefox, or "the browser", they expect to see that browser
+    open and be controlled. This deterministic route prevents an LLM from
+    silently replacing that request with an invisible HTTP search.
+    """
+    request_line = user_command.splitlines()[0].strip() if user_command else ""
+    match = None
+    for pattern in _VISIBLE_BROWSER_SEARCH_PATTERNS:
+        match = pattern.fullmatch(request_line)
+        if match:
+            break
+    if not match:
+        return None
+
+    query = match.group("query").strip().strip("'\"")
+    surface = re.sub(r"\s+", " ", match.group("browser").strip().lower())
+    if not query:
+        return None
+
+    if surface in {"edge", "microsoft edge"}:
+        app_name, display_name = "edge", "Microsoft Edge"
+    elif surface == "firefox":
+        app_name, display_name = "firefox", "Firefox"
+    else:
+        app_name, display_name = "chrome", "Chrome"
+
+    return [
+        {
+            "tool": "open_app",
+            "label": f"Opening {display_name}",
+            "args": {"name": app_name},
+            "requires_approval": False,
+        },
+        {
+            "tool": "vision_control",
+            "label": f"Searching Google for '{query}' in {display_name}",
+            "args": {
+                "task": (
+                    f"Use the visible {display_name} window to search Google for exactly: {query}. "
+                    "If a browser profile or account chooser is visible, do not choose for the "
+                    "user and do not stop there. Ask which visible profile or account to use, "
+                    "listing its exact name as an option, then continue this same task after the "
+                    "answer. Do not report done until Google search results are visibly loaded."
+                ),
+                "browser": app_name,
+                "search_query": query,
+            },
+            "requires_approval": False,
+        },
+    ]
+
 
 def _spotify_play_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
     """Return the canonical Spotify plan for an exact play request.
@@ -76,6 +154,11 @@ async def plan_command(
         spotify_plan = _spotify_play_plan(user_command)
         if spotify_plan is not None:
             return spotify_plan
+
+        browser_search_plan = _visible_browser_search_plan(user_command)
+        if browser_search_plan is not None:
+            logger.info("Using deterministic visible-browser search plan")
+            return browser_search_plan
 
         # 1. Detect: "Save this as a skill called [Name]"
         save_match = re.search(r"save this as a skill called (.+)", user_command, re.IGNORECASE)

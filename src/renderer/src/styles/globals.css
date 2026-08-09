@@ -2864,7 +2864,7 @@ button:not(:disabled):active,
   cursor: pointer;
 }
 .narration-approval:hover { background: #2563eb; }
-.narration-question { margin-top:12px; padding:12px; border:1px solid #2a2a2a; background:#111; }
+.narration-question { min-height:0; max-height:calc(100% - 64px); overflow-y:auto; margin-top:12px; padding:12px; border:1px solid #2a2a2a; background:#111; }
 .narration-question > p { margin:0 0 10px; color:#fff; font:12px/1.5 var(--font-mono); }
 .narration-question__options { display:flex; flex-direction:column; gap:6px; }
 .narration-question__options button { width:100%; padding:8px 10px; border:1px solid #2a2a2a; background:#0d0d0d; color:#bbb; text-align:left; font:11px var(--font-mono); cursor:pointer; }

@@ -333,6 +333,8 @@ function scheduleBackendRestart(reason: string): void {
 }
 
 let overlaySaveTimer: NodeJS.Timeout | null = null
+let overlayCaptureSuspended = false
+let overlayWasVisibleBeforeCapture = false
 
 function getProjectRoot(): string {
   return is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
@@ -348,6 +350,27 @@ function showFloatingOverlay(): void {
 
 function hideFloatingOverlay(): void {
   overlayWindow?.hide()
+}
+
+function suspendOverlayForVisionCapture(): void {
+  if (overlayCaptureSuspended || !overlayWindow || overlayWindow.isDestroyed()) return
+  overlayCaptureSuspended = true
+  overlayWasVisibleBeforeCapture = overlayWindow.isVisible()
+  if (overlayWasVisibleBeforeCapture) overlayWindow.hide()
+}
+
+function restoreOverlayAfterVisionCapture(): void {
+  if (!overlayCaptureSuspended) return
+  overlayCaptureSuspended = false
+  if (
+    overlayWasVisibleBeforeCapture &&
+    overlayWindow &&
+    !overlayWindow.isDestroyed() &&
+    !isQuitting
+  ) {
+    overlayWindow.showInactive()
+  }
+  overlayWasVisibleBeforeCapture = false
 }
 
 function minimizeToOverlay(): void {
@@ -780,6 +803,12 @@ app.whenReady().then(() => {
   ipcMain.on('overlay:hide', () => {
     hideFloatingOverlay()
   })
+  ipcMain.on('vision-capture:start', () => {
+    suspendOverlayForVisionCapture()
+  })
+  ipcMain.on('vision-capture:end', () => {
+    restoreOverlayAfterVisionCapture()
+  })
   ipcMain.on('overlay:openMain', () => {
     mainWindow?.show()
     mainWindow?.focus()
@@ -837,7 +866,11 @@ app.whenReady().then(() => {
       'status',
       'vision_control_start',
       'vision_control_end',
+      'vision_capture_start',
+      'vision_capture_end',
       'hitl_request',
+      'clarification_request',
+      'clarification_result',
       'approval_result',
       'terminal',
       'overlay',

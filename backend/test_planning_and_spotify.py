@@ -65,6 +65,58 @@ class SpotifyPlanningTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(validated[1]["requires_approval"])
 
 
+class VisibleBrowserPlanningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_browser_searches_bypass_background_search(self):
+        cases = (
+            ("search cat chrome", "chrome", "Chrome", "cat"),
+            ("search cat on chrome", "chrome", "Chrome", "cat"),
+            ("search cat on google", "chrome", "Chrome", "cat"),
+            ("open Chrome and search for cat", "chrome", "Chrome", "cat"),
+            ("search Edge for red pandas", "edge", "Microsoft Edge", "red pandas"),
+            ("Firefox search for arctic fox", "firefox", "Firefox", "arctic fox"),
+        )
+
+        for command, app_name, display_name, query in cases:
+            with self.subTest(command=command), patch("agent.brain.get_provider") as get_provider:
+                result = await plan_command(command)
+
+            self.assertEqual([step["tool"] for step in result], ["open_app", "vision_control"])
+            self.assertEqual(result[0]["args"], {"name": app_name})
+            self.assertIn(f"search Google for exactly: {query}", result[1]["args"]["task"])
+            self.assertEqual(result[1]["args"]["browser"], app_name)
+            self.assertEqual(result[1]["args"]["search_query"], query)
+            self.assertIn(display_name, result[1]["label"])
+            self.assertIn("profile or account chooser", result[1]["args"]["task"])
+            get_provider.assert_not_called()
+
+    async def test_desktop_context_is_not_included_in_browser_query(self):
+        command = (
+            "search cat on chrome\n\n"
+            "Active desktop: AI Agent — TORCH - AI Agent\n"
+            "LIVE CONNECTION STATUS: screen capture ready"
+        )
+        with patch("agent.brain.get_provider") as get_provider:
+            result = await plan_command(command)
+
+        self.assertIn("search Google for exactly: cat.", result[1]["args"]["task"])
+        self.assertNotIn("Active desktop", result[1]["args"]["task"])
+        get_provider.assert_not_called()
+
+    async def test_generic_web_search_still_uses_active_provider(self):
+        expected = [{
+            "tool": "search_web",
+            "label": "Searching the web",
+            "args": {"query": "cat"},
+            "requires_approval": False,
+        }]
+        provider = SimpleNamespace(plan_command=AsyncMock(return_value=expected))
+        with patch("agent.brain.get_provider", return_value=provider):
+            result = await plan_command("search the web for cat")
+
+        self.assertEqual(result, expected)
+        provider.plan_command.assert_awaited_once()
+
+
 class VisionControlApprovalTests(unittest.TestCase):
     @staticmethod
     def _validate_task(task):

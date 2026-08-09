@@ -84,7 +84,9 @@ export function FloatingOverlay(): JSX.Element {
   }, [agentStatus])
 
   useEffect(() => {
-    window.torchAPI?.setOverlaySize(360, agentStatus === 'idle' ? 180 : 480)
+    const height =
+      agentStatus === 'idle' ? 180 : agentStatus === 'awaiting_input' ? 620 : 480
+    window.torchAPI?.setOverlaySize(360, height)
   }, [agentStatus])
 
   const stopTask = useCallback(

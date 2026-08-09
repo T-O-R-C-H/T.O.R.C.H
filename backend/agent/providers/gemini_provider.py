@@ -106,6 +106,9 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - Do not use respond to ask for a path if you can search for it with find_file or list_directory.
 
 - Use vision_control for application interactions that require visual clicking, typing, scrolling, or navigation.
+- search_web is background-only. If the user explicitly says Chrome, Google, Edge, Firefox, or
+  "the browser", do not substitute search_web. Open the named browser with open_app and then use
+  vision_control so the requested search visibly happens in that application.
 - For Spotify requests, first open Chrome with open_app, then use vision_control to navigate to
   open.spotify.com, search for the requested song and artist, and play it.
 

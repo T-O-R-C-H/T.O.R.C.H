@@ -24,6 +24,9 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         vc._active_sessions.clear()
         vc._pending_clarifications.clear()
+        settle_patch = patch.object(vc, "CAPTURE_OVERLAY_SETTLE_SECONDS", 0)
+        settle_patch.start()
+        self.addCleanup(settle_patch.stop)
 
     async def test_failed_action_raises_and_always_emits_end(self):
         ollama = _ollama_module({"action": "failed", "reason": "button missing"})
@@ -356,6 +359,151 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
                 "question": "Which profile?",
                 "options": ["Yusuf"],
             })
+
+    def test_chrome_profile_chooser_detector_uses_exact_visible_window_title(self):
+        titles = {
+            1: "New Tab - Google Chrome",
+            2: "Google Chrome",
+            3: "Hidden Chrome",
+        }
+
+        def enum_windows(callback, context):
+            for window_handle in titles:
+                if callback(window_handle, context) is False:
+                    break
+
+        fake_win32gui = types.SimpleNamespace(
+            EnumWindows=enum_windows,
+            IsWindowVisible=lambda window_handle: window_handle != 3,
+            GetWindowText=lambda window_handle: titles[window_handle],
+        )
+        with (
+            patch.object(vc.sys, "platform", "win32"),
+            patch.dict(sys.modules, {"win32gui": fake_win32gui}),
+        ):
+            self.assertTrue(vc._chrome_profile_chooser_visible())
+
+        titles.pop(2)
+        with (
+            patch.object(vc.sys, "platform", "win32"),
+            patch.dict(sys.modules, {"win32gui": fake_win32gui}),
+        ):
+            self.assertFalse(vc._chrome_profile_chooser_visible())
+
+    async def test_profile_guard_forces_ask_schema_before_any_screen_action(self):
+        requests = []
+        actions = iter([
+            {
+                "action": "ask",
+                "question": "Which Chrome profile should I use?",
+                "options": ["Daniel", "Musambo", "reload", "Yusuf"],
+                "reason": "Chrome is showing its profile chooser",
+            },
+            {"action": "done", "reason": "Google results are visible"},
+        ])
+
+        def chat(**kwargs):
+            requests.append(kwargs)
+            return {"message": {"content": json.dumps(next(actions))}}
+
+        frame = vc.ScreenFrame(
+            image="image",
+            capture_bounds=(0, 0, 1920, 1080),
+            model_size=(960, 540),
+            monitor_bounds=((0, 0, 1920, 1080),),
+        )
+        with (
+            patch.dict(sys.modules, {"ollama": types.SimpleNamespace(chat=chat)}),
+            patch.object(vc, "take_screenshot", return_value=frame),
+            patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+            patch.object(vc.ws_manager, "send_status", new=AsyncMock()),
+            patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
+        ):
+            task = asyncio.create_task(
+                vc.vision_loop(
+                    "search Google for cat",
+                    max_steps=2,
+                    client_id="alpha",
+                    task_id="guarded-profile-task",
+                )
+            )
+            for _ in range(100):
+                if ("alpha", "guarded-profile-task") in vc._pending_clarifications:
+                    break
+                await asyncio.sleep(0.01)
+
+            self.assertTrue(
+                vc.submit_vision_clarification(
+                    "alpha", "guarded-profile-task", "Yusuf"
+                )
+            )
+            self.assertEqual(await task, "Done: Google results are visible")
+
+        self.assertEqual(requests[0]["format"], vc.PROFILE_CHOICE_FORMAT)
+        self.assertEqual(requests[1]["format"], "json")
+        self.assertIn("ONLY permitted action is ask", requests[0]["messages"][1]["content"])
+        event_types = [call.args[0]["type"] for call in send.await_args_list]
+        self.assertIn("vision_capture_start", event_types)
+        self.assertIn("vision_capture_end", event_types)
+
+    async def test_structured_browser_search_asks_immediately_then_opens_selected_profile(self):
+        frame = vc.ScreenFrame(
+            image="image",
+            capture_bounds=(0, 0, 1920, 1080),
+            model_size=(960, 540),
+            monitor_bounds=((0, 0, 1920, 1080),),
+        )
+        profiles = [
+            ("Your Chrome", "Default"),
+            ("Yusuf", "Profile 1"),
+            ("yusuf", "Profile 2"),
+            ("Daniel", "Profile 7"),
+        ]
+        with (
+            patch.object(vc, "take_screenshot", return_value=frame),
+            patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
+            patch.object(vc, "_chrome_profiles", return_value=profiles),
+            patch.object(vc, "_launch_visible_browser_search") as launch,
+            patch.object(vc, "_browser_search_results_visible", return_value=True),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+            patch.object(vc.ws_manager, "send_status", new=AsyncMock()),
+            patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
+        ):
+            task = asyncio.create_task(
+                vc.vision_loop(
+                    "search Google for cat",
+                    client_id="alpha",
+                    task_id="direct-profile-task",
+                    browser="chrome",
+                    search_query="cat",
+                )
+            )
+            for _ in range(100):
+                if ("alpha", "direct-profile-task") in vc._pending_clarifications:
+                    break
+                await asyncio.sleep(0.01)
+
+            self.assertTrue(
+                vc.submit_vision_clarification(
+                    "alpha", "direct-profile-task", "Yusuf"
+                )
+            )
+            self.assertEqual(
+                await task,
+                "Done: Google search results for 'cat' are visibly loaded in Chrome",
+            )
+
+        launch.assert_called_once_with("chrome", "cat", "Profile 1")
+        clarification = next(
+            call.args[0]
+            for call in send.await_args_list
+            if call.args[0].get("type") == "clarification_request"
+        )
+        self.assertEqual(
+            clarification["options"],
+            ["Your Chrome", "Yusuf", "yusuf", "Daniel"],
+        )
 
     async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
         actions = iter([
