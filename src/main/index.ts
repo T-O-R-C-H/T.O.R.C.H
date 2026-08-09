@@ -45,6 +45,18 @@ const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_
 const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
 const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
 const backendStatusUrl = 'http://127.0.0.1:8000/api/status'
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  // A second dev launch briefly starts another Chromium process before the
+  // primary instance can be activated. Isolate that short-lived cache so it
+  // cannot contend with the running app's session directory.
+  const secondarySessionPath = join(app.getPath('temp'), `torch-secondary-${process.pid}`)
+  app.setPath('sessionData', secondarySessionPath)
+  app.commandLine.appendSwitch('disk-cache-dir', join(secondarySessionPath, 'Cache'))
+  console.log('[TORCH] TORCH is already running. Activating the existing window.')
+  app.exit(0)
+}
 
 type BackendHealth = {
   status: 'starting' | 'running' | 'stopped' | 'unhealthy' | 'restarting'
@@ -329,12 +341,22 @@ function getProjectRoot(): string {
 function showFloatingOverlay(): void {
   if (!overlayWindow || overlayWindow.isDestroyed() || isQuitting) return
   positionOverlayBottomRight()
-  overlayWindow.showInactive()
+  overlayWindow.show()
+  overlayWindow.focus()
   overlayWindow.webContents.send('overlay:activate')
 }
 
 function hideFloatingOverlay(): void {
   overlayWindow?.hide()
+}
+
+function minimizeToOverlay(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || isQuitting) return
+  hideGuidanceOverlay()
+  mainWindow.hide()
+  // Show on the next event-loop turn, after Windows has finished processing
+  // the native minimize transition.
+  setTimeout(showFloatingOverlay, 0)
 }
 
 const OVERLAY_DEFAULT_WIDTH = 360
@@ -514,9 +536,10 @@ function createMainWindow(): void {
   })
 
   mainWindow.on('minimize', () => {
-    mainWindow?.hide()
-    hideGuidanceOverlay()
-    showFloatingOverlay()
+    setTimeout(() => {
+      if (mainWindow?.isMinimized()) mainWindow.restore()
+      minimizeToOverlay()
+    }, 0)
   })
 
   mainWindow.on('show', () => {
@@ -545,14 +568,17 @@ function createOverlayWindow(): void {
     minHeight: OVERLAY_MIN_HEIGHT,
     show: false,
     frame: false,
-    transparent: true,
+    // Transparent BrowserWindows can remain present but stop painting after a
+    // native minimize transition on Windows. The overlay is intentionally a
+    // solid TORCH surface, so an opaque window is both safer and equivalent.
+    transparent: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
     focusable: true,
     hasShadow: true,
-    thickFrame: true,
-    backgroundColor: '#00000000',
+    thickFrame: false,
+    backgroundColor: '#0d0d0d',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -575,6 +601,14 @@ function createOverlayWindow(): void {
   overlayWindow.webContents.on('did-finish-load', () => {
     overlayWindow?.webContents.setZoomFactor(1.0)
     overlayWindow?.webContents.setZoomLevel(0)
+  })
+
+  overlayWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error(`[TORCH] Overlay failed to load (${errorCode}): ${errorDescription}`)
+  })
+
+  overlayWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[TORCH] Overlay renderer exited: ${details.reason}`)
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -714,6 +748,8 @@ function createTray(): void {
 // ─── APP LIFECYCLE ───
 
 app.whenReady().then(() => {
+  if (!gotTheLock) return
+
   electronApp.setAppUserModelId('com.torch.agent')
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
@@ -727,7 +763,7 @@ app.whenReady().then(() => {
   // ─── IPC HANDLERS ───
 
   // Window controls
-  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:minimize', minimizeToOverlay)
   ipcMain.on('window:maximize', () => {
     if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()
@@ -858,16 +894,13 @@ app.on('before-quit', () => {
   stopBackend()
 })
 
-// Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock()
-if (!gotTheLock) {
-  app.quit()
-} else {
+if (gotTheLock) {
   app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
+      hideFloatingOverlay()
     }
   })
 }
