@@ -42,6 +42,12 @@ _VISIBLE_BROWSER_SEARCH_PATTERNS = (
     ),
 )
 
+_FACEBOOK_LOGIN_REQUEST = re.compile(
+    r"\b(?:go\s+to|navigate\s+to|open|visit|take\s+me\s+to)\b.*"
+    r"\bfacebook\b.*\b(?:login|log\s+in|sign\s+in)\b",
+    re.IGNORECASE,
+)
+
 
 def _visible_browser_search_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
     """Route explicit visible-browser searches through desktop control.
@@ -92,6 +98,55 @@ def _visible_browser_search_plan(user_command: str) -> Optional[List[Dict[str, A
                 ),
                 "browser": app_name,
                 "search_query": query,
+            },
+            "requires_approval": False,
+        },
+    ]
+
+
+def _visible_browser_navigation_plan(
+    user_command: str,
+) -> Optional[List[Dict[str, Any]]]:
+    """Route known visible destinations without waiting on the vision model."""
+    request_line = user_command.splitlines()[0].strip() if user_command else ""
+    if not _FACEBOOK_LOGIN_REQUEST.search(request_line):
+        return None
+
+    surface_match = re.search(rf"\b({_BROWSER_SURFACE})\b", request_line, re.IGNORECASE)
+    surface = (
+        re.sub(r"\s+", " ", surface_match.group(1).strip().lower())
+        if surface_match
+        else "chrome"
+    )
+    if surface in {"edge", "microsoft edge"}:
+        app_name, display_name = "edge", "Microsoft Edge"
+    elif surface == "firefox":
+        app_name, display_name = "firefox", "Firefox"
+    else:
+        app_name, display_name = "chrome", "Chrome"
+
+    destination = "Facebook login"
+    url = "https://www.facebook.com/login/"
+    return [
+        {
+            "tool": "open_app",
+            "label": f"Opening {display_name}",
+            "args": {"name": app_name},
+            "requires_approval": False,
+        },
+        {
+            "tool": "vision_control",
+            "label": f"Navigating to {destination}",
+            "args": {
+                "task": (
+                    f"Use the visible {display_name} window to navigate to {url}. "
+                    "If a browser profile or account chooser is visible, ask which named "
+                    "profile to use and continue this same task after the answer. Do not "
+                    "enter login credentials. Finish when the Facebook login page is visible."
+                ),
+                "browser": app_name,
+                "navigate_url": url,
+                "destination_label": destination,
             },
             "requires_approval": False,
         },
@@ -159,6 +214,11 @@ async def plan_command(
         if browser_search_plan is not None:
             logger.info("Using deterministic visible-browser search plan")
             return browser_search_plan
+
+        browser_navigation_plan = _visible_browser_navigation_plan(user_command)
+        if browser_navigation_plan is not None:
+            logger.info("Using deterministic visible-browser navigation plan")
+            return browser_navigation_plan
 
         # 1. Detect: "Save this as a skill called [Name]"
         save_match = re.search(r"save this as a skill called (.+)", user_command, re.IGNORECASE)

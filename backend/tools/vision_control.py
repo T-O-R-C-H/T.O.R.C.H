@@ -495,6 +495,53 @@ async def _wait_for_visible_browser_results(
     return False
 
 
+def _browser_destination_visible(browser: str, destination_label: str) -> bool:
+    """Confirm a named destination from an ordinary browser window title."""
+    if sys.platform != "win32":
+        return True
+    try:
+        import win32gui
+
+        normalized_browser = browser.strip().lower()
+        browser_marker = {
+            "edge": "microsoft edge",
+            "firefox": "mozilla firefox",
+        }.get(normalized_browser, "google chrome")
+        destination_marker = destination_label.split()[0].casefold()
+        found = False
+
+        def inspect_window(window_handle: int, _context: Any) -> bool:
+            nonlocal found
+            if not win32gui.IsWindowVisible(window_handle):
+                return True
+            title = str(win32gui.GetWindowText(window_handle) or "").casefold()
+            if destination_marker in title and browser_marker in title:
+                found = True
+                return False
+            return True
+
+        win32gui.EnumWindows(inspect_window, None)
+        return found
+    except Exception:
+        logger.debug("Could not confirm visible browser destination", exc_info=True)
+        return False
+
+
+async def _wait_for_visible_browser_destination(
+    browser: str,
+    destination_label: str,
+    cancel_event: threading.Event,
+    timeout: float = 12,
+) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        _raise_if_cancelled(cancel_event)
+        if _browser_destination_visible(browser, destination_label):
+            return True
+        await asyncio.sleep(0.2)
+    return False
+
+
 async def _perform_human_browser_search(
     browser: str,
     query: str,
@@ -603,6 +650,116 @@ async def _perform_human_browser_search(
     if not confirmed:
         logger.warning(
             "Search input was submitted, but the browser title did not expose the query"
+        )
+    return confirmed
+
+
+async def _perform_human_browser_navigation(
+    browser: str,
+    url: str,
+    destination_label: str,
+    profile_directory: Optional[str],
+    cancel_event: threading.Event,
+    on_step: Optional[Callable[[int, str, str], Awaitable[None]]],
+    first_step: int,
+) -> bool:
+    """Navigate with the real cursor and keyboard, without invoking the vision model."""
+    if on_step:
+        await on_step(
+            first_step,
+            "click",
+            f"Opening {browser.title()} for {destination_label}",
+        )
+    await _run_blocking_cancellable(
+        _launch_browser_for_human_search,
+        cancel_event,
+        browser,
+        profile_directory,
+    )
+    logger.info("Opened %s for visible navigation to %s", browser.title(), url)
+    if BROWSER_WINDOW_SETTLE_SECONDS > 0:
+        await asyncio.sleep(BROWSER_WINDOW_SETTLE_SECONDS)
+    _raise_if_cancelled(cancel_event)
+    target = await _wait_for_browser_window(browser, cancel_event)
+
+    if on_step:
+        await on_step(
+            first_step + 1,
+            "click",
+            f"Moving the cursor to {browser.title()}'s address bar",
+        )
+    await _run_blocking_cancellable(
+        _focus_browser_search_bar,
+        cancel_event,
+        target,
+        cancel_event,
+    )
+
+    if on_step:
+        await on_step(
+            first_step + 2,
+            "type",
+            f"Typing the {destination_label} address",
+        )
+    await _run_blocking_cancellable(
+        _type_humanly,
+        cancel_event,
+        url,
+        cancel_event,
+    )
+    if on_step:
+        await on_step(first_step + 3, "key", "Pressing Enter to navigate")
+    await _run_blocking_cancellable(
+        _press_enter,
+        cancel_event,
+        cancel_event,
+    )
+    logger.info("Submitted visible browser navigation to %s", url)
+    if await _wait_for_visible_browser_destination(
+        browser,
+        destination_label,
+        cancel_event,
+    ):
+        return True
+
+    logger.info(
+        "Browser title did not confirm %s; retrying the address visibly",
+        destination_label,
+    )
+    if on_step:
+        await on_step(
+            first_step + 4,
+            "click",
+            f"{destination_label} is still loading; retrying automatically",
+        )
+    target = _top_browser_window(browser) or target
+    await _run_blocking_cancellable(
+        _focus_browser_search_bar,
+        cancel_event,
+        target,
+        cancel_event,
+    )
+    await _run_blocking_cancellable(
+        _type_humanly,
+        cancel_event,
+        url,
+        cancel_event,
+    )
+    await _run_blocking_cancellable(
+        _press_enter,
+        cancel_event,
+        cancel_event,
+    )
+    confirmed = await _wait_for_visible_browser_destination(
+        browser,
+        destination_label,
+        cancel_event,
+        timeout=8,
+    )
+    if not confirmed:
+        logger.warning(
+            "Navigation was submitted, but the browser title did not expose %s",
+            destination_label,
         )
     return confirmed
 
@@ -841,6 +998,72 @@ async def _wait_for_clarification(
     return future.result()
 
 
+async def _resolve_structured_browser_profile(
+    browser: str,
+    client_id: str,
+    session_id: str,
+    cancel_event: threading.Event,
+    on_step: Optional[Callable[[int, str, str], Awaitable[None]]],
+) -> tuple[bool, Optional[str], bool]:
+    """Ask for a Chrome profile and return chooser, directory, and readiness."""
+    if BROWSER_CHOOSER_SETTLE_SECONDS > 0:
+        await asyncio.sleep(BROWSER_CHOOSER_SETTLE_SECONDS)
+    _raise_if_cancelled(cancel_event)
+    chooser_visible = browser.strip().lower() == "chrome" and _chrome_profile_chooser_visible()
+    if not chooser_visible:
+        return False, None, True
+
+    profiles = _chrome_profiles()
+    if len(profiles) < 2:
+        # Let the guarded visual path read the chooser if local profile metadata
+        # is unavailable or does not match the visible Chrome window.
+        return True, None, False
+
+    action = _validate_action({
+        "action": "ask",
+        "question": "I found multiple Chrome profiles. Which one should I use?",
+        "options": [name for name, _directory in profiles],
+        "reason": "Chrome is waiting at its profile chooser",
+    })
+    if on_step:
+        await on_step(1, "ask", action["reason"])
+
+    clarification_key = (client_id, session_id)
+    pending = asyncio.get_running_loop().create_future()
+    _pending_clarifications[clarification_key] = pending
+    await ws_manager.send_status("awaiting_input", client_id)
+    await ws_manager.send_message(
+        {
+            "type": "clarification_request",
+            "taskId": session_id,
+            "question": action["question"],
+            "options": action["options"],
+        },
+        client_id,
+    )
+    await ws_manager.send_terminal_line(
+        f"Waiting for your choice: {action['question']}",
+        "hitl",
+        client_id,
+    )
+    try:
+        answer = await _wait_for_clarification(pending, cancel_event)
+    finally:
+        _pending_clarifications.pop(clarification_key, None)
+    await ws_manager.send_status("executing", client_id)
+
+    exact_matches = [directory for name, directory in profiles if name == answer]
+    folded_matches = [
+        directory for name, directory in profiles if name.casefold() == answer.casefold()
+    ]
+    matches = exact_matches or folded_matches
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"I could not match '{answer}' to one Chrome profile. Please try again."
+        )
+    return True, matches[0], True
+
+
 async def _try_structured_browser_search(
     browser: str,
     query: str,
@@ -850,67 +1073,15 @@ async def _try_structured_browser_search(
     on_step: Optional[Callable[[int, str, str], Awaitable[None]]],
 ) -> Optional[str]:
     """Complete an explicit browser search with visible, human-style interaction."""
-    # The preceding open_app step returns before Chrome always finishes drawing
-    # its chooser. Detect the native chooser directly so TORCH does not need to
-    # hide itself or invoke the slow vision model for this decision.
-    if BROWSER_CHOOSER_SETTLE_SECONDS > 0:
-        await asyncio.sleep(BROWSER_CHOOSER_SETTLE_SECONDS)
-    _raise_if_cancelled(cancel_event)
-    chooser_visible = _chrome_profile_chooser_visible()
-    profile_directory: Optional[str] = None
-
-    if chooser_visible:
-        profiles = _chrome_profiles()
-        if len(profiles) < 2:
-            # Fall back to the guarded visual model when Chrome's local profile
-            # metadata is unavailable or does not match the visible chooser.
-            return None
-
-        action = _validate_action({
-            "action": "ask",
-            "question": "I found multiple Chrome profiles. Which one should I use?",
-            "options": [name for name, _directory in profiles],
-            "reason": "Chrome is waiting at its profile chooser",
-        })
-        if on_step:
-            await on_step(1, "ask", action["reason"])
-
-        clarification_key = (client_id, session_id)
-        pending = asyncio.get_running_loop().create_future()
-        _pending_clarifications[clarification_key] = pending
-        await ws_manager.send_status("awaiting_input", client_id)
-        await ws_manager.send_message(
-            {
-                "type": "clarification_request",
-                "taskId": session_id,
-                "question": action["question"],
-                "options": action["options"],
-            },
-            client_id,
-        )
-        await ws_manager.send_terminal_line(
-            f"Waiting for your choice: {action['question']}",
-            "hitl",
-            client_id,
-        )
-        try:
-            answer = await _wait_for_clarification(pending, cancel_event)
-        finally:
-            _pending_clarifications.pop(clarification_key, None)
-        await ws_manager.send_status("executing", client_id)
-
-        exact_matches = [
-            directory for name, directory in profiles if name == answer
-        ]
-        folded_matches = [
-            directory for name, directory in profiles if name.casefold() == answer.casefold()
-        ]
-        matches = exact_matches or folded_matches
-        if len(matches) != 1:
-            raise RuntimeError(
-                f"I could not match '{answer}' to one Chrome profile. Please run the search again."
-            )
-        profile_directory = matches[0]
+    chooser_visible, profile_directory, ready = await _resolve_structured_browser_profile(
+        browser,
+        client_id,
+        session_id,
+        cancel_event,
+        on_step,
+    )
+    if not ready:
+        return None
 
     first_step = 2 if chooser_visible else 1
     for attempt in range(2):
@@ -951,6 +1122,63 @@ async def _try_structured_browser_search(
                 continue
             # Only after two deterministic attempts do we let the general
             # screen-aware controller inspect and recover from an unusual UI.
+            return None
+
+    return None
+
+
+async def _try_structured_browser_navigation(
+    browser: str,
+    url: str,
+    destination_label: str,
+    client_id: str,
+    session_id: str,
+    cancel_event: threading.Event,
+    on_step: Optional[Callable[[int, str, str], Awaitable[None]]],
+) -> Optional[str]:
+    """Complete a known URL navigation without waiting on the vision model."""
+    chooser_visible, profile_directory, ready = await _resolve_structured_browser_profile(
+        browser,
+        client_id,
+        session_id,
+        cancel_event,
+        on_step,
+    )
+    if not ready:
+        return None
+
+    first_step = 2 if chooser_visible else 1
+    for attempt in range(2):
+        try:
+            confirmed = await _perform_human_browser_navigation(
+                browser=browser,
+                url=url,
+                destination_label=destination_label,
+                profile_directory=profile_directory,
+                cancel_event=cancel_event,
+                on_step=on_step,
+                first_step=first_step + attempt * 6,
+            )
+            if confirmed:
+                return f"Done: {destination_label} is visibly loaded in {browser.title()}"
+            return f"Done: navigation to {destination_label} was submitted in {browser.title()}"
+        except VisionControlCancelled:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Human browser navigation attempt %s/2 needs recovery: %s",
+                attempt + 1,
+                exc,
+            )
+            if attempt == 0:
+                if on_step:
+                    await on_step(
+                        first_step + 5,
+                        "wait",
+                        f"{browser.title()} changed unexpectedly; recovering automatically",
+                    )
+                await asyncio.sleep(0.5)
+                continue
             return None
 
     return None
@@ -1018,6 +1246,8 @@ async def vision_loop(
     task_id: Optional[str] = None,
     browser: Optional[str] = None,
     search_query: Optional[str] = None,
+    navigate_url: Optional[str] = None,
+    destination_label: Optional[str] = None,
 ) -> str:
     session_id = task_id or str(uuid.uuid4())
     cancel_event = threading.Event()
@@ -1033,6 +1263,19 @@ async def vision_loop(
             direct_result = await _try_structured_browser_search(
                 browser=browser,
                 query=search_query,
+                client_id=client_id,
+                session_id=session_id,
+                cancel_event=cancel_event,
+                on_step=on_step,
+            )
+            if direct_result is not None:
+                return direct_result
+
+        if browser and navigate_url:
+            direct_result = await _try_structured_browser_navigation(
+                browser=browser,
+                url=navigate_url,
+                destination_label=destination_label or navigate_url,
                 client_id=client_id,
                 session_id=session_id,
                 cancel_event=cancel_event,
@@ -1269,6 +1512,8 @@ async def vision_control(
     on_step: Optional[Callable[[int, str, str], Awaitable[None]]] = None,
     browser: Optional[str] = None,
     search_query: Optional[str] = None,
+    navigate_url: Optional[str] = None,
+    destination_label: Optional[str] = None,
     **_kwargs,
 ) -> str:
     return await vision_loop(
@@ -1278,4 +1523,6 @@ async def vision_control(
         task_id=task_id,
         browser=browser,
         search_query=search_query,
+        navigate_url=navigate_url,
+        destination_label=destination_label,
     )

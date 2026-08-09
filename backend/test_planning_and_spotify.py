@@ -116,6 +116,29 @@ class VisibleBrowserPlanningTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, expected)
         provider.plan_command.assert_awaited_once()
 
+    async def test_facebook_login_navigation_bypasses_slow_vision_planning(self):
+        cases = (
+            ("go to chrome and go to facebook login", "chrome", "Chrome"),
+            ("go to Facebook login", "chrome", "Chrome"),
+            ("open Facebook login in Edge", "edge", "Microsoft Edge"),
+            ("navigate to Facebook log in using Firefox", "firefox", "Firefox"),
+        )
+
+        for command, app_name, display_name in cases:
+            with self.subTest(command=command), patch("agent.brain.get_provider") as get_provider:
+                result = await plan_command(command)
+
+            self.assertEqual([step["tool"] for step in result], ["open_app", "vision_control"])
+            self.assertEqual(result[0]["args"], {"name": app_name})
+            self.assertEqual(
+                result[1]["args"]["navigate_url"],
+                "https://www.facebook.com/login/",
+            )
+            self.assertEqual(result[1]["args"]["destination_label"], "Facebook login")
+            self.assertEqual(result[1]["args"]["browser"], app_name)
+            self.assertIn(display_name, result[1]["args"]["task"])
+            get_provider.assert_not_called()
+
 
 class VisionControlApprovalTests(unittest.TestCase):
     @staticmethod

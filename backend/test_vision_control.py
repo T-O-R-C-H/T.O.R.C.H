@@ -603,6 +603,76 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_structured_navigation_bypasses_the_vision_model(self):
+        with (
+            patch.object(vc, "_chrome_profile_chooser_visible", return_value=False),
+            patch.object(
+                vc,
+                "_perform_human_browser_navigation",
+                new=AsyncMock(return_value=True),
+            ) as navigate,
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            result = await vc.vision_loop(
+                "go to Facebook login",
+                client_id="alpha",
+                task_id="facebook-navigation",
+                browser="chrome",
+                navigate_url="https://www.facebook.com/login/",
+                destination_label="Facebook login",
+            )
+
+        self.assertEqual(result, "Done: Facebook login is visibly loaded in Chrome")
+        navigate.assert_awaited_once_with(
+            browser="chrome",
+            url="https://www.facebook.com/login/",
+            destination_label="Facebook login",
+            profile_directory=None,
+            cancel_event=ANY,
+            on_step=None,
+            first_step=1,
+        )
+
+    async def test_human_navigation_clicks_types_address_and_submits(self):
+        target = vc.BrowserWindowTarget(
+            handle=42,
+            title="Google - Google Chrome",
+            bounds=(0, 0, 1920, 1040),
+        )
+        cancel_event = threading.Event()
+        with (
+            patch.object(vc, "_launch_browser_for_human_search") as launch,
+            patch.object(
+                vc, "_wait_for_browser_window", new=AsyncMock(return_value=target)
+            ),
+            patch.object(vc, "_focus_browser_search_bar") as focus,
+            patch.object(vc, "_type_humanly") as type_humanly,
+            patch.object(vc, "_press_enter") as press_enter,
+            patch.object(
+                vc,
+                "_wait_for_visible_browser_destination",
+                new=AsyncMock(return_value=True),
+            ),
+        ):
+            result = await vc._perform_human_browser_navigation(
+                browser="chrome",
+                url="https://www.facebook.com/login/",
+                destination_label="Facebook login",
+                profile_directory="Profile 1",
+                cancel_event=cancel_event,
+                on_step=None,
+                first_step=2,
+            )
+
+        self.assertTrue(result)
+        launch.assert_called_once_with("chrome", "Profile 1")
+        focus.assert_called_once_with(target, cancel_event)
+        type_humanly.assert_called_once_with(
+            "https://www.facebook.com/login/",
+            cancel_event,
+        )
+        press_enter.assert_called_once_with(cancel_event)
+
     async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
         actions = iter([
             {
