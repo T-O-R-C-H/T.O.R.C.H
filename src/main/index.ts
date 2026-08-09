@@ -360,9 +360,9 @@ function minimizeToOverlay(): void {
 }
 
 const OVERLAY_DEFAULT_WIDTH = 360
-const OVERLAY_DEFAULT_HEIGHT = 480
+const OVERLAY_DEFAULT_HEIGHT = 180
 const OVERLAY_MIN_WIDTH = 300
-const OVERLAY_MIN_HEIGHT = 360
+const OVERLAY_MIN_HEIGHT = 160
 
 function positionOverlayBottomRight(): void {
   if (!overlayWindow) return
@@ -787,9 +787,21 @@ app.whenReady().then(() => {
   })
   ipcMain.on('overlay:setSize', (_, size: { width: number; height: number }) => {
     if (!overlayWindow) return
+    const previous = overlayWindow.getBounds()
     const width = Math.max(OVERLAY_MIN_WIDTH, Math.round(size.width))
     const height = Math.max(OVERLAY_MIN_HEIGHT, Math.round(size.height))
-    overlayWindow.setSize(width, height)
+    const area = screen.getDisplayMatching(previous).workArea
+    const right = previous.x + previous.width
+    const bottom = previous.y + previous.height
+    const x = Math.min(
+      Math.max(area.x, right - width),
+      area.x + Math.max(0, area.width - width)
+    )
+    const y = Math.min(
+      Math.max(area.y, bottom - height),
+      area.y + Math.max(0, area.height - height)
+    )
+    overlayWindow.setBounds({ x, y, width, height })
     scheduleOverlayStateSave()
   })
   ipcMain.handle('companion:captureScreens', captureDesktopScreens)
@@ -842,10 +854,17 @@ app.whenReady().then(() => {
     }
   })
   ipcMain.on('task-command:publish', (ipcEvent, command: unknown) => {
-    if (command !== 'stop_task') return
+    if (!command || typeof command !== 'object') return
+    const taskCommand = command as { type?: unknown; taskId?: unknown; response?: unknown }
+    const validStop = taskCommand.type === 'stop_task'
+    const validClarification =
+      taskCommand.type === 'clarification_response' &&
+      typeof taskCommand.taskId === 'string' &&
+      typeof taskCommand.response === 'string'
+    if (!validStop && !validClarification) return
     for (const target of [mainWindow, overlayWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
-        target.webContents.send('task-command:update', command)
+        target.webContents.send('task-command:update', taskCommand)
       }
     }
   })

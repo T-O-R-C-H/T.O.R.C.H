@@ -63,6 +63,8 @@ function statusLabel(
       return 'Waiting for response…'
     case 'executing':
       return 'Planning next move…'
+    case 'awaiting_input':
+      return 'Waiting for your choice…'
     case 'awaiting_approval':
       return 'Waiting for your approval…'
     case 'listening':
@@ -185,7 +187,7 @@ export function AgentActivity({
     <div className="flex flex-col gap-2">
       <div className={activityClasses}>
         {!timedOut && (
-          <TorchLogo variant="mark" tone="dark" size={42} animate />
+          <TorchLogo tone="dark" width={84} animate />
         )}
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

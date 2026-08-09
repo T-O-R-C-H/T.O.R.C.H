@@ -7,6 +7,7 @@ import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIco
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { formatAgentContent } from '../../utils/plainLanguage'
+import { ClarificationPrompt } from './ClarificationPrompt'
 
 const promptSuggestions = [
   {
@@ -88,6 +89,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   const isBusy =
     agentStatus === 'processing' ||
     agentStatus === 'executing' ||
+    agentStatus === 'awaiting_input' ||
     agentStatus === 'awaiting_approval'
   const visionControlActive = Boolean(
     lastTurn?.agent?.steps?.some((step) => step.tool === 'vision_control')
@@ -206,6 +208,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
             />
           )
         })}
+        <ClarificationPrompt />
       </div>
     </div>
   )

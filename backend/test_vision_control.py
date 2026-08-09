@@ -23,6 +23,7 @@ def _ollama_module(action):
 class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         vc._active_sessions.clear()
+        vc._pending_clarifications.clear()
 
     async def test_failed_action_raises_and_always_emits_end(self):
         ollama = _ollama_module({"action": "failed", "reason": "button missing"})
@@ -340,6 +341,74 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             vc._validate_action(
                 {"action": "scroll", "x": 1, "y": 1, "amount": 100}
             )
+
+    def test_ask_action_requires_named_choices_and_removes_other_placeholder(self):
+        action = vc._validate_action({
+            "action": "ask",
+            "question": "Which Chrome profile should I use?",
+            "options": ["Yusuf", "Yaomin", "Muyideen", "Other"],
+            "reason": "The browser is showing a profile chooser",
+        })
+        self.assertEqual(action["options"], ["Yusuf", "Yaomin", "Muyideen"])
+        with self.assertRaisesRegex(ValueError, "between two and eight"):
+            vc._validate_action({
+                "action": "ask",
+                "question": "Which profile?",
+                "options": ["Yusuf"],
+            })
+
+    async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
+        actions = iter([
+            {
+                "action": "ask",
+                "question": "I found multiple Chrome profiles. Which one should I use?",
+                "options": ["Yusuf", "Yaomin", "Muyideen"],
+                "reason": "Chrome is waiting at its profile chooser",
+            },
+            {"action": "done", "reason": "searched Google for cat"},
+        ])
+        ollama = types.SimpleNamespace(
+            chat=lambda **_kwargs: {
+                "message": {"content": json.dumps(next(actions))}
+            }
+        )
+        with (
+            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+            patch.object(vc.ws_manager, "send_status", new=AsyncMock()) as status,
+            patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
+        ):
+            task = asyncio.create_task(
+                vc.vision_loop(
+                    "search Google for cat",
+                    max_steps=2,
+                    client_id="alpha",
+                    task_id="profile-task",
+                )
+            )
+            for _ in range(100):
+                if ("alpha", "profile-task") in vc._pending_clarifications:
+                    break
+                await asyncio.sleep(0.01)
+
+            self.assertTrue(
+                vc.submit_vision_clarification("alpha", "profile-task", "Yusuf")
+            )
+            self.assertFalse(
+                vc.submit_vision_clarification("alpha", "missing-task", "Yusuf")
+            )
+            self.assertEqual(await task, "Done: searched Google for cat")
+
+        requests = [
+            call.args[0]
+            for call in send.await_args_list
+            if call.args[0].get("type") == "clarification_request"
+        ]
+        self.assertEqual(requests[0]["options"], ["Yusuf", "Yaomin", "Muyideen"])
+        self.assertIn("awaiting_input", [call.args[0] for call in status.await_args_list])
+        self.assertIn("executing", [call.args[0] for call in status.await_args_list])
 
     async def test_ollama_request_uses_system_role_and_json_mode(self):
         captured_request = {}

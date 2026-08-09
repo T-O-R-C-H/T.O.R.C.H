@@ -23,6 +23,10 @@ type ClipboardChangeEvent = {
   kind: 'code' | 'url' | 'email' | 'text'
 }
 
+type TaskCommand =
+  | { type: 'stop_task' }
+  | { type: 'clarification_response'; taskId: string; response: string }
+
 export type ScreenCapture = {
   displayId: string
   width: number
@@ -67,9 +71,9 @@ const torchAPI = {
   removeTaskEvent: (): void => {
     ipcRenderer.removeAllListeners('task-event:update')
   },
-  publishTaskCommand: (command: 'stop_task'): void =>
+  publishTaskCommand: (command: TaskCommand): void =>
     ipcRenderer.send('task-command:publish', command),
-  onTaskCommand: (callback: (_e: unknown, command: 'stop_task') => void): void => {
+  onTaskCommand: (callback: (_e: unknown, command: TaskCommand) => void): void => {
     ipcRenderer.on('task-command:update', callback)
   },
   removeTaskCommand: (): void => {

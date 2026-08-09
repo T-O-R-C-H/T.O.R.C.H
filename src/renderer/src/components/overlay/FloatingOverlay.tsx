@@ -33,6 +33,7 @@ export function FloatingOverlay(): JSX.Element {
   const isBusy =
     agentStatus === 'processing' ||
     agentStatus === 'executing' ||
+    agentStatus === 'awaiting_input' ||
     agentStatus === 'awaiting_approval'
   const latestSteps =
     [...messages].reverse().find((message) => message.role === 'torch' && message.steps?.length)
@@ -82,12 +83,17 @@ export function FloatingOverlay(): JSX.Element {
     if (agentStatus === 'idle') setTaskStartedAt(null)
   }, [agentStatus])
 
+  useEffect(() => {
+    window.torchAPI?.setOverlaySize(360, agentStatus === 'idle' ? 180 : 480)
+  }, [agentStatus])
+
   const stopTask = useCallback(
     (timedOut = false): void => {
       sendStopCommand()
       setTaskStartedAt(null)
       const store = useTorchStore.getState()
       store.setAgentStatus('idle')
+      store.setClarificationRequest(null)
       window.torchAPI?.hideControlBorder()
       if (timedOut) {
         store.addMessage({
@@ -144,7 +150,7 @@ export function FloatingOverlay(): JSX.Element {
       <header className="fo-header overlay-drag">
         <div className="fo-header__brand">
           <span className={`fo-status-dot fo-status-dot--${connectionStatus}`} />
-          <strong className="fo-header__title">TORCH</strong>
+          <TorchLogo className="fo-header__logo" tone="light" width={68} />
         </div>
         <div className="fo-header__clock">
           <span className="fo-clock__time">{timeString}</span>
@@ -177,21 +183,6 @@ export function FloatingOverlay(): JSX.Element {
             <span className="fo-context__title">{context.windowTitle}</span>
           </>
         )}
-      </div>
-
-      <main className="fo-body fo-body--control overlay-no-drag">
-        <div className="fo-avatar">
-          <TorchLogo variant="mark" tone="light" size={72} />
-        </div>
-        <p className="fo-control-copy">
-          {wsConnected ? 'Ready to take control.' : 'Connecting to TORCH…'}
-        </p>
-      </main>
-
-      <div className="fo-mode overlay-no-drag" aria-label="Active mode">
-        <div className="fo-mode__track fo-mode__track--single">
-          <span className="fo-mode__tab fo-mode__tab--active">Take control</span>
-        </div>
       </div>
 
       <div className="fo-input overlay-no-drag">

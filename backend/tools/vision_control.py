@@ -32,15 +32,24 @@ Available actions:
 - key: press one key or a combination such as enter, ctrl+l, or ctrl+t
 - scroll: scroll at x and y; positive amount means down and negative means up
 - wait: let a loading screen or transition finish
+- ask: pause and ask the user a question with two to eight visible choices
 - done: the requested task is fully complete
 - failed: the task cannot be completed, with a clear reason
 
-Return these fields: action, x, y, text, key, amount, reason.
+Return these fields: action, x, y, text, key, amount, reason, question, options.
 Always return exactly one action. After typing into a search field, submit it with enter on the
 next step. Never use type unless a text field visibly has focus or the previous action focused it.
 When a browser is on the wrong page, use ctrl+l first, type the destination URL on the next step,
 then press enter on the following step. Never click outside the screenshot. Do not report done until
-the visible result confirms the user's request succeeded."""
+the visible result confirms the user's request succeeded.
+
+Never guess a personal choice. If the screen shows multiple browser profiles, accounts, people,
+files, destinations, or other choices and the task did not specify which one, you MUST use ask
+immediately. Put the exact visible names in options and explain the choice in question. Do not wait
+on a chooser and do not select a profile or account yourself. If a sign-in, consent screen, dialog,
+or unclear page state needs user judgment, ask instead of guessing, claiming success, or repeatedly
+waiting. After an ask, the next user message will contain their answer in Previous actions; use it
+to continue the same task."""
 
 ALLOWED_ACTIONS = {
     "click",
@@ -50,6 +59,7 @@ ALLOWED_ACTIONS = {
     "key",
     "scroll",
     "wait",
+    "ask",
     "done",
     "failed",
 }
@@ -125,6 +135,7 @@ class ScreenFrame:
 
 
 _active_sessions: Dict[str, Dict[str, threading.Event]] = {}
+_pending_clarifications: Dict[tuple[str, str], asyncio.Future[str]] = {}
 
 
 def cancel_vision_control(client_id: str, task_id: Optional[str] = None) -> int:
@@ -139,6 +150,18 @@ def cancel_vision_control(client_id: str, task_id: Optional[str] = None) -> int:
     for cancel_event in selected:
         cancel_event.set()
     return len(selected)
+
+
+def submit_vision_clarification(client_id: str, task_id: str, response: str) -> bool:
+    """Resume one paused vision task with the user's selected or typed answer."""
+    answer = str(response or "").strip()
+    if not answer or len(answer) > 500:
+        return False
+    pending = _pending_clarifications.get((client_id, task_id))
+    if pending is None or pending.done():
+        return False
+    pending.set_result(answer)
+    return True
 
 
 def _raise_if_cancelled(cancel_event: threading.Event) -> None:
@@ -374,7 +397,42 @@ def _validate_action(candidate: Any) -> dict:
             raise ValueError("scroll amount must be between -10 and 10, excluding zero")
         action["amount"] = amount
 
+    if kind == "ask":
+        question = action.get("question")
+        options = action.get("options")
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("ask requires a non-empty question")
+        if not isinstance(options, list) or not 2 <= len(options) <= 8:
+            raise ValueError("ask requires between two and eight options")
+        cleaned_options = []
+        for option in options:
+            if not isinstance(option, str) or not option.strip():
+                raise ValueError("ask options must be non-empty text")
+            cleaned = option.strip()[:80]
+            if cleaned.lower() not in {"other", "other...", "other…"} and cleaned not in cleaned_options:
+                cleaned_options.append(cleaned)
+        if len(cleaned_options) < 2:
+            raise ValueError("ask requires at least two distinct named options")
+        action["question"] = question.strip()[:300]
+        action["options"] = cleaned_options
+
     return action
+
+
+async def _wait_for_clarification(
+    future: asyncio.Future[str],
+    cancel_event: threading.Event,
+    timeout: float = 300,
+) -> str:
+    """Wait for a user answer while keeping Stop responsive."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not future.done():
+        _raise_if_cancelled(cancel_event)
+        if asyncio.get_running_loop().time() >= deadline:
+            raise RuntimeError("TORCH timed out while waiting for your choice.")
+        await asyncio.wait({future}, timeout=0.1)
+    _raise_if_cancelled(cancel_event)
+    return future.result()
 
 
 def execute_action(
@@ -559,6 +617,38 @@ async def vision_loop(
                 raise RuntimeError(
                     f"Vision control could not complete the task: {reason or 'unknown reason'}"
                 )
+            if kind == "ask":
+                clarification_key = (client_id, session_id)
+                pending = asyncio.get_running_loop().create_future()
+                _pending_clarifications[clarification_key] = pending
+                await ws_manager.send_status("awaiting_input", client_id)
+                await ws_manager.send_message(
+                    {
+                        "type": "clarification_request",
+                        "taskId": session_id,
+                        "question": action["question"],
+                        "options": action["options"],
+                    },
+                    client_id,
+                )
+                await ws_manager.send_terminal_line(
+                    f"Waiting for your choice: {action['question']}",
+                    "hitl",
+                    client_id,
+                )
+                try:
+                    answer = await _wait_for_clarification(pending, cancel_event)
+                finally:
+                    _pending_clarifications.pop(clarification_key, None)
+                await ws_manager.send_status("executing", client_id)
+                history.append(
+                    {
+                        "action": "ask",
+                        "reason": str(reason or action["question"]),
+                    }
+                )
+                history.append({"action": "user_answer", "reason": answer})
+                continue
 
             try:
                 await _run_blocking_cancellable(
@@ -594,6 +684,9 @@ async def vision_loop(
             "without completing the task."
         )
     finally:
+        pending = _pending_clarifications.pop((client_id, session_id), None)
+        if pending is not None and not pending.done():
+            pending.cancel()
         if ollama_client is not None:
             try:
                 await ollama_client.close()

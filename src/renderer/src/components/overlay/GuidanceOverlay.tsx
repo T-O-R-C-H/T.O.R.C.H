@@ -124,7 +124,7 @@ export function GuidanceOverlay(): JSX.Element {
 
       {guidance?.type === 'point' && (
         <motion.div className="guidance-companion" animate={companionControls}>
-          <TorchLogo variant="mark" tone="light" size={64} animate />
+          <TorchLogo tone="light" width={96} animate />
           <AnimatePresence>
             {transcriptWords.length > 0 && phase !== 'returning' && (
               <motion.span

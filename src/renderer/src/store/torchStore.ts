@@ -9,6 +9,7 @@ export type AgentStatus =
   | 'processing'
   | 'executing'
   | 'speaking'
+  | 'awaiting_input'
   | 'awaiting_approval'
 export type InputMode = 'type' | 'voice' | 'heytorch'
 export type StepStatus = 'pending' | 'active' | 'done' | 'failed' | 'hitl_required'
@@ -54,6 +55,13 @@ export interface TerminalLine {
   content: string
   type: 'info' | 'success' | 'error' | 'warning' | 'hitl'
 }
+
+export interface ClarificationRequest {
+  taskId: string
+  question: string
+  options: string[]
+}
+
 export interface Skill {
   id: string
   name: string
@@ -66,6 +74,8 @@ export interface TorchState {
   // Agent
   agentStatus: AgentStatus
   setAgentStatus: (status: AgentStatus) => void
+  clarificationRequest: ClarificationRequest | null
+  setClarificationRequest: (request: ClarificationRequest | null) => void
 
   // Input
   inputMode: InputMode
@@ -144,6 +154,8 @@ export const useTorchStore = create<TorchState>((set) => ({
   // Agent
   agentStatus: 'idle',
   setAgentStatus: (status): void => set({ agentStatus: status }),
+  clarificationRequest: null,
+  setClarificationRequest: (request): void => set({ clarificationRequest: request }),
 
   // Input
   inputMode: 'type',

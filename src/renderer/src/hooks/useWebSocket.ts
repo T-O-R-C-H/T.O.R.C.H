@@ -30,6 +30,7 @@ function resetInterruptedTaskUi(): void {
     )
   store.setAgentStatus('idle')
   store.setOverlayStatus('idle')
+  store.setClarificationRequest(null)
 }
 
 export function useWebSocket(): {
@@ -42,6 +43,7 @@ export function useWebSocket(): {
   ) => boolean
   reconnect: () => void
   sendStopCommand: () => void
+  sendClarification: (taskId: string, response: string) => boolean
   sendUndoCommand: (messageId: string) => void
   sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
 } {
@@ -153,6 +155,7 @@ export function useWebSocket(): {
             sharedTaskOwnerSocket = null
           }
           window.torchAPI?.hideControlBorder()
+          store.setClarificationRequest(null)
         }
         break
       }
@@ -187,6 +190,31 @@ export function useWebSocket(): {
             sharedTaskOwnerSocket = null
           }
           store.setAgentStatus('idle')
+        }
+        break
+      }
+      case 'clarification_request': {
+        const { taskId, question, options } = data as {
+          taskId: string
+          question: string
+          options: string[]
+        }
+        store.setClarificationRequest({ taskId, question, options })
+        store.setAgentStatus('awaiting_input')
+        break
+      }
+      case 'clarification_result': {
+        const { accepted, error } = data as { accepted: boolean; error?: string }
+        if (accepted) {
+          store.setClarificationRequest(null)
+          store.setAgentStatus('executing')
+        } else if (error) {
+          store.addTerminalLine({
+            id: crypto.randomUUID(),
+            timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+            content: error,
+            type: 'warning'
+          })
         }
         break
       }
@@ -244,11 +272,17 @@ export function useWebSocket(): {
       window.torchAPI?.onTaskEvent((_event, taskEvent) => handleMessage(taskEvent, null))
       window.torchAPI?.onTaskCommand((_event, command) => {
         if (
-          command === 'stop_task' &&
+          command.type === 'stop_task' &&
           sharedTaskOwnerSocket === sharedSocket &&
           sharedSocket?.readyState === WebSocket.OPEN
         ) {
           sharedSocket.send(JSON.stringify({ type: 'stop_task' }))
+        } else if (
+          command.type === 'clarification_response' &&
+          sharedTaskOwnerSocket === sharedSocket &&
+          sharedSocket?.readyState === WebSocket.OPEN
+        ) {
+          sharedSocket.send(JSON.stringify(command))
         }
       })
     }
@@ -309,7 +343,22 @@ export function useWebSocket(): {
       wsRef.current.send(JSON.stringify({ type: 'stop_task' }))
       return
     }
-    window.torchAPI?.publishTaskCommand('stop_task')
+    window.torchAPI?.publishTaskCommand({ type: 'stop_task' })
+  }, [])
+
+  const sendClarification = useCallback((taskId: string, response: string): boolean => {
+    if (
+      sharedTaskOwnerSocket === wsRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
+      wsRef.current.send(JSON.stringify({ type: 'clarification_response', taskId, response }))
+      return true
+    }
+    if (window.torchAPI) {
+      window.torchAPI.publishTaskCommand({ type: 'clarification_response', taskId, response })
+      return true
+    }
+    return false
   }, [])
 
   const sendUndoCommand = useCallback((messageId: string): void => {
@@ -329,6 +378,7 @@ export function useWebSocket(): {
     sendApproval,
     reconnect,
     sendStopCommand,
+    sendClarification,
     sendUndoCommand
   }
 }

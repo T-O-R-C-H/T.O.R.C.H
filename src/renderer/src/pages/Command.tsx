@@ -32,7 +32,12 @@ export function Command(): JSX.Element {
   const handleSend = useCallback(
     (command: string): void => {
       const currentStatus = useTorchStore.getState().agentStatus
-      if (currentStatus === 'processing' || currentStatus === 'executing') return
+      if (
+        currentStatus === 'processing' ||
+        currentStatus === 'executing' ||
+        currentStatus === 'awaiting_input' ||
+        currentStatus === 'awaiting_approval'
+      ) return
       addMessage({
         id: crypto.randomUUID(),
         role: 'user',
