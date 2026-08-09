@@ -9,6 +9,29 @@ let sharedReconnectTimer: ReturnType<typeof setTimeout> | undefined
 let sharedConsumerCount = 0
 let sharedTaskOwnerSocket: WebSocket | null = null
 
+function resetInterruptedTaskUi(): void {
+  const store = useTorchStore.getState()
+  if (store.agentStatus === 'idle') return
+
+  const activeMessage = [...store.messages]
+    .reverse()
+    .find((message) =>
+      message.steps?.some(
+        (step) => step.status === 'active' || step.status === 'hitl_required'
+      )
+    )
+  activeMessage?.steps
+    ?.filter((step) => step.status === 'active' || step.status === 'hitl_required')
+    .forEach((step) =>
+      store.updateStep(activeMessage.id, step.id, {
+        status: 'failed',
+        error: 'Connection to the TORCH backend was interrupted.'
+      })
+    )
+  store.setAgentStatus('idle')
+  store.setOverlayStatus('idle')
+}
+
 export function useWebSocket(): {
   sendCommand: (command: string) => void
   sendApproval: (
@@ -58,6 +81,7 @@ export function useWebSocket(): {
       ws.onclose = (): void => {
         if (sharedSocket === ws) sharedSocket = null
         if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
+        resetInterruptedTaskUi()
         setWsConnected(false)
         setWsPhase('disconnected')
         window.torchAPI?.hideControlBorder()
@@ -67,6 +91,7 @@ export function useWebSocket(): {
       }
 
       ws.onerror = (): void => {
+        resetInterruptedTaskUi()
         setWsConnected(false)
         setWsPhase('disconnected')
         window.torchAPI?.hideControlBorder()
@@ -82,6 +107,7 @@ export function useWebSocket(): {
         }
       }
     } catch {
+      resetInterruptedTaskUi()
       setWsPhase('disconnected')
       window.torchAPI?.hideControlBorder()
       if (!useTorchStore.getState().demoMode) {

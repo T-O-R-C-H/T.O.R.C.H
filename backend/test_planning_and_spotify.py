@@ -106,6 +106,29 @@ class VisionControlApprovalTests(unittest.TestCase):
             with self.subTest(task=task):
                 self.assertFalse(self._validate_task(task)["requires_approval"])
 
+    def test_read_only_browsing_cannot_be_forced_into_hidden_approval(self):
+        for tool, args in (
+            ("search_web", {"query": "cat"}),
+            ("open_browser", {"url": "https://example.com"}),
+        ):
+            with self.subTest(tool=tool):
+                validated = validate_plan([{
+                    "tool": tool,
+                    "label": "Browsing",
+                    "args": args,
+                    "requires_approval": True,
+                }])[0]
+                self.assertFalse(validated["requires_approval"])
+
+    def test_downloads_still_require_approval(self):
+        validated = validate_plan([{
+            "tool": "download_file",
+            "label": "Downloading",
+            "args": {"url": "https://example.com/file", "path": "file"},
+            "requires_approval": False,
+        }])[0]
+        self.assertTrue(validated["requires_approval"])
+
 
 class ProviderThreadingTests(unittest.IsolatedAsyncioTestCase):
     async def _assert_planning_uses_worker_thread(self, provider, response):

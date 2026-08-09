@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchMark } from '../TorchMark'
+import { TorchLogo } from '../ui/TorchLogo'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
@@ -185,7 +185,7 @@ export function AgentActivity({
     <div className="flex flex-col gap-2">
       <div className={activityClasses}>
         {!timedOut && (
-          <TorchMark size={42} animate color="var(--color-torch-text-secondary)" />
+          <TorchLogo variant="mark" tone="dark" size={42} animate />
         )}
         <AnimatePresence mode="wait" initial={false}>
           <motion.span

@@ -1,5 +1,5 @@
 import { useTorchStore } from '../../store/torchStore'
-import { TorchMark } from '../TorchMark'
+import { TorchLogo } from '../ui/TorchLogo'
 
 export function NarrationView({ onStop }: { onStop: () => void }): JSX.Element {
   const messages = useTorchStore((state) => state.messages)
@@ -9,12 +9,13 @@ export function NarrationView({ onStop }: { onStop: () => void }): JSX.Element {
     .find((message) => message.role === 'torch' && message.steps?.length)
   const steps = agentStatus === 'processing' ? [] : (latestMessage?.steps ?? [])
   const currentStep = steps.find((step) => step.status === 'active')
+  const approvalStep = steps.find((step) => step.status === 'hitl_required')
 
   return (
     <div className="narration-view">
       <header className="narration-header overlay-drag">
         <div className="narration-brand">
-          <TorchMark size={24} animate />
+          <TorchLogo variant="mark" tone="light" size={24} animate />
           <span>TORCH WORKING</span>
         </div>
         <button className="overlay-no-drag" onClick={onStop}>
@@ -43,6 +44,16 @@ export function NarrationView({ onStop }: { onStop: () => void }): JSX.Element {
           </div>
         )}
       </div>
+
+      {approvalStep && (
+        <button
+          type="button"
+          className="narration-approval overlay-no-drag"
+          onClick={() => window.torchAPI?.openMainWindow()}
+        >
+          Review approval in TORCH
+        </button>
+      )}
 
       {currentStep && <div className="narration-current">{currentStep.label}</div>}
     </div>

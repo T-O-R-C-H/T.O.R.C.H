@@ -15,6 +15,8 @@ class TorchSettings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
+    deepseek_model: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL")
 
     # Gmail
     gmail_address: str = Field(default="", alias="GMAIL_ADDRESS")
@@ -50,7 +52,10 @@ class TorchSettings(BaseSettings):
     db_path: str = Field(default="./data/torch.db", alias="TORCH_DB_PATH")
 
     model_config = {
-        "env_file": os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
+        "env_file": os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            ".env",
+        ),
         "env_file_encoding": "utf-8",
         "extra": "ignore",
         "populate_by_name": True
