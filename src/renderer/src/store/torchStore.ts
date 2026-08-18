@@ -128,6 +128,10 @@ export interface TorchState {
   activeTaskCount: number
   setActiveTaskCount: (count: number) => void
 
+  // Unread inbox count (for sidebar badge)
+  inboxUnread: number
+  setInboxUnread: (count: number) => void
+
   // Demo Mode
   demoMode: boolean
   setDemoMode: (val: boolean) => void
@@ -236,6 +240,9 @@ export const useTorchStore = create<TorchState>((set) => ({
   // Tasks
   activeTaskCount: 0,
   setActiveTaskCount: (count): void => set({ activeTaskCount: count }),
+
+  inboxUnread: 0,
+  setInboxUnread: (count): void => set({ inboxUnread: count }),
 
   // Demo Mode — not persisted to localStorage, always starts fresh
   demoMode: false,

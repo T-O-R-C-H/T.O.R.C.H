@@ -170,12 +170,74 @@ async def test_email_connection():
     try:
         import imaplib
         mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
-        mail.login(settings.gmail_address, settings.gmail_app_password)
+        mail.login(settings.gmail_address, "".join(settings.gmail_app_password.split()))
         mail.logout()
         return {"ok": True, "address": settings.gmail_address, "message": "Gmail connection works."}
     except Exception as e:
         logger.error(f"Gmail test failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Gmail sign-in failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+def _friendly_email_error(err: Exception) -> str:
+    """Turn raw IMAP/SMTP exceptions into user-friendly messages."""
+    message = str(err)
+    low = message.lower()
+    if "authenticationfailed" in low or "invalid credentials" in low or "login failed" in low:
+        return (
+            "Incorrect Gmail address or App Password. Re-check both in Settings, then generate a "
+            "fresh App Password at myaccount.google.com/apppasswords and save it again."
+        )
+    if "timed out" in low or "timeout" in low:
+        return "Gmail connection timed out. Check your internet connection and try again."
+    if "name or service not known" in low or "getaddrinfo" in low:
+        return "Could not reach Gmail's servers. Check your internet connection and try again."
+    return f"Gmail connection failed: {message}"
+
+
+@app.get("/api/email/inbox")
+async def email_inbox(limit: int = 100, offset: int = 0):
+    """List inbox messages (newest first) as structured JSON."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    try:
+        from tools.email import fetch_inbox
+        return fetch_inbox(limit=max(1, min(limit, 500)), offset=max(0, offset))
+    except Exception as e:
+        logger.error(f"Inbox fetch failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+@app.get("/api/email/read")
+async def email_read(uid: str):
+    """Return the full content of a single inbox message."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    if not uid:
+        raise HTTPException(status_code=400, detail="Missing uid.")
+    try:
+        from tools.email import fetch_email
+        return fetch_email(uid)
+    except Exception as e:
+        logger.error(f"Email read failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+@app.post("/api/email/mark-read")
+async def email_mark_read(data: dict):
+    """Mark a message as read or unread."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    uid = str(data.get("uid", ""))
+    read = bool(data.get("read", True))
+    if not uid:
+        raise HTTPException(status_code=400, detail="Missing uid.")
+    try:
+        from tools.email import mark_email_read
+        mark_email_read(uid, read)
+        return {"ok": True, "uid": uid, "read": read}
+    except Exception as e:
+        logger.error(f"Mark-read failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
 
 
 def _connection_status_block() -> str:
@@ -261,6 +323,8 @@ async def update_settings(data: dict):
     for key, value in data.items():
         if key in secret_fields and (value is None or str(value).strip() == ""):
             continue
+        if key == "gmail_app_password" and isinstance(value, str):
+            value = "".join(value.split())
         filtered[key] = value
         if hasattr(settings, key):
             setattr(settings, key, value)

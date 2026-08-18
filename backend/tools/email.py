@@ -29,6 +29,73 @@ def _short_address(from_header: str) -> str:
     return from_header[:60]
 
 
+def _app_password() -> str:
+    """Return the Gmail app password with all whitespace stripped.
+
+    Google displays app passwords in 4-character groups; the spaces must be
+    removed before SMTP/IMAP authentication or the login fails.
+    """
+    return "".join(settings.gmail_app_password.split())
+
+
+def _open_inbox():
+    """Open an IMAP connection and select the inbox folder."""
+    if not settings.gmail_address or not _app_password():
+        raise ValueError("Gmail not configured. Add credentials in Settings.")
+    mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
+    mail.login(settings.gmail_address, _app_password())
+    mail.select("inbox")
+    return mail
+
+
+def _decode_subject(value: Optional[str]) -> str:
+    if not value:
+        return "(no subject)"
+    try:
+        parts = email.header.decode_header(value)
+    except Exception:
+        return str(value)
+    out = []
+    for chunk, enc in parts:
+        if isinstance(chunk, bytes):
+            try:
+                out.append(chunk.decode(enc or "utf-8", errors="replace"))
+            except (LookupError, TypeError):
+                out.append(chunk.decode(errors="replace"))
+        else:
+            out.append(chunk)
+    return "".join(out).strip() or "(no subject)"
+
+
+def _walk_payload(msg, content_type: str) -> str:
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == content_type:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    return payload.decode(errors="replace")
+    else:
+        payload = msg.get_payload(decode=True)
+        if payload:
+            return payload.decode(errors="replace")
+    return ""
+
+
+def _body_text(msg) -> str:
+    return _walk_payload(msg, "text/plain")
+
+
+def _body_html(msg) -> str:
+    return _walk_payload(msg, "text/html")
+
+
+def _snippet(msg, length: int = 180) -> str:
+    text = _body_text(msg)
+    if not text:
+        text = re.sub(r"<[^>]+>", " ", _body_html(msg))
+    return " ".join(text.split())[:length]
+
+
 def send_email(
     to: str,
     subject: str,
@@ -64,7 +131,7 @@ def send_email(
         with smtplib.SMTP(settings.gmail_smtp_host, settings.gmail_smtp_port) as server:
             server.ehlo()
             server.starttls()
-            server.login(settings.gmail_address, settings.gmail_app_password)
+            server.login(settings.gmail_address, _app_password())
             server.send_message(msg)
 
         logger.info(f"Email sent to {to}: {subject}")
@@ -76,13 +143,11 @@ def send_email(
 
 def read_inbox(count: int = 10) -> str:
     """Read recent emails from Gmail inbox."""
-    if not settings.gmail_address or not settings.gmail_app_password:
+    if not settings.gmail_address or not _app_password():
         raise ValueError("Gmail not configured. Add credentials in Settings.")
 
     try:
-        mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
-        mail.login(settings.gmail_address, settings.gmail_app_password)
-        mail.select("inbox")
+        mail = _open_inbox()
 
         _, message_numbers = mail.search(None, "ALL")
         nums = message_numbers[0].split()
@@ -96,23 +161,11 @@ def read_inbox(count: int = 10) -> str:
             raw = msg_data[0][1]
             msg = email.message_from_bytes(raw)
 
-            subject = email.header.decode_header(msg["Subject"])[0]
-            subject_str = subject[0] if isinstance(subject[0], str) else subject[0].decode()
+            subject_str = _decode_subject(msg.get("Subject"))
             from_addr = _short_address(msg.get("From", ""))
             date = (msg.get("Date") or "")[:16]
 
-            body_snip = ""
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            body_snip = payload.decode(errors="replace")[:120].replace("\n", " ").strip()
-                        break
-            else:
-                payload = msg.get_payload(decode=True)
-                if payload:
-                    body_snip = payload.decode(errors="replace")[:120].replace("\n", " ").strip()
+            body_snip = _snippet(msg, length=120)
 
             line = f"• {subject_str} — from {from_addr}"
             if date:
@@ -133,3 +186,71 @@ def read_inbox(count: int = 10) -> str:
     except Exception as e:
         logger.error(f"Failed to read inbox: {e}")
         raise RuntimeError(f"Inbox read failed: {e}")
+
+
+def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
+    """Return structured inbox messages (newest first) without marking them read."""
+    mail = _open_inbox()
+    try:
+        _, data = mail.uid("search", None, "ALL")
+        uids = data[0].split()
+        total = len(uids)
+        ordered = uids[::-1]
+        page = ordered[offset:offset + limit]
+
+        messages = []
+        for uid in page:
+            _, msg_data = mail.uid("fetch", uid, "(FLAGS BODY.PEEK[])")
+            if not msg_data or msg_data[0] is None:
+                continue
+            raw = msg_data[0][1]
+            meta = msg_data[0][0].decode(errors="replace")
+            msg = email.message_from_bytes(raw)
+            messages.append(
+                {
+                    "uid": uid.decode(errors="replace"),
+                    "subject": _decode_subject(msg.get("Subject")),
+                    "from": _short_address(msg.get("From", "")),
+                    "date": msg.get("Date", ""),
+                    "snippet": _snippet(msg),
+                    "read": "\\Seen" in meta,
+                }
+            )
+        return {"total": total, "messages": messages}
+    finally:
+        mail.close()
+        mail.logout()
+
+
+def fetch_email(uid: str) -> dict:
+    """Return the full content of a single inbox message."""
+    mail = _open_inbox()
+    try:
+        _, msg_data = mail.uid("fetch", uid.encode(), "(BODY.PEEK[])")
+        if not msg_data or msg_data[0] is None:
+            raise RuntimeError("This message is no longer in the inbox.")
+        raw = msg_data[0][1]
+        msg = email.message_from_bytes(raw)
+        return {
+            "uid": uid,
+            "subject": _decode_subject(msg.get("Subject")),
+            "from": _short_address(msg.get("From", "")),
+            "to": msg.get("To", ""),
+            "date": msg.get("Date", ""),
+            "text": _body_text(msg),
+            "html": _body_html(msg),
+        }
+    finally:
+        mail.close()
+        mail.logout()
+
+
+def mark_email_read(uid: str, read: bool = True) -> None:
+    """Mark a message as read (\\Seen) or unread."""
+    mail = _open_inbox()
+    try:
+        flag = "+FLAGS" if read else "-FLAGS"
+        mail.uid("STORE", uid.encode(), flag, "(\\Seen)")
+    finally:
+        mail.close()
+        mail.logout()

@@ -52,7 +52,7 @@ const mainItems: NavItem[] = [
 ]
 
 const workItems: NavItem[] = [
-  { path: '/inbox', icon: 'inbox', label: 'Inbox', badge: 3 },
+  { path: '/inbox', icon: 'inbox', label: 'Inbox' },
   { path: '/tools/files', icon: 'files', label: 'Files' },
   { path: '/follow-ups', icon: 'followups', label: 'Follow-ups', badge: 2 }
 ]
@@ -98,6 +98,7 @@ export function Sidebar(): JSX.Element {
   const fetchSkills = useTorchStore((s) => s.fetchSkills)
   const demoMode = useTorchStore((s) => s.demoMode)
   const wsConnected = useTorchStore((s) => s.wsConnected)
+  const inboxUnread = useTorchStore((s) => s.inboxUnread)
   const navigate = useNavigate()
 
   const [showAddForm, setShowAddForm] = useState(false)
@@ -244,7 +245,12 @@ export function Sidebar(): JSX.Element {
 
       <div className="sidebar-body">
         <NavList items={mainItems} />
-        <NavList title="Work" items={workItems} />
+        <NavList
+          title="Work"
+          items={workItems.map((item) =>
+            item.path === '/inbox' && inboxUnread > 0 ? { ...item, badge: inboxUnread } : item
+          )}
+        />
 
         <div className="sidebar-nav-group">
           <div className="sidebar-section-label">Shortcuts</div>

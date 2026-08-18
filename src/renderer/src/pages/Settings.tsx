@@ -63,6 +63,8 @@ export function Settings(): JSX.Element {
   const [geminiKey, setGeminiKey] = useState('')
   const [gmailAddress, setGmailAddress] = useState('')
   const [gmailPassword, setGmailPassword] = useState('')
+  const [emailTest, setEmailTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+  const [emailTestMsg, setEmailTestMsg] = useState('')
   const [wakeWordSensitivity, setWakeWordSensitivity] = useState(50)
   const [screenWatchInterval, setScreenWatchInterval] = useState('30')
   const [voiceModel, setVoiceModel] = useState('base')
@@ -127,6 +129,25 @@ export function Settings(): JSX.Element {
     const updated = { ...socialConnected, [key]: true }
     setSocialConnected(updated)
     localStorage.setItem('torch_social_connected', JSON.stringify(updated))
+  }
+
+  const handleTestEmail = async (): Promise<void> => {
+    setEmailTest('testing')
+    setEmailTestMsg('')
+    try {
+      const res = await fetch(`${API_BASE}/api/email/test`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setEmailTest('ok')
+        setEmailTestMsg(data.message || 'Gmail connection works.')
+      } else {
+        setEmailTest('fail')
+        setEmailTestMsg(data.detail || 'Gmail sign-in failed.')
+      }
+    } catch {
+      setEmailTest('fail')
+      setEmailTestMsg('Could not reach the TORCH backend.')
+    }
   }
 
   const handleSave = async (): Promise<void> => {
@@ -268,6 +289,29 @@ export function Settings(): JSX.Element {
                     placeholder="Enter app password"
                     className="w-[300px] text-[12px]"
                   />
+                </SettingRow>
+                <SettingRow
+                  label="Connection"
+                  description="Spaces in the password are removed automatically when saving"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn-secondary text-[11px] px-3 py-1.5"
+                      onClick={() => void handleTestEmail()}
+                      disabled={emailTest === 'testing'}
+                    >
+                      {emailTest === 'testing' ? 'Testing…' : 'Test connection'}
+                    </button>
+                    {emailTest === 'ok' && (
+                      <span className="badge-success px-2.5 py-1 text-[11px]">{emailTestMsg}</span>
+                    )}
+                    {emailTest === 'fail' && (
+                      <span className="badge-error px-2.5 py-1 text-[11px] max-w-[320px]">
+                        {emailTestMsg}
+                      </span>
+                    )}
+                  </div>
                 </SettingRow>
               </div>
 

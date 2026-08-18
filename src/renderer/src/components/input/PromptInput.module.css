@@ -1,7 +1,8 @@
 .wrap {
   width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
+  max-width: 1000px;
+  margin: 0;
+  padding: 0 20px;
   font-family: 'Inter', system-ui, sans-serif;
 }
 
@@ -10,8 +11,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 auto 12px;
-  max-width: 680px;
+  margin: 0 0 12px;
+  max-width: 960px;
 }
 .bannerText {
   font-size: 12.5px;

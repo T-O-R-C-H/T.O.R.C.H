@@ -44,7 +44,8 @@ import {
   RiPlayFill,
   RiAddLine,
   RiClipboardLine,
-  RiTerminalBoxLine
+  RiTerminalBoxLine,
+  RiRefreshLine
 } from 'react-icons/ri'
 
 /**
@@ -194,4 +195,7 @@ export const IconClipboard = ({ size = 16, className }: IconProps) => (
 )
 export const IconTerminal = ({ size = 16, className }: IconProps) => (
   <RiTerminalBoxLine size={size} className={className} />
+)
+export const IconRefresh = ({ size = 16, className }: IconProps) => (
+  <RiRefreshLine size={size} className={className} />
 )
