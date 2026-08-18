@@ -14,7 +14,7 @@ export function Inbox(): JSX.Element {
             border: '1px solid var(--color-torch-border, rgba(255, 255, 255, 0.08))' 
           }}
         >
-          <InboxIcon size={24} style={{ color: 'var(--color-torch-text-secondary)' }} />
+          <InboxIcon size={24} className="text-[var(--color-torch-text-secondary)]" />
         </div>
         <h1 
           className="text-xl font-semibold mb-2" 

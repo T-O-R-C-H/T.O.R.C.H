@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import type { Message as MessageType } from '../../store/torchStore'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
@@ -68,8 +69,6 @@ export function ConversationTurn({
   const isErrorReply = Boolean(bodyText && isLikelyErrorMessage(bodyText))
   const waitingForFirstToken = Boolean(agent?.isStreaming && !bodyText)
   const showStatusLine = Boolean(showActivity && (!agent || waitingForFirstToken))
-  const hasFailedSteps = Boolean(agent?.steps?.some((s) => s.status === 'failed'))
-
   return (
     <article className="chat-turn fade-in">
       {user && (
@@ -88,7 +87,13 @@ export function ConversationTurn({
       )}
 
       {agent && (
-        <div className="chat-turn__response">
+        <motion.div
+          className="chat-turn__response"
+          layout="position"
+          initial={{ opacity: 0, y: 12, filter: 'blur(5px)', clipPath: 'inset(0 0 18% 0)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' }}
+          transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+        >
           {bodyText && isErrorReply && (
             <div className="chat-error-card">
               <span className="chat-error-card__title">Could not finish</span>
@@ -97,12 +102,14 @@ export function ConversationTurn({
           )}
 
           {bodyText && !isErrorReply && (
-            <div
-              className={`chat-turn__body ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
+            <motion.div
+              className={`chat-turn__body chat-turn__body--revealed ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
+              layout="position"
+              transition={{ layout: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
             >
               <LinkifiedText text={bodyText} />
               {agent.isStreaming && <span className="chat-turn__cursor" aria-hidden="true" />}
-            </div>
+            </motion.div>
           )}
 
           {agent.steps && agent.steps.length > 0 && <StepList steps={agent.steps} />}
@@ -137,7 +144,7 @@ export function ConversationTurn({
               )}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
     </article>
   )

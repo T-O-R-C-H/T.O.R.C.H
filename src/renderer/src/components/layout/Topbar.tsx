@@ -72,7 +72,9 @@ export function Topbar(): JSX.Element {
   return (
     <div className="topbar drag-region">
       <div className="no-drag">
-        <div className="topbar-title">{pageTitle}</div>
+        <div key={location.pathname} className="topbar-title topbar-title--enter">
+          {pageTitle}
+        </div>
         <div className="topbar-sub">Desktop agent</div>
       </div>
 

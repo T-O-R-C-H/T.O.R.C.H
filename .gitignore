@@ -38,6 +38,10 @@ venv/
 data/
 *.db
 
+# Caches
+.eslintcache
+*.tsbuildinfo
+
 # Packages
 *.exe
 *.dmg

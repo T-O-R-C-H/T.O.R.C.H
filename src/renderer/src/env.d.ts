@@ -4,6 +4,16 @@ declare module '*.png' {
   const src: string
   export default src
 }
+
+declare module '*.riv' {
+  const src: string
+  export default src
+}
+
+declare module '*.riv?url' {
+  const src: string
+  export default src
+}
 /// <reference types="react" />
 
 import * as React from 'react'

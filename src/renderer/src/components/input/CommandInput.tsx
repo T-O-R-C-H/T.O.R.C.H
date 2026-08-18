@@ -15,15 +15,27 @@ interface CommandInputProps {
 const FALLBACK_MODELS = [
   { id: 'auto', label: 'Auto' },
 
+  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+
+  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
 
   { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
 
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
+  ,
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+
+  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
 ]
 
 export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
   const [text, setText] = useState('')
+
+  const [justSent, setJustSent] = useState(false)
 
   const [models, setModels] = useState(FALLBACK_MODELS)
 
@@ -62,6 +74,8 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
     if (!trimmed) return
 
     onSend(trimmed)
+
+    setJustSent(true)
 
     setText('')
 
@@ -116,7 +130,10 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
         </div>
       )}
 
-      <div className="cmd-input-box">
+      <div
+        className={`cmd-input-box ${text ? 'cmd-input-box--active' : ''} ${justSent ? 'cmd-input-box--sent' : ''}`}
+        onAnimationEnd={() => setJustSent(false)}
+      >
         <div className="cmd-input-row">
           <textarea
             ref={inputRef}
@@ -134,7 +151,7 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
               type="button"
               onClick={handleSend}
               disabled={!canSend}
-              className="cmd-input-send"
+              className={`cmd-input-send ${justSent ? 'cmd-input-send--sent' : ''}`}
               aria-label="Send command"
             >
               <CmdArrowUp size={14} />

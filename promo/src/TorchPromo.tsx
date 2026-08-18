@@ -1,5 +1,7 @@
+import type {CSSProperties, ReactElement, ReactNode} from 'react'
 import {
   AbsoluteFill,
+  Audio,
   Easing,
   Img,
   interpolate,
@@ -9,661 +11,614 @@ import {
   useCurrentFrame,
   useVideoConfig
 } from 'remotion'
-import type { ReactNode } from 'react'
 
-const FONT = 'Inter, system-ui, -apple-system, sans-serif'
-const C = {
-  bg: '#f4f4f5',
-  surface: '#ffffff',
-  muted: '#fafafa',
-  border: '#e4e4e7',
-  text: '#18181b',
-  sub: '#71717a',
-  ghost: '#a1a1aa',
-  blue: '#60a5fa',
-  blueDark: '#3b82f6',
-  link: '#c15f3c'
-}
+const BG = '#f5f3ee'
+const INK = '#181817'
+const MUTED = '#77746e'
+const BLUE = '#60a5fa'
+const BLUE_DARK = '#3b82f6'
+const FONT = 'Inter, Arial, Helvetica, sans-serif'
+const EASE = Easing.bezier(0.16, 1, 0.3, 1)
+const APP_W = 1600
+const APP_H = 900
 
-function useSpringIn(delay = 0, config = { damping: 14, stiffness: 80 }): number {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  return spring({ frame: frame - delay, fps, config })
-}
+const capture = (name: string): string => staticFile(`captures/${name}`)
 
-function useTyped(text: string, start: number, cps = 0.7): string {
-  const frame = useCurrentFrame()
-  const n = Math.floor(Math.max(0, frame - start) * cps)
-  return text.slice(0, Math.min(text.length, n))
-}
+const clamp = (value: number, input: [number, number], output: [number, number]): number =>
+  interpolate(value, input, output, {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: EASE
+  })
 
-function ClickCursor({
-  x,
-  y,
-  clicking,
-  visible
-}: {
-  x: number
-  y: number
-  clicking: boolean
-  visible: boolean
-}): JSX.Element | null {
-  if (!visible) return null
-  const scale = clicking ? 0.82 : 1
+function Paper({children, style}: {children?: ReactNode; style?: CSSProperties}): ReactElement {
   return (
-    <>
-      {clicking && (
-        <div
-          style={{
-            position: 'absolute',
-            left: x - 28,
-            top: y - 28,
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
-            border: '2px solid rgba(96,165,250,0.5)',
-            pointerEvents: 'none'
-          }}
-        />
-      )}
+    <AbsoluteFill
+      style={{
+        background:
+          'radial-gradient(circle at 78% 12%, rgba(255,255,255,.92), transparent 34%), linear-gradient(145deg, #f8f7f3 0%, #f2efe8 100%)',
+        overflow: 'hidden',
+        fontFamily: FONT,
+        color: INK,
+        ...style
+      }}
+    >
       <div
         style={{
           position: 'absolute',
-          left: x,
-          top: y,
-          transform: `scale(${scale})`,
-          pointerEvents: 'none',
-          zIndex: 100,
-          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))'
+          inset: 0,
+          opacity: 0.14,
+          backgroundImage:
+            'radial-gradient(rgba(25,25,24,.22) .45px, transparent .45px)',
+          backgroundSize: '5px 5px',
+          pointerEvents: 'none'
         }}
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M5 3L19 12L11 13L9 21L5 3Z"
-            fill="#fff"
-            stroke="#18181b"
-            strokeWidth="1.2"
-          />
-        </svg>
-      </div>
-    </>
+      />
+      {children}
+    </AbsoluteFill>
   )
 }
 
-function AppSidebar({ active = 'chat' }: { active?: string }): JSX.Element {
-  const items = [
-    { id: 'chat', label: 'Chat' },
-    { id: 'today', label: 'Today' },
-    { id: 'history', label: 'History' },
-    { id: 'skills', label: 'Skills' }
-  ]
+function Wordmark({width = 184, dark = true}: {width?: number; dark?: boolean}): ReactElement {
   return (
-    <div
+    <Img
+      src={staticFile('logo.png')}
       style={{
-        width: 200,
-        height: '100%',
-        background: C.muted,
-        borderRight: `1px solid ${C.border}`,
-        padding: '14px 0',
-        flexShrink: 0
+        width,
+        height: 'auto',
+        filter: dark ? 'none' : 'invert(1)',
+        objectFit: 'contain'
       }}
-    >
-      <div style={{ padding: '0 16px 16px' }}>
-        <Img src={staticFile('logo.png')} style={{ width: 72, height: 'auto' }} />
-      </div>
-      {items.map((item) => (
-        <div
-          key={item.id}
-          style={{
-            margin: '2px 8px',
-            padding: '8px 12px',
-            borderRadius: 6,
-            fontSize: 13,
-            fontWeight: item.id === active ? 500 : 400,
-            color: item.id === active ? C.text : C.sub,
-            background: item.id === active ? C.surface : 'transparent',
-            border: item.id === active ? `1px solid ${C.border}` : '1px solid transparent'
-          }}
-        >
-          {item.label}
-        </div>
-      ))}
-    </div>
+    />
   )
 }
 
-function AppShell({
-  children,
-  title = 'Command Center'
+function AppWindow({
+  shot,
+  width = 1600,
+  x = 0,
+  y = 0,
+  scale = 1,
+  rotate = 0,
+  opacity = 1,
+  blur = 0,
+  radius = 22,
+  shadow = '0 44px 110px rgba(34,31,25,.16), 0 3px 14px rgba(34,31,25,.09)',
+  style
 }: {
-  children: ReactNode
-  title?: string
-}): JSX.Element {
+  shot: string
+  width?: number
+  x?: number
+  y?: number
+  scale?: number
+  rotate?: number
+  opacity?: number
+  blur?: number
+  radius?: number
+  shadow?: string
+  style?: CSSProperties
+}): ReactElement {
+  const height = width * (APP_H / APP_W)
   return (
     <div
       style={{
-        width: 960,
-        height: 580,
-        background: C.bg,
-        borderRadius: 12,
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width,
+        height,
+        borderRadius: radius,
         overflow: 'hidden',
-        display: 'flex',
-        boxShadow: '0 32px 80px rgba(0,0,0,0.18)',
-        border: `1px solid ${C.border}`
+        border: '1px solid rgba(34,31,25,.12)',
+        boxShadow: shadow,
+        opacity,
+        transform: `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${scale}) rotate(${rotate}deg)`,
+        filter: blur ? `blur(${blur}px)` : undefined,
+        background: '#f4f4f5',
+        ...style
       }}
     >
-      <AppSidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <div
-          style={{
-            height: 48,
-            borderBottom: `1px solid ${C.border}`,
-            background: C.surface,
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 20px',
-            justifyContent: 'space-between'
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{title}</div>
-            <div style={{ fontSize: 11, color: C.ghost }}>Desktop agent</div>
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                style={{ width: 12, height: 12, borderRadius: 3, background: C.border }}
-              />
-            ))}
-          </div>
-        </div>
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>{children}</div>
-      </div>
-    </div>
-  )
-}
-
-function SceneIntro(): JSX.Element {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const s = spring({ frame, fps, config: { damping: 12, stiffness: 70 } })
-  const y = interpolate(s, [0, 1], [60, 0])
-
-  return (
-    <AbsoluteFill
-      style={{
-        background: `radial-gradient(ellipse 90% 70% at 50% 0%, #dbeafe 0%, ${C.bg} 60%)`,
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: FONT
-      }}
-    >
-      <div style={{ textAlign: 'center', transform: `translateY(${y}px)`, opacity: s }}>
-        <Img src={staticFile('logo.png')} style={{ width: 280, marginBottom: 24 }} />
-        <p style={{ fontSize: 36, fontWeight: 600, color: C.text, letterSpacing: '-0.03em' }}>
-          Your desktop, finally understood.
-        </p>
-        <p style={{ fontSize: 17, color: C.sub, marginTop: 14 }}>TORCH · Local AI agent for Windows</p>
-      </div>
-    </AbsoluteFill>
-  )
-}
-
-function SceneAppReveal(): JSX.Element {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const zoom = spring({ frame, fps, config: { damping: 16, stiffness: 55 } })
-  const scale = interpolate(zoom, [0, 1], [1.35, 1])
-  const opacity = interpolate(frame, [0, 12], [0, 1], { extrapolateRight: 'clamp' })
-
-  return (
-    <AbsoluteFill
-      style={{
-        background: '#e8e8ec',
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: FONT
-      }}
-    >
-      <div style={{ transform: `scale(${scale})`, opacity }}>
-        <AppShell>
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 40px 80px'
-            }}
-          >
-            <Img src={staticFile('logo.png')} style={{ width: 150, marginBottom: 6 }} />
-            <p style={{ fontSize: 12, color: C.sub, marginBottom: 28 }}>Command Center</p>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 10,
-                width: '100%',
-                maxWidth: 420
-              }}
-            >
-              {['Find a file', 'Draft an email', 'Summarize doc', 'Open an app'].map((t, i) => (
-                <div
-                  key={t}
-                  style={{
-                    padding: '14px 16px',
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 8,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    color: C.text,
-                    opacity: interpolate(frame, [8 + i * 4, 18 + i * 4], [0, 1], {
-                      extrapolateRight: 'clamp'
-                    }),
-                    transform: `translateY(${interpolate(frame, [8 + i * 4, 18 + i * 4], [16, 0], { extrapolateRight: 'clamp' })}px)`
-                  }}
-                >
-                  {t}
-                </div>
-              ))}
-            </div>
-          </div>
-        </AppShell>
-      </div>
-    </AbsoluteFill>
-  )
-}
-
-function SceneClickSuggestion(): JSX.Element {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const zoomIn = spring({ frame: frame - 8, fps, config: { damping: 18, stiffness: 60 } })
-  const scale = interpolate(zoomIn, [0, 1], [1, 1.55])
-  const focusX = interpolate(zoomIn, [0, 1], [0, -120])
-  const focusY = interpolate(zoomIn, [0, 1], [0, -40])
-  const clickAt = frame > 42 && frame < 52
-  const cardGlow = clickAt ? '0 0 0 4px rgba(96,165,250,0.35)' : 'none'
-
-  const cursorX = interpolate(frame, [20, 38], [680, 520], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-    easing: Easing.inOut(Easing.cubic)
-  })
-  const cursorY = interpolate(frame, [20, 38], [420, 310], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-    easing: Easing.inOut(Easing.cubic)
-  })
-
-  return (
-    <AbsoluteFill
-      style={{
-        background: '#e8e8ec',
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: FONT
-      }}
-    >
+      <Img src={capture(shot)} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
       <div
         style={{
-          transform: `scale(${scale}) translate(${focusX}px, ${focusY}px)`,
-          transformOrigin: 'center center'
+          position: 'absolute',
+          inset: 0,
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.62)',
+          borderRadius: radius,
+          pointerEvents: 'none'
         }}
-      >
-        <AppShell>
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 40px 80px'
-            }}
-          >
-            <Img src={staticFile('logo.png')} style={{ width: 150, marginBottom: 6, opacity: 0.4 }} />
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 10,
-                width: '100%',
-                maxWidth: 420
-              }}
-            >
-              <div
-                style={{
-                  padding: '14px 16px',
-                  background: clickAt ? '#eff6ff' : C.surface,
-                  border: `1px solid ${clickAt ? C.blue : C.border}`,
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: C.text,
-                  boxShadow: cardGlow,
-                  transform: clickAt ? 'scale(0.97)' : 'scale(1)'
-                }}
-              >
-                Find a file
-                <div style={{ fontSize: 10, color: C.sub, marginTop: 4, fontWeight: 400 }}>
-                  Search folders and open what you need
-                </div>
-              </div>
-              {['Draft an email', 'Summarize doc', 'Open an app'].map((t) => (
-                <div
-                  key={t}
-                  style={{
-                    padding: '14px 16px',
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 8,
-                    fontSize: 12,
-                    color: C.sub,
-                    opacity: 0.6
-                  }}
-                >
-                  {t}
-                </div>
-              ))}
-            </div>
-          </div>
-        </AppShell>
-      </div>
-      <ClickCursor x={cursorX} y={cursorY} clicking={clickAt} visible={frame > 15 && frame < 58} />
-      {clickAt && (
-        <AbsoluteFill
+      />
+    </div>
+  )
+}
+
+function UiCrop({
+  shot,
+  cropX,
+  cropY,
+  scale,
+  width,
+  height,
+  style,
+  imageStyle
+}: {
+  shot: string
+  cropX: number
+  cropY: number
+  scale: number
+  width: number
+  height: number
+  style?: CSSProperties
+  imageStyle?: CSSProperties
+}): ReactElement {
+  return (
+    <div
+      style={{
+        width,
+        height,
+        overflow: 'hidden',
+        position: 'absolute',
+        background: '#fff',
+        borderRadius: 26,
+        boxShadow: '0 28px 80px rgba(35,31,24,.14), 0 2px 8px rgba(35,31,24,.08)',
+        border: '1px solid rgba(35,31,24,.11)',
+        ...style
+      }}
+    >
+      <Img
+        src={capture(shot)}
+        style={{
+          position: 'absolute',
+          width: APP_W * scale,
+          height: APP_H * scale,
+          maxWidth: 'none',
+          left: -cropX * scale,
+          top: -cropY * scale,
+          ...imageStyle
+        }}
+      />
+    </div>
+  )
+}
+
+function Pointer({
+  x,
+  y,
+  down = false,
+  opacity = 1,
+  trail = false
+}: {
+  x: number
+  y: number
+  down?: boolean
+  opacity?: number
+  trail?: boolean
+}): ReactElement {
+  return (
+    <div style={{position: 'absolute', left: x, top: y, opacity, zIndex: 100}}>
+      {trail && (
+        <div
           style={{
-            background: 'radial-gradient(circle at 52% 48%, rgba(96,165,250,0.12) 0%, transparent 50%)',
-            pointerEvents: 'none'
+            position: 'absolute',
+            width: 96,
+            height: 96,
+            left: -42,
+            top: -42,
+            borderRadius: 999,
+            background: 'radial-gradient(circle, rgba(96,165,250,.28), transparent 68%)',
+            transform: `scale(${down ? 1.25 : 0.72})`
           }}
         />
       )}
-    </AbsoluteFill>
+      {down && (
+        <div
+          style={{
+            position: 'absolute',
+            left: -35,
+            top: -35,
+            width: 70,
+            height: 70,
+            border: '3px solid rgba(96,165,250,.56)',
+            borderRadius: 999,
+            transform: 'scale(1.22)'
+          }}
+        />
+      )}
+      <svg
+        width="40"
+        height="40"
+        viewBox="0 0 24 24"
+        style={{
+          transform: `translate(-4px, -4px) scale(${down ? 0.82 : 1})`,
+          filter: 'drop-shadow(0 3px 4px rgba(0,0,0,.24))'
+        }}
+      >
+        <path d="M4 2.8 19.2 12l-7.1 1.2-3 7.1L4 2.8Z" fill="white" stroke="#1d1d1c" strokeWidth="1.35" />
+      </svg>
+    </div>
   )
 }
 
-const TYPE_CMD = 'Find my latest invoice in Downloads'
-
-function SceneTypeSend(): JSX.Element {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const typed = useTyped(TYPE_CMD, 12, 0.85)
-  const zoom = spring({ frame: frame - 5, fps, config: { damping: 17, stiffness: 58 } })
-  const scale = interpolate(zoom, [0, 1], [1.2, 1.45])
-  const ty = interpolate(zoom, [0, 1], [0, 80])
-  const clickSend = frame > 58 && frame < 68
-  const flash = interpolate(frame, [58, 62, 68], [0, 0.35, 0], { extrapolateRight: 'clamp' })
-
+function Label({children, style}: {children: ReactNode; style?: CSSProperties}): ReactElement {
   return (
-    <AbsoluteFill
-      style={{ background: '#e8e8ec', justifyContent: 'center', alignItems: 'center', fontFamily: FONT }}
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '11px 16px',
+        borderRadius: 999,
+        border: '1px solid rgba(27,27,26,.1)',
+        background: 'rgba(255,255,255,.78)',
+        boxShadow: '0 8px 30px rgba(35,31,24,.07)',
+        backdropFilter: 'blur(14px)',
+        fontSize: 14,
+        fontWeight: 650,
+        letterSpacing: '.08em',
+        textTransform: 'uppercase',
+        color: MUTED,
+        ...style
+      }}
     >
-      <div style={{ transform: `scale(${scale}) translateY(${ty}px)` }}>
-        <AppShell>
-          <div style={{ padding: '24px 32px 100px', height: '100%', position: 'relative' }}>
-            {typed.length > 0 && (
-              <p style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 20 }}>{typed}</p>
-            )}
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 24,
-                left: 24,
-                right: 24,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '12px 14px',
-                background: C.surface,
-                border: `1px solid ${frame > 50 ? C.blue : C.border}`,
-                borderRadius: 8,
-                boxShadow: clickSend ? '0 0 0 4px rgba(96,165,250,0.25)' : '0 2px 8px rgba(0,0,0,0.04)'
-              }}
-            >
-              <span style={{ flex: 1, fontSize: 13, color: C.text }}>
-                {typed}
-                {typed.length < TYPE_CMD.length && Math.floor(frame / 12) % 2 === 0 ? '|' : ''}
-              </span>
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 6,
-                  background: C.blue,
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 14,
-                  transform: clickSend ? 'scale(0.88)' : 'scale(1)',
-                  boxShadow: clickSend ? '0 0 24px rgba(96,165,250,0.7)' : 'none'
-                }}
-              >
-                ↑
-              </div>
-            </div>
-          </div>
-        </AppShell>
-      </div>
-      <AbsoluteFill style={{ background: `rgba(96,165,250,${flash})`, pointerEvents: 'none' }} />
-    </AbsoluteFill>
+      {children}
+    </div>
   )
 }
 
-function SceneAgentReply(): JSX.Element {
+function IntroScene(): ReactElement {
   const frame = useCurrentFrame()
-  const slide = useSpringIn(0, { damping: 16, stiffness: 72 })
-  const step1 = interpolate(frame, [8, 22], [0, 1], { extrapolateRight: 'clamp' })
-  const step2 = interpolate(frame, [22, 38], [0, 1], { extrapolateRight: 'clamp' })
-  const reply = interpolate(frame, [40, 58], [0, 1], { extrapolateRight: 'clamp' })
+  const {fps} = useVideoConfig()
+  const logo = spring({frame: frame - 5, fps, config: {damping: 18, stiffness: 78}})
+  const line1 = spring({frame: frame - 28, fps, config: {damping: 20, stiffness: 72}})
+  const line2 = spring({frame: frame - 47, fps, config: {damping: 20, stiffness: 72}})
+  const line3 = spring({frame: frame - 66, fps, config: {damping: 20, stiffness: 72}})
+  const composer = spring({frame: frame - 92, fps, config: {damping: 22, stiffness: 68}})
+  const out = clamp(frame, [150, 178], [1, 0])
+
+  const lineStyle = (s: number): CSSProperties => ({
+    opacity: s,
+    transform: `translateY(${(1 - s) * 56}px)`,
+    lineHeight: 0.93
+  })
 
   return (
-    <AbsoluteFill
-      style={{ background: '#e8e8ec', justifyContent: 'center', alignItems: 'center', fontFamily: FONT }}
-    >
-      <div style={{ opacity: slide, transform: `translateY(${(1 - slide) * 20}px)` }}>
-        <AppShell>
-          <div style={{ padding: '28px 36px', maxWidth: 520 }}>
-            <p style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 20 }}>{TYPE_CMD}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  color: C.sub,
-                  opacity: step1
-                }}
-              >
-                <span style={{ color: C.blue }}>●</span> Searching Downloads…
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 13,
-                  color: C.sub,
-                  opacity: step2
-                }}
-              >
-                <span style={{ color: '#16a34a' }}>✓</span> Found invoice_march.pdf
-              </div>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                  color: C.text,
-                  opacity: reply,
-                  transform: `translateY(${(1 - reply) * 12}px)`
-                }}
-              >
-                Opened your latest invoice. Total due:{' '}
-                <strong style={{ color: C.link }}>$1,240.00</strong> — want me to email a summary?
-              </div>
-            </div>
-          </div>
-        </AppShell>
+    <Paper>
+      <div style={{position: 'absolute', left: 82, top: 67, opacity: logo, transform: `translateY(${(1 - logo) * -18}px)`}}>
+        <Wordmark width={170} />
       </div>
-    </AbsoluteFill>
+      <div style={{position: 'absolute', left: 80, top: 192, fontSize: 104, fontWeight: 560, letterSpacing: '-.068em', width: 1080, opacity: out}}>
+        <div style={lineStyle(line1)}>Your desktop.</div>
+        <div style={{...lineStyle(line2), color: MUTED}}>One command.</div>
+        <div style={lineStyle(line3)}>Already moving.</div>
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          right: 92,
+          bottom: 94,
+          width: 790,
+          height: 205,
+          opacity: composer * out,
+          transform: `translateY(${(1 - composer) * 70}px) scale(${0.94 + composer * 0.06})`
+        }}
+      >
+        <UiCrop shot="09-home-ready.png" cropX={510} cropY={742} scale={0.92} width={790} height={205} style={{inset: 0}} />
+      </div>
+      <div style={{position: 'absolute', right: 92, top: 82, opacity: clamp(frame, [86, 112], [0, 1]) * out}}>
+        <Label><span style={{width: 7, height: 7, borderRadius: 99, background: '#16a34a'}} /> Desktop agent</Label>
+      </div>
+    </Paper>
   )
 }
 
-function SceneOverlay(): JSX.Element {
+const COMMAND = 'Find my latest invoice and summarize what is due'
+
+function ComposerScene(): ReactElement {
   const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const shrink = spring({ frame, fps, config: { damping: 18, stiffness: 50 } })
-  const appScale = interpolate(shrink, [0, 1], [1, 0.75])
-  const appOpacity = interpolate(shrink, [0, 1], [1, 0.15])
-  const overlaySlide = spring({ frame: frame - 18, fps, config: { damping: 14, stiffness: 65 } })
-  const ox = interpolate(overlaySlide, [0, 1], [120, 0])
-  const oy = interpolate(overlaySlide, [0, 1], [80, 0])
+  const {fps} = useVideoConfig()
+  const enter = spring({frame, fps, config: {damping: 22, stiffness: 70}})
+  const typedCount = Math.floor(clamp(frame, [48, 176], [0, COMMAND.length]))
+  const typed = COMMAND.slice(0, typedCount)
+  const cursorMove = clamp(frame, [182, 218], [0, 1])
+  const cursorX = interpolate(cursorMove, [0, 1], [1400, 1519])
+  const cursorY = interpolate(cursorMove, [0, 1], [620, 660])
+  const down = frame >= 220 && frame <= 229
+  const sendGlow = 0.3 + Math.sin(frame * 0.13) * 0.1
+  const exit = clamp(frame, [224, 239], [1, 0])
 
   return (
-    <AbsoluteFill style={{ background: 'linear-gradient(160deg, #18181b 0%, #3f3f46 100%)', fontFamily: FONT }}>
+    <Paper>
+      <div style={{position: 'absolute', left: 86, top: 72, opacity: enter}}><Wordmark width={150} /></div>
+      <div style={{position: 'absolute', left: 86, top: 176, fontSize: 25, color: MUTED, letterSpacing: '-.02em', opacity: enter}}>
+        Ask naturally. TORCH handles the steps.
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 80,
+          right: 80,
+          top: 345,
+          height: 370,
+          opacity: enter * exit,
+          transform: `translateY(${(1 - enter) * 74}px) scale(${0.96 + enter * 0.04})`
+        }}
+      >
+        <UiCrop shot="09-home-ready.png" cropX={455} cropY={702} scale={1.58} width={1760} height={370} style={{inset: 0, borderRadius: 46, boxShadow: '0 38px 110px rgba(35,31,24,.16), 0 3px 10px rgba(35,31,24,.08)'}} />
+        <div style={{position: 'absolute', left: 104, top: 151, width: 1260, height: 70, background: '#fff'}} />
+        <div style={{position: 'absolute', left: 106, top: 149, fontSize: 29, lineHeight: '46px', letterSpacing: '-.024em', color: '#2f2f31', whiteSpace: 'nowrap'}}>
+          {typed}
+          <span style={{display: 'inline-block', width: 2, height: 35, marginLeft: 3, background: INK, verticalAlign: -7, opacity: Math.floor(frame / 28) % 2 ? 0.15 : 1}} />
+        </div>
+        <div style={{position: 'absolute', right: 73, top: 87, width: 58, height: 58, borderRadius: 13, boxShadow: typedCount === COMMAND.length ? `0 0 0 12px rgba(96,165,250,${sendGlow})` : 'none'}} />
+      </div>
+      <Pointer x={cursorX} y={cursorY} down={down} opacity={clamp(frame, [170, 184], [0, 1]) * exit} trail />
+      {down && <AbsoluteFill style={{background: 'radial-gradient(circle at 79% 62%, rgba(96,165,250,.18), transparent 26%)'}} />}
+    </Paper>
+  )
+}
+
+function FullAppScene(): ReactElement {
+  const frame = useCurrentFrame()
+  const {fps} = useVideoConfig()
+  const enter = spring({frame, fps, config: {damping: 19, stiffness: 64, mass: 0.85}})
+  const tilt = interpolate(enter, [0, 1], [-2.2, 0])
+  const camera = clamp(frame, [48, 174], [0, 1])
+  const shotMix = clamp(frame, [52, 70], [0, 1])
+  const click = frame >= 52 && frame <= 62
+  const pointerX = interpolate(clamp(frame, [15, 48], [0, 1]), [0, 1], [1200, 1531])
+  const pointerY = interpolate(clamp(frame, [15, 48], [0, 1]), [0, 1], [710, 849])
+
+  return (
+    <Paper>
+      <div style={{position: 'absolute', left: 86, top: 56, opacity: clamp(frame, [10, 32], [0, 1])}}>
+        <Label><span style={{color: BLUE_DARK}}>01</span> Send the request</Label>
+      </div>
+      <AppWindow
+        shot="02-typed.png"
+        width={1600}
+        scale={(0.84 + enter * 0.16) * (1 + camera * 0.015)}
+        y={(1 - enter) * 175 + 20 - camera * 8}
+        rotate={tilt}
+        opacity={1 - shotMix}
+      />
+      <AppWindow
+        shot="03-sending.png"
+        width={1600}
+        scale={(0.84 + enter * 0.16) * (1 + camera * 0.015)}
+        y={(1 - enter) * 175 + 20 - camera * 8}
+        rotate={tilt}
+        opacity={shotMix}
+      />
+      <Pointer x={pointerX} y={pointerY} down={click} opacity={clamp(frame, [12, 24], [0, 1]) * clamp(frame, [76, 96], [1, 0])} trail />
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 190,
+          background: `linear-gradient(to top, rgba(245,243,238,${clamp(frame, [130, 174], [0, 0.82])}), transparent)`,
+          pointerEvents: 'none'
+        }}
+      />
+    </Paper>
+  )
+}
+
+function ProcessingScene(): ReactElement {
+  const frame = useCurrentFrame()
+  const {fps} = useVideoConfig()
+  const app = spring({frame, fps, config: {damping: 21, stiffness: 65}})
+  const label1 = spring({frame: frame - 38, fps, config: {damping: 18, stiffness: 82}})
+  const label2 = spring({frame: frame - 83, fps, config: {damping: 18, stiffness: 82}})
+  const label3 = spring({frame: frame - 128, fps, config: {damping: 18, stiffness: 82}})
+  const scan = interpolate(frame, [18, 250], [430, 1360], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'})
+  const orbit = frame * 0.028
+
+  return (
+    <Paper>
+      <div style={{position: 'absolute', left: 70, top: 70, width: 450}}>
+        <div style={{fontSize: 19, color: BLUE_DARK, fontWeight: 700, letterSpacing: '.12em', marginBottom: 28}}>WORKING LIVE</div>
+        {[
+          ['Finds', 'the right file', label1],
+          ['Reads', 'what matters', label2],
+          ['Plans', 'the next move', label3]
+        ].map(([word, rest, progress]) => (
+          <div key={String(word)} style={{opacity: Number(progress), transform: `translateX(${(1 - Number(progress)) * -34}px)`, marginBottom: 15, fontSize: 55, letterSpacing: '-.055em', lineHeight: 1.04}}>
+            <strong style={{fontWeight: 620}}>{String(word)}</strong>{' '}
+            <span style={{color: '#aaa69f', fontWeight: 450}}>{String(rest)}</span>
+          </div>
+        ))}
+      </div>
+      <AppWindow shot="04-processing.png" width={1470} x={260} y={38} scale={0.9 + app * 0.1} rotate={0.45 - app * 0.45} opacity={app} />
+      <div style={{position: 'absolute', left: 995, top: 291, width: 330, height: 42, background: '#f4f4f5', zIndex: 5}} />
+      <div style={{position: 'absolute', left: 1002, top: 299, color: '#a1a1aa', fontSize: 14, zIndex: 6}}>Searching Downloads…</div>
+      <div
+        style={{
+          position: 'absolute',
+          left: scan,
+          top: 232,
+          width: 2,
+          height: 580,
+          background: 'linear-gradient(to bottom, transparent, rgba(96,165,250,.56), transparent)',
+          boxShadow: '0 0 32px rgba(96,165,250,.5)',
+          opacity: 0.75
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 974 + Math.cos(orbit) * 42,
+          top: 284 + Math.sin(orbit) * 18,
+          width: 10,
+          height: 10,
+          borderRadius: 99,
+          background: BLUE,
+          boxShadow: '0 0 24px rgba(96,165,250,.8)'
+        }}
+      />
+      <div style={{position: 'absolute', right: 76, bottom: 55, opacity: clamp(frame, [150, 175], [0, 1])}}>
+        <Label><span style={{width: 8, height: 8, background: BLUE, borderRadius: 99, boxShadow: '0 0 12px rgba(96,165,250,.8)'}} /> Every step stays visible</Label>
+      </div>
+    </Paper>
+  )
+}
+
+function ResponseScene(): ReactElement {
+  const frame = useCurrentFrame()
+  const {fps} = useVideoConfig()
+  const app = spring({frame, fps, config: {damping: 20, stiffness: 66}})
+  const zoom = clamp(frame, [35, 210], [0, 1])
+  const reveal = clamp(frame, [38, 150], [0, 1])
+  const check = spring({frame: frame - 154, fps, config: {damping: 13, stiffness: 110}})
+
+  return (
+    <Paper>
+      <div style={{position: 'absolute', left: 80, top: 66, zIndex: 20, opacity: clamp(frame, [4, 24], [0, 1])}}>
+        <Label><span style={{color: BLUE_DARK}}>02</span> Get the answer</Label>
+      </div>
+      <AppWindow shot="07-response-success.png" width={1600} scale={(0.92 + app * 0.08) * (1 + zoom * 0.07)} x={-zoom * 55} y={22 + zoom * 18} opacity={app} />
+      <div
+        style={{
+          position: 'absolute',
+          left: 606,
+          top: 200,
+          width: 1038,
+          height: 175 * (1 - reveal),
+          background: '#f4f4f5',
+          transformOrigin: 'top',
+          zIndex: 6
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 601,
+          top: 187,
+          width: 1055,
+          height: 190,
+          borderRadius: 16,
+          border: '2px solid rgba(96,165,250,.28)',
+          boxShadow: '0 18px 58px rgba(96,165,250,.13)',
+          opacity: interpolate(frame, [48, 72, 190, 225], [0, 1, 1, 0], {
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp'
+          })
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          right: 85,
+          top: 64,
+          width: 74,
+          height: 74,
+          borderRadius: 999,
+          display: 'grid',
+          placeItems: 'center',
+          background: '#181817',
+          color: '#fff',
+          fontSize: 36,
+          fontWeight: 700,
+          opacity: check,
+          transform: `scale(${0.65 + check * 0.35})`,
+          boxShadow: '0 18px 48px rgba(24,24,23,.2)'
+        }}
+      >
+        ✓
+      </div>
+      <div style={{position: 'absolute', left: 80, bottom: 58, fontSize: 50, fontWeight: 560, letterSpacing: '-.05em', opacity: clamp(frame, [165, 195], [0, 1]), transform: `translateY(${clamp(frame, [165, 195], [24, 0])}px)`}}>
+        Clear answer. <span style={{color: MUTED}}>Real action.</span>
+      </div>
+    </Paper>
+  )
+}
+
+function MosaicScene(): ReactElement {
+  const frame = useCurrentFrame()
+  const {fps} = useVideoConfig()
+  const p1 = spring({frame, fps, config: {damping: 20, stiffness: 72}})
+  const p2 = spring({frame: frame - 18, fps, config: {damping: 20, stiffness: 72}})
+  const p3 = spring({frame: frame - 36, fps, config: {damping: 20, stiffness: 72}})
+  const title = spring({frame: frame - 62, fps, config: {damping: 20, stiffness: 70}})
+  const drift = Math.sin(frame * 0.018)
+
+  return (
+    <Paper>
+      <div style={{position: 'absolute', left: 80, top: 65}}><Wordmark width={150} /></div>
+      <div style={{position: 'absolute', left: 80, top: 182, width: 610, opacity: title, transform: `translateY(${(1 - title) * 35}px)`}}>
+        <div style={{fontSize: 76, lineHeight: .96, letterSpacing: '-.065em', fontWeight: 560}}>One flow.</div>
+        <div style={{fontSize: 76, lineHeight: .96, letterSpacing: '-.065em', fontWeight: 500, color: '#aaa69f'}}>Nothing hidden.</div>
+        <p style={{fontSize: 21, lineHeight: 1.5, color: MUTED, width: 470, marginTop: 34}}>Your request, TORCH’s live work, and the final result stay together in the exact app you started from.</p>
+      </div>
+
+      <UiCrop shot="07-response-success.png" cropX={299} cropY={55} scale={0.72} width={470} height={650} style={{right: 800, top: 145, opacity: p1, transform: `translateY(${(1 - p1) * 90 + drift * 6}px) rotate(-2.2deg)`, borderRadius: 30}} />
+      <UiCrop shot="04-processing.png" cropX={505} cropY={105} scale={0.88} width={655} height={390} style={{right: 110, top: 100, opacity: p2, transform: `translateY(${(1 - p2) * 110 - drift * 7}px) rotate(2.5deg)`, borderRadius: 30}} />
+      <UiCrop shot="02-typed.png" cropX={505} cropY={735} scale={0.86} width={755} height={235} style={{right: 80, bottom: 105, opacity: p3, transform: `translateY(${(1 - p3) * 95 + drift * 4}px) rotate(-1deg)`, borderRadius: 30}} />
+
+      <div style={{position: 'absolute', right: 100, top: 72, opacity: clamp(frame, [110, 145], [0, 1])}}><Label>Live steps</Label></div>
+      <div style={{position: 'absolute', right: 92, bottom: 76, opacity: clamp(frame, [138, 172], [0, 1])}}><Label>Natural input</Label></div>
+    </Paper>
+  )
+}
+
+function FinaleScene(): ReactElement {
+  const frame = useCurrentFrame()
+  const {fps} = useVideoConfig()
+  const app = spring({frame, fps, config: {damping: 22, stiffness: 60}})
+  const dim = clamp(frame, [105, 180], [0, 0.78])
+  const mark = spring({frame: frame - 142, fps, config: {damping: 18, stiffness: 73}})
+  const copy = spring({frame: frame - 164, fps, config: {damping: 20, stiffness: 70}})
+  const camera = clamp(frame, [0, 295], [0, 1])
+
+  return (
+    <Paper style={{background: '#ebe9e3'}}>
+      <AppWindow
+        shot="07-response-success.png"
+        width={1570}
+        scale={(0.88 + app * 0.12) * (1 + camera * 0.055)}
+        y={(1 - app) * 130 + 18}
+        rotate={(1 - app) * -1.7}
+        opacity={app}
+        blur={dim * 2.2}
+      />
+      <AbsoluteFill style={{background: `rgba(245,243,238,${dim})`}} />
       <div
         style={{
           position: 'absolute',
           inset: 0,
           display: 'flex',
-          justifyContent: 'center',
+          flexDirection: 'column',
           alignItems: 'center',
-          transform: `scale(${appScale})`,
-          opacity: appOpacity,
-          filter: 'blur(2px)'
+          justifyContent: 'center',
+          opacity: mark,
+          transform: `translateY(${(1 - mark) * 38}px) scale(${0.94 + mark * 0.06})`
         }}
       >
-        <AppShell>
-          <div style={{ padding: 40, color: C.sub, fontSize: 13 }}>VS Code — index.tsx</div>
-        </AppShell>
-      </div>
-
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 48,
-          right: 48,
-          width: 300,
-          padding: 18,
-          background: C.surface,
-          borderRadius: 14,
-          boxShadow: '0 28px 90px rgba(0,0,0,0.5)',
-          transform: `translate(${ox}px, ${oy}px) scale(${interpolate(overlaySlide, [0, 1], [0.88, 1])})`,
-          opacity: overlaySlide
-        }}
-      >
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-          <Img src={staticFile('logo.png')} style={{ height: 20 }} />
-          <div>
-            <div style={{ fontSize: 9, color: C.ghost, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Active
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>VS Code · index.tsx</div>
-          </div>
+        <Wordmark width={310} />
+        <div style={{marginTop: 42, fontSize: 68, lineHeight: 1, letterSpacing: '-.058em', fontWeight: 560, opacity: copy, transform: `translateY(${(1 - copy) * 24}px)`}}>
+          Tell TORCH. <span style={{color: '#99968f'}}>Consider it done.</span>
         </div>
-        <p style={{ fontSize: 13, color: C.sub, marginBottom: 10 }}>Explain this file</p>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['Explain', 'Refactor', 'Comments'].map((l) => (
-            <span
-              key={l}
-              style={{
-                fontSize: 10,
-                padding: '5px 10px',
-                borderRadius: 999,
-                border: `1px solid ${C.border}`,
-                color: C.sub,
-                background: C.muted
-              }}
-            >
-              {l}
-            </span>
-          ))}
+        <div style={{marginTop: 38, opacity: clamp(frame, [205, 232], [0, 1])}}>
+          <Label style={{padding: '13px 20px', color: '#3f3f3d'}}><span style={{width: 8, height: 8, borderRadius: 99, background: '#16a34a'}} /> Desktop AI that acts</Label>
         </div>
       </div>
-
-      <p
-        style={{
-          position: 'absolute',
-          bottom: 52,
-          left: 52,
-          color: '#fafafa',
-          fontSize: 28,
-          fontWeight: 600,
-          letterSpacing: '-0.02em',
-          opacity: interpolate(frame, [35, 50], [0, 1], { extrapolateRight: 'clamp' })
-        }}
-      >
-        Minimize. Keep working. TORCH floats.
-      </p>
-    </AbsoluteFill>
+      <div style={{position: 'absolute', left: 0, right: 0, bottom: 30, textAlign: 'center', fontSize: 12, letterSpacing: '.16em', color: '#96938c', fontWeight: 650, opacity: clamp(frame, [225, 250], [0, 1])}}>TORCH FOR WINDOWS</div>
+    </Paper>
   )
 }
 
-function SceneOutro(): JSX.Element {
-  const s = useSpringIn(0, { damping: 12, stiffness: 75 })
+export function TorchPromo(): ReactElement {
   return (
-    <AbsoluteFill
-      style={{
-        background: `radial-gradient(circle at 50% 40%, #eff6ff 0%, ${C.bg} 100%)`,
-        justifyContent: 'center',
-        alignItems: 'center',
-        fontFamily: FONT
-      }}
-    >
-      <div style={{ textAlign: 'center', transform: `scale(${s})`, opacity: s }}>
-        <Img src={staticFile('logo.png')} style={{ width: 240, marginBottom: 22 }} />
-        <p style={{ fontSize: 28, fontWeight: 600, color: C.text, letterSpacing: '-0.02em' }}>
-          TORCH
-        </p>
-        <p style={{ fontSize: 15, color: C.sub, marginTop: 10 }}>Desktop AI that actually does things.</p>
-        <div
-          style={{
-            marginTop: 28,
-            display: 'inline-block',
-            padding: '12px 28px',
-            background: C.blue,
-            color: '#fff',
-            borderRadius: 8,
-            fontSize: 14,
-            fontWeight: 600
-          }}
-        >
-          Download for Windows
-        </div>
-      </div>
-    </AbsoluteFill>
-  )
-}
-
-export function TorchPromo(): JSX.Element {
-  return (
-    <AbsoluteFill>
-      <Sequence from={0} durationInFrames={70}>
-        <SceneIntro />
-      </Sequence>
-      <Sequence from={70} durationInFrames={65}>
-        <SceneAppReveal />
-      </Sequence>
-      <Sequence from={135} durationInFrames={70}>
-        <SceneClickSuggestion />
-      </Sequence>
-      <Sequence from={205} durationInFrames={75}>
-        <SceneTypeSend />
-      </Sequence>
-      <Sequence from={280} durationInFrames={70}>
-        <SceneAgentReply />
-      </Sequence>
-      <Sequence from={350} durationInFrames={85}>
-        <SceneOverlay />
-      </Sequence>
-      <Sequence from={435} durationInFrames={75}>
-        <SceneOutro />
-      </Sequence>
+    <AbsoluteFill style={{background: BG}}>
+      <Audio src={staticFile('torch-score.wav')} volume={0.82} />
+      <Sequence from={0} durationInFrames={180}><IntroScene /></Sequence>
+      <Sequence from={180} durationInFrames={240}><ComposerScene /></Sequence>
+      <Sequence from={420} durationInFrames={180}><FullAppScene /></Sequence>
+      <Sequence from={600} durationInFrames={270}><ProcessingScene /></Sequence>
+      <Sequence from={870} durationInFrames={270}><ResponseScene /></Sequence>
+      <Sequence from={1140} durationInFrames={240}><MosaicScene /></Sequence>
+      <Sequence from={1380} durationInFrames={300}><FinaleScene /></Sequence>
     </AbsoluteFill>
   )
 }
