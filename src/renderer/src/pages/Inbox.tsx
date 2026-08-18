@@ -25,6 +25,16 @@ interface EmailDetail {
 
 const PAGE_SIZE = 50
 
+const SYNC_TIMEOUT_MS = 45000
+
+function friendlyError(err: unknown): string {
+  if (err instanceof DOMException && err.name === 'AbortError')
+    return 'Sync timed out. The mail server was too slow — try again.'
+  if (err instanceof TypeError)
+    return 'Could not reach the mail server. Check your connection and try again.'
+  return err instanceof Error ? err.message : 'Inbox sync failed'
+}
+
 function formatTime(raw: string): string {
   const date = new Date(raw)
   if (Number.isNaN(date.getTime())) return raw.slice(0, 16)
@@ -73,6 +83,7 @@ export function Inbox(): JSX.Element {
     const controller = new AbortController()
     abortRef.current?.abort()
     abortRef.current = controller
+    const timer = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS)
     try {
       const res = await fetch(`${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=0`, {
         signal: controller.signal
@@ -87,8 +98,10 @@ export function Inbox(): JSX.Element {
       setOffset(data.messages?.length || 0)
       setInboxUnread((data.messages || []).filter((e: EmailSummary) => !e.read).length)
     } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') setError((err as Error).message)
+      if ((err as Error)?.name !== 'AbortError' || abortRef.current === controller)
+        setError(friendlyError(err))
     } finally {
+      clearTimeout(timer)
       setLoading(false)
     }
   }, [setInboxUnread])
@@ -138,7 +151,7 @@ export function Inbox(): JSX.Element {
 
   useEffect(() => {
     if (configured !== true) return
-    const timer = window.setInterval(() => void loadFirstPage(), 30000)
+    const timer = window.setInterval(() => void loadFirstPage(), 60000)
     return () => window.clearInterval(timer)
   }, [configured, loadFirstPage])
 

@@ -42,7 +42,7 @@ def _open_inbox():
     """Open an IMAP connection and select the inbox folder."""
     if not settings.gmail_address or not _app_password():
         raise ValueError("Gmail not configured. Add credentials in Settings.")
-    mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
+    mail = imaplib.IMAP4_SSL(settings.gmail_imap_host, timeout=30)
     mail.login(settings.gmail_address, _app_password())
     mail.select("inbox")
     return mail
@@ -189,7 +189,11 @@ def read_inbox(count: int = 10) -> str:
 
 
 def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
-    """Return structured inbox messages (newest first) without marking them read."""
+    """Return structured inbox messages (newest first) without marking them read.
+
+    Headers are fetched for the whole page in a single batched IMAP command so
+    syncing stays fast even for large inboxes.
+    """
     mail = _open_inbox()
     try:
         _, data = mail.uid("search", None, "ALL")
@@ -198,24 +202,36 @@ def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
         ordered = uids[::-1]
         page = ordered[offset:offset + limit]
 
-        messages = []
-        for uid in page:
-            _, msg_data = mail.uid("fetch", uid, "(FLAGS BODY.PEEK[])")
-            if not msg_data or msg_data[0] is None:
+        if not page:
+            return {"total": total, "messages": []}
+
+        id_list = b",".join(page)
+        _, responses = mail.uid(
+            "fetch",
+            id_list,
+            "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
+        )
+
+        by_uid: dict[str, dict] = {}
+        for item in responses:
+            if not isinstance(item, tuple) or item[0] is None:
                 continue
-            raw = msg_data[0][1]
-            meta = msg_data[0][0].decode(errors="replace")
+            meta = item[0].decode(errors="replace")
+            raw = item[1]
+            uid_match = re.search(r"UID (\d+)", meta)
+            if not uid_match:
+                continue
             msg = email.message_from_bytes(raw)
-            messages.append(
-                {
-                    "uid": uid.decode(errors="replace"),
-                    "subject": _decode_subject(msg.get("Subject")),
-                    "from": _short_address(msg.get("From", "")),
-                    "date": msg.get("Date", ""),
-                    "snippet": _snippet(msg),
-                    "read": "\\Seen" in meta,
-                }
-            )
+            by_uid[uid_match.group(1)] = {
+                "uid": uid_match.group(1),
+                "subject": _decode_subject(msg.get("Subject")),
+                "from": _short_address(msg.get("From", "")),
+                "date": msg.get("Date", ""),
+                "snippet": "",
+                "read": "\\Seen" in meta,
+            }
+
+        messages = [by_uid[u.decode(errors="replace")] for u in page if u.decode(errors="replace") in by_uid]
         return {"total": total, "messages": messages}
     finally:
         mail.close()
