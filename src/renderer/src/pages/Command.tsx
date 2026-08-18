@@ -1,5 +1,5 @@
 import { ChatArea } from '../components/chat/ChatArea'
-import { CommandInput } from '../components/input/CommandInput'
+import { PromptInput } from '../components/input/PromptInput'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -166,7 +166,7 @@ export function Command(): JSX.Element {
           onCancel={handleCancel}
           onSend={handleSend}
         />
-        <CommandInput onSend={handleSend} />
+        <PromptInput onSend={handleSend} />
       </div>
     </div>
   )

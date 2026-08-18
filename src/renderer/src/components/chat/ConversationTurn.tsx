@@ -5,8 +5,10 @@ import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { StepList } from './StepList'
-import { ApprovalCard } from './ApprovalCard'
+import { ApprovalCard } from '../aicss/ApprovalCard'
 import { AgentActivity } from './AgentActivity'
+import { TextResponse } from '../aicss/TextResponse'
+import { StreamingText } from '../aicss/StreamingText'
 import { LinkifiedText } from './LinkifiedText'
 import {
   formatAgentContent,
@@ -101,14 +103,19 @@ export function ConversationTurn({
             </div>
           )}
 
-          {bodyText && !isErrorReply && (
+{bodyText && !isErrorReply && (
             <motion.div
-              className={`chat-turn__body chat-turn__body--revealed ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
+              className="chat-turn__body chat-turn__body--revealed"
               layout="position"
               transition={{ layout: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
             >
-              <LinkifiedText text={bodyText} />
-              {agent.isStreaming && <span className="chat-turn__cursor" aria-hidden="true" />}
+              {agent.isStreaming ? (
+                <StreamingText text={bodyText} />
+              ) : (
+                <TextResponse>
+                  <LinkifiedText text={bodyText} />
+                </TextResponse>
+              )}
             </motion.div>
           )}
 

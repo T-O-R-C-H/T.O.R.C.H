@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { StepList } from './StepList'
-import { ApprovalCard } from './ApprovalCard'
+import { ApprovalCard } from '../aicss/ApprovalCard'
 import type { Message as MessageType } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
 import { IconSparkles } from '../icons'

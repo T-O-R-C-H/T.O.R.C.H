@@ -1,0 +1,289 @@
+.root {
+  --orb-ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --orb-ease-out: cubic-bezier(0.17, 1, 0.32, 1);
+  --orb-ease-in-out: cubic-bezier(0.66, 0, 0.34, 1);
+
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  color: #1a1a1a;
+}
+
+.root[data-pill] {
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px 0 5px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.pillLabel {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 425;
+  line-height: 1;
+  color: #a1a1a1;
+  white-space: nowrap;
+}
+
+.glyph {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  contain: strict;
+}
+
+@media (prefers-color-scheme: dark) {
+  .root {
+    color: #f5f5f5;
+  }
+  .root[data-pill] {
+    background: #1a1a1a;
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.12),
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  .pillLabel {
+    color: #a3a3a3;
+  }
+}
+
+/* --- Lattice: discrete dots on a fixed 3×3 grid ------------------- */
+
+.lattice {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  transform-origin: 0 0;
+  transform: scale(var(--orb-k, 1)) translate(6.5px, 6.5px);
+  --orb-rest: 0.14;
+  --orb-dim: 0.07;
+}
+
+@media (prefers-color-scheme: dark) {
+  .lattice {
+    --orb-rest: 0.2;
+    --orb-dim: 0.1;
+  }
+}
+
+.cell {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: var(--orb-rest);
+  will-change: transform, opacity;
+}
+
+.lattice[data-variant='S1'] .cell,
+.lattice[data-variant='S2'] .cell,
+.lattice[data-variant='S4'] .cell {
+  animation: orb-wave 1.7s var(--orb-ease-in-out) infinite both;
+}
+
+.lattice[data-variant='S3'] .cell,
+.lattice[data-variant='S5'] .cell {
+  animation: orb-comet 1.7s var(--orb-ease-smooth) infinite both;
+}
+
+.lattice[data-variant='S3'] .cell[data-still],
+.lattice[data-variant='S5'] .cell[data-still] {
+  animation: none;
+  opacity: var(--orb-dim);
+}
+
+@keyframes orb-wave {
+  0% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  28% {
+    opacity: 1;
+    transform: scale(1.18);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  56% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+  100% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+}
+
+@keyframes orb-comet {
+  0% {
+    opacity: 1;
+    transform: scale(1.2);
+    animation-timing-function: linear;
+  }
+  45% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+  100% {
+    opacity: var(--orb-rest);
+    transform: scale(1);
+  }
+}
+
+/* The settle sweep runs inside the wave cycle: a swirl toward a tight
+   centre with a brief swing, then a slow relaxed drift out to the ring. */
+.lattice[data-variant='S2'] .cell {
+  animation-name: orb-wave-settle;
+}
+
+@keyframes orb-wave-settle {
+  0% {
+    opacity: var(--orb-rest);
+    transform: translate(0, 0) scale(1);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  28% {
+    opacity: 1;
+    transform: translate(var(--orb-ax), var(--orb-ay)) scale(1.25);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(var(--orb-bx), var(--orb-by)) scale(1.05);
+    animation-timing-function: cubic-bezier(0.66, 0, 0.34, 1);
+  }
+  56% {
+    opacity: var(--orb-rest);
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    opacity: var(--orb-rest);
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+/* --- Ring: eight circles on a fixed ring ----------------------------- */
+
+.ring {
+  position: absolute;
+  inset: 0;
+  transform: scale(var(--orb-k, 1));
+  --orb-ring-rest: 0.22;
+}
+
+@media (prefers-color-scheme: dark) {
+  .ring {
+    --orb-ring-rest: 0.3;
+  }
+}
+
+.ringDot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(var(--orb-rx), var(--orb-ry));
+  will-change: transform, opacity;
+}
+
+.ring[data-variant='C1'] .ringDot {
+  opacity: var(--orb-ring-rest);
+  animation: orb-ring-chase 1.6s linear infinite both;
+}
+
+@keyframes orb-ring-chase {
+  0%,
+  11% {
+    opacity: 1;
+  }
+  12.5%,
+  100% {
+    opacity: var(--orb-ring-rest);
+  }
+}
+
+.ring[data-variant='C2'] .ringDot {
+  animation: orb-ring-pulse 2s ease-in-out infinite both;
+}
+
+@keyframes orb-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: translate(var(--orb-rx), var(--orb-ry)) scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(var(--orb-rx), var(--orb-ry)) scale(1.15);
+  }
+}
+
+.ring[data-variant='C3'] .ringDot,
+.ring[data-variant='C5'] .ringDot {
+  animation: orb-ring-comet 1.8s ease-in-out infinite both;
+}
+
+@keyframes orb-ring-comet {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+  }
+  12% {
+    opacity: 1;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  35% {
+    opacity: 0.5;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+  }
+  60% {
+    opacity: 0.12;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+  }
+}
+
+.ring[data-variant='C4'] .ringDot {
+  animation: orb-ring-stagger 1.6s ease-in-out infinite both;
+}
+
+@keyframes orb-ring-stagger {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+  }
+  50% {
+    opacity: 0.15;
+    transform: translate(var(--orb-rx), var(--orb-ry));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell,
+  .ringDot {
+    animation: none !important;
+  }
+  .cell[data-mid] {
+    opacity: 1 !important;
+  }
+  .ringDot {
+    opacity: 0.7 !important;
+  }
+}

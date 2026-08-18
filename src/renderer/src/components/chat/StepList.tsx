@@ -1,6 +1,6 @@
 import type { Step } from '../../store/torchStore'
-import { IconCheck, IconLoader, IconAlertTriangle, IconCircle } from '../icons'
 import { toPlainLanguage } from '../../utils/plainLanguage'
+import { TodoList, type TodoStep } from '../aicss/TodoList'
 
 interface StepListProps {
   steps: Step[]
@@ -27,10 +27,6 @@ function formatStepResult(result: string | undefined): { text: string; hasOverfl
   const hasOverflow = targetLine.length > 120 || nonEmptyCount > 1
   const truncated = targetLine.length > 120 ? `${targetLine.substring(0, 120)}...` : targetLine
   return { text: `↳ ${truncated}`, hasOverflow }
-}
-
-interface StepListProps {
-  steps: Step[]
 }
 
 function getStepPhrase(
@@ -102,41 +98,36 @@ function getStepPhrase(
   return fallbackLabel || (isPending ? 'Working on it...' : 'Completed.')
 }
 
+function mapStatus(status: Step['status']): TodoStep['status'] {
+  switch (status) {
+    case 'done':
+      return 'done'
+    case 'active':
+      return 'active'
+    case 'failed':
+    case 'hitl_required':
+      return 'failed'
+    default:
+      return 'pending'
+  }
+}
+
 export function StepList({ steps }: StepListProps): JSX.Element {
+  const todos: TodoStep[] = steps.map((step) => ({
+    id: step.id,
+    label: getStepPhrase(step.tool, step.args, step.status, step.label),
+    status: mapStatus(step.status)
+  }))
+
   return (
-    <div className="step-list">
+    <div>
+      <TodoList steps={todos} />
       {steps.map((step) => {
-        const isDone = step.status === 'done'
-        const isActive = step.status === 'active'
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'
         const { text: previewText, hasOverflow } = formatStepResult(step.result)
-        const displayLabel = getStepPhrase(step.tool, step.args, step.status, step.label)
-
-        const rowClass = isActive
-          ? 'step-row step-row--active'
-          : isDone
-            ? 'step-row step-row--done'
-            : isFailed
-              ? 'step-row step-row--failed'
-              : 'step-row'
 
         return (
           <div key={step.id}>
-            <div className={rowClass}>
-              <span className="step-row__icon">
-                {isActive ? (
-                  <IconLoader size={14} className="spinner" />
-                ) : isDone ? (
-                  <IconCheck size={14} className="text-[var(--color-torch-success)]" />
-                ) : isFailed ? (
-                  <IconAlertTriangle size={14} className="text-[var(--color-torch-error)]" />
-                ) : (
-                  <IconCircle size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                )}
-              </span>
-              <span>{displayLabel}</span>
-            </div>
-
             {step.result && !isFailed && previewText && (
               <div className="step-preview">
                 <div className="step-preview__line">{previewText}</div>
@@ -146,9 +137,9 @@ export function StepList({ steps }: StepListProps): JSX.Element {
               </div>
             )}
 
-            {(step.error || isFailed || (isActive && !step.result)) && (
+            {(step.error || isFailed || (step.status === 'active' && !step.result)) && (
               <div className="step-preview">
-                {isActive && !step.result && !step.error && (
+                {step.status === 'active' && !step.result && !step.error && (
                   <span className="step-preview__line">Working on this step…</span>
                 )}
                 {step.error && (

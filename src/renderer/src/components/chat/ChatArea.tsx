@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from './AgentActivity'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchLogo } from '../ui/TorchLogo'
+import { TorchMark } from '../TorchMark'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -139,7 +139,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header">
-            <TorchLogo size={72} />
+            <TorchMark size={72} color="currentColor" />
             <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
@@ -152,7 +152,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchLogo size={72} />
+          <TorchMark size={72} color="currentColor" />
           <p className="cmd-idle__title">Command Center</p>
           <p className="cmd-idle__subtitle">
             Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.
