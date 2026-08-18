@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re
 from typing import List, Dict, Any, Optional
 from google import genai
 from config.settings import settings
@@ -18,7 +19,7 @@ AVAILABLE_TOOLS = [
     {"name": "read_word", "description": "Extract text content from a Word document", "params": ["filepath"]},
     {"name": "read_excel", "description": "Extract data from an Excel spreadsheet", "params": ["filepath"]},
     {"name": "send_email", "description": "Send an email via Gmail SMTP", "params": ["to", "subject", "body", "attachment"], "hitl": True},
-    {"name": "read_inbox", "description": "Read recent emails from Gmail inbox", "params": ["count"]},
+    {"name": "read_inbox", "description": "Read recent emails from Gmail inbox. When the user asks about a specific topic, keyword, or sender, pass it as 'query' so only matching emails are returned.", "params": ["count", "query"]},
     {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"]},
     {"name": "click", "description": "Click at a screen position", "params": ["x", "y"]},
     {"name": "type_text", "description": "Type text using keyboard", "params": ["text"]},
@@ -168,8 +169,12 @@ class GeminiProvider(LLMProvider):
                     {"tool": "read_pdf", "label": "Reading document", "args": {"filepath": "report.pdf"}, "requires_approval": False}
                 ]
             elif "email" in cmd or "inbox" in cmd:
+                q = ""
+                about = re.search(r"\babout\s+([A-Za-z]{3,})", cmd)
+                if about:
+                    q = about.group(1)
                 return [
-                    {"tool": "read_inbox", "label": "Checking your inbox", "args": {"count": 3}, "requires_approval": False}
+                    {"tool": "read_inbox", "label": "Checking your inbox", "args": {"count": 3, "query": q}, "requires_approval": False}
                 ]
             elif "search" in cmd or "web" in cmd:
                 return [

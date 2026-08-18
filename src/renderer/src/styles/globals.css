@@ -1248,6 +1248,33 @@
   background: transparent;
 }
 
+.inbox-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-torch-text);
+  background: var(--color-torch-surface);
+  border: 1px solid var(--color-torch-border);
+}
+
+.inbox-avatar--lg {
+  width: 42px;
+  height: 42px;
+  font-size: 15px;
+}
+
+.inbox-item--unread .inbox-avatar {
+  border-color: var(--color-torch-link, #3b82f6);
+  color: var(--color-torch-text);
+}
+
 .inbox-item--unread .inbox-item__dot {
   background: var(--color-torch-link, #3b82f6);
 }
@@ -1355,29 +1382,51 @@
   border-bottom: 1px solid var(--color-torch-border);
 }
 
+.inbox-detail__sender {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.inbox-detail__sender-meta {
+  min-width: 0;
+  flex: 1;
+}
+
 .inbox-detail__subject {
   font-size: 17px;
   font-weight: 600;
   color: var(--color-torch-text);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  line-height: 1.35;
 }
 
 .inbox-detail__meta {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   font-size: 12.5px;
   color: var(--color-torch-text-secondary);
 }
 
-.inbox-detail__meta strong {
+.inbox-detail__from {
+  font-weight: 600;
   color: var(--color-torch-text);
+}
+
+.inbox-detail__to {
+  color: var(--color-torch-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .inbox-detail__time {
   flex: none;
   color: var(--color-torch-text-tertiary);
+  font-size: 12px;
 }
 
 .inbox-detail__actions {
@@ -1390,6 +1439,43 @@
   color: var(--color-torch-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.inbox-detail__body--html {
+  white-space: normal;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--color-torch-text);
+  overflow-wrap: anywhere;
+}
+
+.inbox-detail__body--html :where(p, div, li, blockquote, h1, h2, h3, h4) {
+  margin: 0 0 12px;
+}
+
+.inbox-detail__body--html img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.inbox-detail__body--html a {
+  color: var(--color-torch-link, #3b82f6);
+}
+
+.inbox-detail__body--html blockquote {
+  border-left: 3px solid var(--color-torch-border);
+  padding-left: 12px;
+  color: var(--color-torch-text-secondary);
+}
+
+.inbox-detail__body--html ul,
+.inbox-detail__body--html ol {
+  padding-left: 20px;
+}
+
+.inbox-detail__body--html table {
+  max-width: 100%;
 }
 
 .inbox-spin {

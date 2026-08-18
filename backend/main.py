@@ -884,7 +884,10 @@ async def process_command(
             if "send_email" in tools_used:
                 recap_sentence = "Your email was sent."
             elif "read_inbox" in tools_used:
-                recap_sentence = "I checked your inbox."
+                if last_result:
+                    recap_sentence = last_result if len(last_result) <= 3000 else last_result[:3000] + "…"
+                else:
+                    recap_sentence = "I checked your inbox."
             elif "move_file" in tools_used:
                 recap_sentence = last_result if last_result else "Your file was moved."
             elif "create_folder" in tools_used:

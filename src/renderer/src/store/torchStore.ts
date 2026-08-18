@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { API_BASE } from '../config/api'
+import type { InboxCache } from '../types/email'
 
 // ─── TYPES ───
 
@@ -132,6 +133,10 @@ export interface TorchState {
   inboxUnread: number
   setInboxUnread: (count: number) => void
 
+  // Cached inbox listing (persists across page navigation)
+  inboxCache: InboxCache | null
+  setInboxCache: (cache: InboxCache | null) => void
+
   // Demo Mode
   demoMode: boolean
   setDemoMode: (val: boolean) => void
@@ -243,6 +248,9 @@ export const useTorchStore = create<TorchState>((set) => ({
 
   inboxUnread: 0,
   setInboxUnread: (count): void => set({ inboxUnread: count }),
+
+  inboxCache: null,
+  setInboxCache: (cache): void => set({ inboxCache: cache }),
 
   // Demo Mode — not persisted to localStorage, always starts fresh
   demoMode: false,

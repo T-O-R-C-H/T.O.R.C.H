@@ -6,6 +6,8 @@ Send and read emails via Gmail SMTP/IMAP with App Password auth.
 import smtplib
 import imaplib
 import email
+import quopri
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
@@ -24,6 +26,9 @@ def _short_address(from_header: str) -> str:
     if not from_header:
         return "Unknown sender"
     match = re.search(r"<([^>]+)>", from_header)
+    name = from_header.split("<", 1)[0].strip().strip('"')
+    if match and name:
+        return name[:60]
     if match:
         return match.group(1)
     return from_header[:60]
@@ -96,6 +101,24 @@ def _snippet(msg, length: int = 180) -> str:
     return " ".join(text.split())[:length]
 
 
+def _snippet_section(raw: bytes, length: int = 140) -> str:
+    """Build a short preview from a partial IMAP section fetch."""
+    text = raw.decode(errors="replace")
+    stripped = text.strip()
+    if stripped and len(stripped) % 4 == 0 and re.fullmatch(r"[A-Za-z0-9+/=\r\n]+", stripped):
+        try:
+            text = base64.b64decode(stripped).decode("utf-8", errors="replace")
+        except Exception:
+            text = raw.decode(errors="replace")
+    else:
+        try:
+            text = quopri.decodestring(raw).decode("utf-8", errors="replace")
+        except Exception:
+            text = raw.decode(errors="replace")
+    text = re.sub(r"<[^>]+>", " ", text)
+    return " ".join(text.split())[:length]
+
+
 def send_email(
     to: str,
     subject: str,
@@ -141,15 +164,28 @@ def send_email(
         raise RuntimeError(f"Email send failed: {e}")
 
 
-def read_inbox(count: int = 10) -> str:
-    """Read recent emails from Gmail inbox."""
+def read_inbox(count: int = 10, query: str = "") -> str:
+    """Read recent emails from Gmail inbox.
+
+    When ``query`` is provided, only emails matching that term (subject,
+    sender, or body) are returned, newest first.
+    """
     if not settings.gmail_address or not _app_password():
         raise ValueError("Gmail not configured. Add credentials in Settings.")
 
     try:
         mail = _open_inbox()
 
-        _, message_numbers = mail.search(None, "ALL")
+        search_term = (query or "").strip().replace('"', " ")
+        if search_term:
+            criteria = (
+                '(OR (SUBJECT "%s") (OR (FROM "%s") (BODY "%s")))'
+                % (search_term, search_term, search_term)
+            )
+            typ, message_numbers = mail.search(None, criteria)
+        else:
+            typ, message_numbers = mail.search(None, "ALL")
+
         nums = message_numbers[0].split()
 
         recent = nums[-count:] if len(nums) >= count else nums
@@ -178,6 +214,8 @@ def read_inbox(count: int = 10) -> str:
         mail.logout()
 
         if not summaries:
+            if search_term:
+                return f"No emails matching '{search_term}' were found."
             return "Your inbox is empty."
 
         header = f"Latest {len(summaries)} email(s) in {settings.gmail_address}:"
@@ -191,8 +229,8 @@ def read_inbox(count: int = 10) -> str:
 def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
     """Return structured inbox messages (newest first) without marking them read.
 
-    Headers are fetched for the whole page in a single batched IMAP command so
-    syncing stays fast even for large inboxes.
+    Headers and a short preview snippet are fetched for the whole page in a
+    single batched IMAP command so syncing stays fast even for large inboxes.
     """
     mail = _open_inbox()
     try:
@@ -209,29 +247,42 @@ def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
         _, responses = mail.uid(
             "fetch",
             id_list,
-            "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)])",
+            "(FLAGS BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)] BODY.PEEK[1]<0.220>)",
         )
 
         by_uid: dict[str, dict] = {}
+        current_uid: Optional[str] = None
         for item in responses:
             if not isinstance(item, tuple) or item[0] is None:
                 continue
             meta = item[0].decode(errors="replace")
-            raw = item[1]
             uid_match = re.search(r"UID (\d+)", meta)
-            if not uid_match:
+            if uid_match:
+                current_uid = uid_match.group(1)
+                entry = by_uid.setdefault(
+                    current_uid,
+                    {"uid": current_uid, "subject": "", "from": "", "date": "", "snippet": "", "read": False},
+                )
+            if current_uid is None:
                 continue
-            msg = email.message_from_bytes(raw)
-            by_uid[uid_match.group(1)] = {
-                "uid": uid_match.group(1),
-                "subject": _decode_subject(msg.get("Subject")),
-                "from": _short_address(msg.get("From", "")),
-                "date": msg.get("Date", ""),
-                "snippet": "",
-                "read": "\\Seen" in meta,
-            }
+            entry = by_uid.setdefault(
+                current_uid,
+                {"uid": current_uid, "subject": "", "from": "", "date": "", "snippet": "", "read": False},
+            )
+            if "HEADER.FIELDS" in meta:
+                msg = email.message_from_bytes(item[1])
+                entry["subject"] = _decode_subject(msg.get("Subject"))
+                entry["from"] = _short_address(msg.get("From", ""))
+                entry["date"] = msg.get("Date", "")
+                entry["read"] = "\\Seen" in meta
+            elif "BODY[1]" in meta or "BODY[TEXT]" in meta:
+                entry["snippet"] = _snippet_section(item[1])
 
-        messages = [by_uid[u.decode(errors="replace")] for u in page if u.decode(errors="replace") in by_uid]
+        messages = [
+            by_uid[u.decode(errors="replace")]
+            for u in page
+            if u.decode(errors="replace") in by_uid
+        ]
         return {"total": total, "messages": messages}
     finally:
         mail.close()

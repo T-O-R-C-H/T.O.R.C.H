@@ -3,25 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { IconInbox as InboxIcon, IconRefresh as RefreshIcon } from '../components/icons'
 import { API_BASE } from '../config/api'
 import { useTorchStore } from '../store/torchStore'
-
-interface EmailSummary {
-  uid: string
-  subject: string
-  from: string
-  date: string
-  snippet: string
-  read: boolean
-}
-
-interface EmailDetail {
-  uid: string
-  subject: string
-  from: string
-  to: string
-  date: string
-  text: string
-  html: string
-}
+import type { EmailDetail, EmailSummary } from '../types/email'
 
 const PAGE_SIZE = 50
 
@@ -45,6 +27,19 @@ function formatTime(raw: string): string {
     : date.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+function formatFullDate(raw: string): string {
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function initialsOf(name: string): string {
+  const clean = name.replace(/<[^>]+>/g, '').trim()
+  const parts = clean.split(/[\s.@]+/).filter(Boolean)
+  const letters = parts.slice(0, 2).map((p) => p[0].toUpperCase())
+  return letters.join('') || '?'
+}
+
 function stripHtml(html: string): string {
   const doc = html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -59,16 +54,30 @@ function stripHtml(html: string): string {
     .trim()
 }
 
+function sanitizeEmailHtml(html: string): string {
+  return html
+    .replace(
+      /<\s*(script|style|iframe|object|embed|meta|link|form|input|button|textarea|select)[\s\S]*?<\s*\/\s*\1\s*>/gi,
+      ' '
+    )
+    .replace(/<\s*(script|style|iframe|object|embed)[^>]*>/gi, ' ')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ' ')
+    .replace(/(\shref|\ssrc|\sbackground)\s*=\s*(["']?)\s*javascript:[^"'\s>]+/gi, ' ')
+    .replace(/(\shref|\ssrc|\sbackground)\s*=\s*(["']?)\s*data:[^"'\s>]+/gi, ' ')
+}
+
 export function Inbox(): JSX.Element {
   const navigate = useNavigate()
   const setInboxUnread = useTorchStore((s) => s.setInboxUnread)
+  const inboxCache = useTorchStore((s) => s.inboxCache)
+  const setInboxCache = useTorchStore((s) => s.setInboxCache)
 
   const [configured, setConfigured] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [emails, setEmails] = useState<EmailSummary[]>([])
-  const [total, setTotal] = useState(0)
-  const [offset, setOffset] = useState(0)
+  const [emails, setEmails] = useState<EmailSummary[]>(inboxCache?.emails ?? [])
+  const [total, setTotal] = useState(inboxCache?.total ?? 0)
+  const [offset, setOffset] = useState(inboxCache?.offset ?? 0)
   const [syncing, setSyncing] = useState(false)
   const [selected, setSelected] = useState<EmailSummary | null>(null)
   const [detail, setDetail] = useState<EmailDetail | null>(null)
@@ -76,6 +85,27 @@ export function Inbox(): JSX.Element {
   const [detailError, setDetailError] = useState('')
 
   const abortRef = useRef<AbortController | null>(null)
+
+  const stateRef = useRef({ emails, total, offset })
+  useEffect(() => {
+    stateRef.current = { emails, total, offset }
+  }, [emails, total, offset])
+
+  const commit = useCallback(
+    (nextEmails: EmailSummary[], nextTotal: number, nextOffset: number): void => {
+      setEmails(nextEmails)
+      setTotal(nextTotal)
+      setOffset(nextOffset)
+      setInboxUnread(nextEmails.filter((e) => !e.read).length)
+      setInboxCache({
+        emails: nextEmails,
+        total: nextTotal,
+        offset: nextOffset,
+        syncedAt: Date.now()
+      })
+    },
+    [setInboxUnread, setInboxCache]
+  )
 
   const loadFirstPage = useCallback(async (): Promise<void> => {
     setLoading(true)
@@ -93,10 +123,8 @@ export function Inbox(): JSX.Element {
         throw new Error(data.detail || 'Inbox sync failed')
       }
       const data = await res.json()
-      setEmails(data.messages || [])
-      setTotal(data.total || 0)
-      setOffset(data.messages?.length || 0)
-      setInboxUnread((data.messages || []).filter((e: EmailSummary) => !e.read).length)
+      const next = (data.messages || []) as EmailSummary[]
+      commit(next, data.total || 0, next.length)
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError' || abortRef.current === controller)
         setError(friendlyError(err))
@@ -104,29 +132,34 @@ export function Inbox(): JSX.Element {
       clearTimeout(timer)
       setLoading(false)
     }
-  }, [setInboxUnread])
+  }, [commit])
 
   const loadMore = useCallback(async (): Promise<void> => {
     setSyncing(true)
     setError('')
+    const current = stateRef.current
     try {
-      const res = await fetch(`${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=${offset}`)
+      const res = await fetch(
+        `${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=${current.offset}`
+      )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || 'Inbox sync failed')
       }
       const data = await res.json()
-      setEmails((prev) => {
-        const seen = new Set(prev.map((e) => e.uid))
-        return [...prev, ...(data.messages || []).filter((e: EmailSummary) => !seen.has(e.uid))]
-      })
-      setOffset(offset + (data.messages?.length || 0))
+      const seen = new Set(current.emails.map((e) => e.uid))
+      const added = ((data.messages || []) as EmailSummary[]).filter((e) => !seen.has(e.uid))
+      commit(
+        [...current.emails, ...added],
+        data.total || current.total,
+        current.emails.length + added.length
+      )
     } catch (err) {
-      setError((err as Error).message)
+      setError(friendlyError(err))
     } finally {
       setSyncing(false)
     }
-  }, [offset])
+  }, [commit])
 
   useEffect(() => {
     let active = true
@@ -159,33 +192,38 @@ export function Inbox(): JSX.Element {
     return () => abortRef.current?.abort()
   }, [])
 
-  const openEmail = useCallback(async (summary: EmailSummary): Promise<void> => {
-    setSelected(summary)
-    setDetail(null)
-    setDetailError('')
-    setDetailLoading(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || 'Could not open that message')
+  const openEmail = useCallback(
+    async (summary: EmailSummary): Promise<void> => {
+      setSelected(summary)
+      setDetail(null)
+      setDetailError('')
+      setDetailLoading(true)
+      try {
+        const res = await fetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.detail || 'Could not open that message')
+        }
+        const data = await res.json()
+        setDetail(data)
+        if (!summary.read) {
+          void fetch(`${API_BASE}/api/email/mark-read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: summary.uid, read: true })
+          })
+          const current = stateRef.current
+          const next = current.emails.map((e) => (e.uid === summary.uid ? { ...e, read: true } : e))
+          commit(next, current.total, current.offset)
+        }
+      } catch (err) {
+        setDetailError((err as Error).message)
+      } finally {
+        setDetailLoading(false)
       }
-      const data = await res.json()
-      setDetail(data)
-      if (!summary.read) {
-        void fetch(`${API_BASE}/api/email/mark-read`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uid: summary.uid, read: true })
-        })
-        setEmails((prev) => prev.map((e) => (e.uid === summary.uid ? { ...e, read: true } : e)))
-      }
-    } catch (err) {
-      setDetailError((err as Error).message)
-    } finally {
-      setDetailLoading(false)
-    }
-  }, [])
+    },
+    [commit]
+  )
 
   const toggleRead = useCallback(
     async (read: boolean): Promise<void> => {
@@ -200,9 +238,11 @@ export function Inbox(): JSX.Element {
         // non-fatal
       }
       setSelected((prev) => (prev ? { ...prev, read } : prev))
-      setEmails((prev) => prev.map((e) => (e.uid === selected.uid ? { ...e, read } : e)))
+      const current = stateRef.current
+      const next = current.emails.map((e) => (e.uid === selected.uid ? { ...e, read } : e))
+      commit(next, current.total, current.offset)
     },
-    [selected]
+    [selected, commit]
   )
 
   const backToList = useCallback((): void => {
@@ -284,6 +324,7 @@ export function Inbox(): JSX.Element {
   }
 
   if (selected && detail) {
+    const hasHtml = Boolean(detail.html && /<[a-z][\s\S]*>/i.test(detail.html))
     const bodyText = detail.text || stripHtml(detail.html)
     return (
       <div className="page-shell page-enter">
@@ -296,13 +337,16 @@ export function Inbox(): JSX.Element {
         <div className="page-shell__body">
           <article className="inbox-detail">
             <header className="inbox-detail__header">
-              <h2 className="inbox-detail__subject">{detail.subject}</h2>
-              <div className="inbox-detail__meta">
-                <span>
-                  <strong>{detail.from}</strong>
-                  {detail.to ? ` → ${detail.to}` : ''}
-                </span>
-                <span className="inbox-detail__time">{formatTime(detail.date)}</span>
+              <div className="inbox-detail__sender">
+                <span className="inbox-avatar inbox-avatar--lg">{initialsOf(detail.from)}</span>
+                <div className="inbox-detail__sender-meta">
+                  <h2 className="inbox-detail__subject">{detail.subject}</h2>
+                  <div className="inbox-detail__meta">
+                    <span className="inbox-detail__from">{detail.from}</span>
+                    {detail.to && <span className="inbox-detail__to">To: {detail.to}</span>}
+                    <span className="inbox-detail__time">{formatFullDate(detail.date)}</span>
+                  </div>
+                </div>
               </div>
               <div className="inbox-detail__actions">
                 <button
@@ -314,7 +358,14 @@ export function Inbox(): JSX.Element {
                 </button>
               </div>
             </header>
-            <div className="inbox-detail__body">{bodyText}</div>
+            {hasHtml ? (
+              <div
+                className="inbox-detail__body inbox-detail__body--html"
+                dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(detail.html) }}
+              />
+            ) : (
+              <div className="inbox-detail__body">{bodyText}</div>
+            )}
           </article>
         </div>
       </div>
@@ -332,7 +383,7 @@ export function Inbox(): JSX.Element {
           disabled={loading}
         >
           <RefreshIcon size={12} className={loading ? 'inbox-spin' : ''} />
-          Sync now
+          {loading && emails.length > 0 ? 'Syncing…' : 'Sync now'}
         </button>
       </div>
       <div className="page-shell__body">
@@ -369,7 +420,7 @@ export function Inbox(): JSX.Element {
                   className={'inbox-item' + (email.read ? '' : ' inbox-item--unread')}
                   onClick={() => void openEmail(email)}
                 >
-                  <span className="inbox-item__dot" />
+                  <span className="inbox-avatar">{initialsOf(email.from)}</span>
                   <span className="inbox-item__content">
                     <span className="inbox-item__row">
                       <span className="inbox-item__from">{email.from}</span>
