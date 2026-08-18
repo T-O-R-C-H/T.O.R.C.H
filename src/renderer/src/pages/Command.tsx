@@ -1,4 +1,5 @@
 import { ChatArea } from '../components/chat/ChatArea'
+import { ActivityOverlay } from '../components/chat/ActivityOverlay'
 import { PromptInput } from '../components/input/PromptInput'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE } from '../config/api'
@@ -168,6 +169,7 @@ export function Command(): JSX.Element {
         />
         <PromptInput onSend={handleSend} />
       </div>
+      <ActivityOverlay />
     </div>
   )
 }

@@ -2,10 +2,8 @@
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 13px;
   color: #1a1a1a;
-  background: #fff;
   border-radius: 8px;
-  padding: 6px 12px 12px;
-  box-shadow: 0 0 0 1px #e6e8ec;
+  padding: 6px 0 12px;
 }
 .todoHead {
   display: flex;
@@ -86,6 +84,37 @@
 .todoInner {
   min-height: 0;
   overflow: hidden;
+}
+.todoThinking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 0 0 0;
+  font-size: 12px;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  color: #1a1a1a;
+  animation: todo-item-in 360ms ease backwards;
+}
+.todoThinkingDot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #1a1a1a;
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.12);
+  animation: todo-think-pulse 1.4s ease-in-out infinite;
+}
+@keyframes todo-think-pulse {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
 }
 .todoList {
   list-style: none;
@@ -239,8 +268,13 @@
 @media (prefers-color-scheme: dark) {
   .todo {
     color: #f5f5f5;
-    background: #1a1a1a;
-    box-shadow: 0 0 0 1px #303030;
+  }
+  .todoThinking {
+    color: #f5f5f5;
+  }
+  .todoThinkingDot {
+    background: #f5f5f5;
+    box-shadow: 0 0 0 3px rgba(245, 245, 245, 0.14);
   }
   .todoHead {
     color: #f5f5f5;

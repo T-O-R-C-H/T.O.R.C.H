@@ -6,29 +6,6 @@ interface StepListProps {
   steps: Step[]
 }
 
-function formatStepResult(result: string | undefined): { text: string; hasOverflow: boolean } {
-  if (!result) return { text: '', hasOverflow: false }
-
-  const lines = result.split(/\r?\n/)
-  let targetLine = ''
-  let nonEmptyCount = 0
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || /^[-=\s]+$/.test(trimmed)) continue
-    if (!targetLine) {
-      targetLine = trimmed
-    }
-    nonEmptyCount++
-  }
-
-  if (!targetLine) return { text: '', hasOverflow: false }
-
-  const hasOverflow = targetLine.length > 120 || nonEmptyCount > 1
-  const truncated = targetLine.length > 120 ? `${targetLine.substring(0, 120)}...` : targetLine
-  return { text: `↳ ${truncated}`, hasOverflow }
-}
-
 function getStepPhrase(
   tool: string,
   args: Record<string, unknown>,
@@ -124,19 +101,9 @@ export function StepList({ steps }: StepListProps): JSX.Element {
       <TodoList steps={todos} />
       {steps.map((step) => {
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'
-        const { text: previewText, hasOverflow } = formatStepResult(step.result)
 
         return (
           <div key={step.id}>
-            {step.result && !isFailed && previewText && (
-              <div className="step-preview">
-                <div className="step-preview__line">{previewText}</div>
-                {hasOverflow && (
-                  <div className="step-preview__hint">(see full output in Activity Log)</div>
-                )}
-              </div>
-            )}
-
             {(step.error || isFailed || (step.status === 'active' && !step.result)) && (
               <div className="step-preview">
                 {step.status === 'active' && !step.result && !step.error && (

@@ -63,7 +63,7 @@ export function TodoList({ steps, title = 'To-dos' }: { steps: TodoStep[]; title
 
   const done = steps.filter((s) => s.status === 'done').length
   const allDone = steps.length > 0 && done === steps.length
-  const running = steps.some((s) => s.status === 'active')
+  const running = steps.some((s) => s.status === 'active' || s.status === 'pending')
   const pct = steps.length === 0 ? 0 : Math.round((done / steps.length) * 100)
 
   return (
@@ -97,6 +97,12 @@ export function TodoList({ steps, title = 'To-dos' }: { steps: TodoStep[]; title
 
       <div className={styles.todoCollapsible + (collapsed ? ' ' + styles.isCollapsed : '')}>
         <div className={styles.todoInner}>
+          {running && (
+            <div className={styles.todoThinking}>
+              <span className={styles.todoThinkingDot} aria-hidden="true" />
+              <span>Thinking…</span>
+            </div>
+          )}
           <ul className={styles.todoList}>
             {steps.map((step, i) => {
               const isDone = step.status === 'done'

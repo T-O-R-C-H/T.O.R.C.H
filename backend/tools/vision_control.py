@@ -442,7 +442,7 @@ def _top_browser_window(browser: str) -> Optional[BrowserWindowTarget]:
 async def _wait_for_browser_window(
     browser: str,
     cancel_event: threading.Event,
-    timeout: float = 12,
+    timeout: float = 8,
 ) -> BrowserWindowTarget:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -520,7 +520,11 @@ def _browser_search_results_visible(browser: str, query: str) -> bool:
                 return True
             title = " ".join(str(win32gui.GetWindowText(window_handle) or "").casefold().split())
             if query_marker in title and (
-                browser_marker in title or "google search" in title
+                browser_marker in title
+                or "google" in title
+                or "search" in title
+                or "bing" in title
+                or "yahoo" in title
             ):
                 found = True
                 return False
@@ -537,7 +541,7 @@ async def _wait_for_visible_browser_results(
     browser: str,
     query: str,
     cancel_event: threading.Event,
-    timeout: float = 12,
+    timeout: float = 7,
 ) -> bool:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -698,7 +702,7 @@ async def _perform_human_browser_search(
         browser,
         query,
         cancel_event,
-        timeout=8,
+        timeout=5,
     )
     if not confirmed:
         logger.warning(
@@ -772,7 +776,7 @@ async def _perform_human_browser_navigation(
         browser,
         destination_label,
         cancel_event,
-        timeout=20,
+        timeout=12,
     ):
         return True
 

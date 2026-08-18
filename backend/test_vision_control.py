@@ -703,7 +703,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             "chrome",
             "Facebook login",
             cancel_event,
-            timeout=20,
+            timeout=12,
         )
 
     async def test_profile_choice_pauses_and_resumes_the_same_vision_task(self):
