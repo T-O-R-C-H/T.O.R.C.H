@@ -34,3 +34,5 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = React.memo(({ sta
     </div>
   )
 })
+
+TypingIndicator.displayName = 'TypingIndicator'

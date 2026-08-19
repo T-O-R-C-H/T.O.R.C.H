@@ -12,7 +12,7 @@ class TorchSettings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="AIzaSyTrialCloudKeyPlaceholder", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
@@ -42,6 +42,18 @@ class TorchSettings(BaseSettings):
         default="find_file,list_directory,read_pdf,read_word,read_excel,read_inbox,open_browser,search_web,download_file,screenshot,analyse_screen",
         alias="TORCH_AGENT_RETRY_TOOLS",
     )
+
+    # Agent re-planning: when a step fails, ask the LLM once for an
+    # alternative approach instead of aborting the whole task.
+    agent_replan_enabled: bool = Field(default=True, alias="TORCH_AGENT_REPLAN_ENABLED")
+    agent_replan_attempts: int = Field(default=1, alias="TORCH_AGENT_REPLAN_ATTEMPTS")
+
+    # Email: local inbox cache keeps repeat reads fast without re-hitting IMAP.
+    email_cache_ttl_seconds: int = Field(default=60, alias="TORCH_EMAIL_CACHE_TTL_SECONDS")
+    email_cache_size: int = Field(default=120, alias="TORCH_EMAIL_CACHE_SIZE")
+
+    # File search index refresh interval
+    file_index_ttl_seconds: int = Field(default=600, alias="TORCH_FILE_INDEX_TTL_SECONDS")
 
     # Server
     host: str = Field(default="0.0.0.0", alias="TORCH_HOST")

@@ -33,9 +33,29 @@ class TorchDatabase:
                 schema_sql = f.read()
             with self._connect() as conn:
                 conn.executescript(schema_sql)
+                self._apply_migrations(conn)
             logger.info("Database initialized successfully from schema.sql")
         except Exception as e:
             logger.error(f"Failed to initialize database from schema.sql: {e}")
+
+    def _apply_migrations(self, conn: sqlite3.Connection) -> None:
+        """Run column migration checks to ensure existing tables have all required fields."""
+        migrations = [
+            ("tasks", "duration_ms", "INTEGER DEFAULT 0"),
+            ("tasks", "steps_json", "TEXT DEFAULT '[]'"),
+            ("habits", "success_count", "INTEGER DEFAULT 0"),
+            ("scheduled_tasks", "enabled", "INTEGER DEFAULT 1"),
+        ]
+        cursor = conn.cursor()
+        for table, column, col_def in migrations:
+            try:
+                cursor.execute(f"PRAGMA table_info({table})")
+                existing_cols = {row[1] for row in cursor.fetchall()}
+                if column not in existing_cols:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_def}")
+                    logger.info(f"Migrated DB: Added column {column} to {table}")
+            except Exception as exc:
+                logger.warning(f"Migration check failed for {table}.{column}: {exc}")
             # Fallback inline schema in case file read fails
             # Matches the 8 tables required in Issue 02
             with self._connect() as conn:
@@ -218,11 +238,63 @@ class TorchDatabase:
                     
             return {"completed": completed, "total": total, "actions": actions}
 
+    # ─── Audit log ───
+
+    def log_action(
+        self,
+        tool: str,
+        status: str,
+        args: Optional[Dict[str, Any]] = None,
+        result: str = "",
+        error: str = "",
+        client_id: str = "main",
+        message_id: str = "",
+    ) -> str:
+        """Record one agent action (tool call + outcome) to the durable audit log."""
+        entry_id = str(uuid.uuid4())
+        args_json = json.dumps(args, default=str)[:4000] if args else ""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO audit_log (id, client_id, message_id, tool, args_json, status, result, error) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (entry_id, client_id, message_id, tool, args_json, status, result[:4000], error[:4000]),
+            )
+        return entry_id
+
+    def get_audit_log(self, limit: int = 200, tool: Optional[str] = None) -> List[Dict]:
+        with self._connect() as conn:
+            if tool:
+                rows = conn.execute(
+                    "SELECT * FROM audit_log WHERE tool = ? ORDER BY ts DESC LIMIT ?",
+                    (tool, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM audit_log ORDER BY ts DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_metrics(self, limit: int = 50) -> Dict[str, Any]:
+        """Lightweight aggregate metrics from the audit log and tasks."""
+        with self._connect() as conn:
+            actions = conn.execute(
+                "SELECT tool, status, COUNT(*) as count FROM audit_log GROUP BY tool, status"
+            ).fetchall()
+            recent = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE created_at LIKE ?",
+                (f"{datetime.now():%Y-%m-%d}%",),
+            ).fetchone()[0]
+        return {
+            "today_task_count": recent,
+            "by_tool_status": [dict(r) for r in actions],
+        }
+
     # ─── Clear ───
 
     def clear_all(self) -> None:
         with self._connect() as conn:
-            for table in ["tasks", "steps", "habits", "contacts", "files_accessed", "notifications", "scheduled_tasks", "skills", "activity_log"]:
+            for table in ["tasks", "steps", "habits", "contacts", "files_accessed", "notifications", "scheduled_tasks", "skills", "activity_log", "audit_log"]:
                 try:
                     conn.execute(f"DELETE FROM {table}")
                 except Exception:

@@ -55,6 +55,29 @@ const SOCIAL_PLATFORMS = [
   { name: 'Instagram', url: 'https://instagram.com', key: 'instagram' }
 ]
 
+interface SegmentButtonProps {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+}
+
+function SegmentButton({ options, value, onChange }: SegmentButtonProps): JSX.Element {
+  return (
+    <div className="segment-control">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`segment-control__btn ${value === opt.value ? 'active' : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState('connections')
   const navigate = useNavigate()
@@ -83,7 +106,7 @@ export function Settings(): JSX.Element {
   })
 
   useEffect(() => {
-    const loadSystemCheck = (retries = 5) => {
+    const loadSystemCheck = (retries = 5): void => {
       fetch(`${API_BASE}/api/system-check`)
         .then((r) => {
           if (!r.ok) throw new Error()
@@ -99,7 +122,7 @@ export function Settings(): JSX.Element {
         })
     }
 
-    const loadSettings = (retries = 5) => {
+    const loadSettings = (retries = 5): void => {
       fetch(`${API_BASE}/api/settings`)
         .then((r) => {
           if (!r.ok) throw new Error()
@@ -188,28 +211,7 @@ export function Settings(): JSX.Element {
     }
   }
 
-  const SegmentButton = ({
-    options,
-    value,
-    onChange
-  }: {
-    options: { value: string; label: string }[]
-    value: string
-    onChange: (v: string) => void
-  }): JSX.Element => (
-    <div className="segment-control">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`segment-control__btn ${value === opt.value ? 'active' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
+
 
   return (
     <div className="page-shell page-enter">

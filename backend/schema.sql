@@ -83,3 +83,19 @@ CREATE TABLE IF NOT EXISTS activity_log (
     screenshot_path TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Durable audit trail of every agent tool action (HIDE-11)
+CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    ts TEXT DEFAULT (datetime('now')),
+    client_id TEXT,
+    message_id TEXT,
+    tool TEXT,
+    args_json TEXT,
+    status TEXT,
+    result TEXT,
+    error TEXT
+);
+
+-- DB schema version for lightweight migrations
+PRAGMA user_version = 1;

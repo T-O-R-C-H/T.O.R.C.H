@@ -9,7 +9,8 @@ import {
   screen,
   clipboard,
   desktopCapturer,
-  session
+  session,
+  globalShortcut
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -827,6 +828,20 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+
+  // ─── GLOBAL SHORTCUTS ───
+  try {
+    globalShortcut.register('CommandOrControl+Shift+Space', () => {
+      if (overlayWindow?.isVisible()) {
+        hideFloatingOverlay()
+      } else {
+        showFloatingOverlay()
+        overlayWindow?.webContents.send('overlay:activate')
+      }
+    })
+  } catch (e) {
+    console.warn('[TORCH] Could not register global shortcut:', e)
+  }
 
   // ─── IPC HANDLERS ───
 

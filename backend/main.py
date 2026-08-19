@@ -59,19 +59,9 @@ async def lifespan(app: FastAPI):
     # Create data directory
     os.makedirs(settings.data_dir, exist_ok=True)
 
-    # Check Playwright/Chromium
-    try:
-        from playwright.async_api import async_playwright
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                await browser.close()
-            logger.info("Playwright: ready (Chromium found)")
-        except Exception as e:
-            logger.warning(f"Playwright: library found but browser not ready — {e}")
-            logger.warning("Run: playwright install chromium")
-    except ImportError:
-        logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
+    # Check Playwright/Chromium in the background so the server becomes healthy
+    # immediately instead of blocking startup on a full Chromium launch.
+    playwright_task = asyncio.create_task(_warm_playwright())
 
     # Warm up tool registry so the first command is faster
     try:
@@ -93,6 +83,28 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("TORCH backend shutting down")
+    if not playwright_task.done():
+        playwright_task.cancel()
+        try:
+            await playwright_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+async def _warm_playwright() -> None:
+    """Verify Playwright + Chromium are installed without blocking server startup."""
+    try:
+        from playwright.async_api import async_playwright
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                await browser.close()
+            logger.info("Playwright: ready (Chromium found)")
+        except Exception as e:
+            logger.warning(f"Playwright: library found but browser not ready — {e}")
+            logger.warning("Run: playwright install chromium")
+    except ImportError:
+        logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
 
 
 app = FastAPI(
@@ -151,6 +163,8 @@ async def list_models():
             {"id": "auto", "label": "Auto"},
             {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
             {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
+            {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
+            {"id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash"},
             {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
             {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
             {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
@@ -192,6 +206,22 @@ def _friendly_email_error(err: Exception) -> str:
     if "name or service not known" in low or "getaddrinfo" in low:
         return "Could not reach Gmail's servers. Check your internet connection and try again."
     return f"Gmail connection failed: {message}"
+
+
+def _structured_inbox_from_steps(completed_steps: list) -> list | None:
+    """Re-fetch the inbox as structured messages for the chat recap card."""
+    step = next((s for s in completed_steps if s.get("tool") == "read_inbox"), None)
+    if not step:
+        return None
+    try:
+        from tools.email import inbox_emails
+        args = step.get("args") or {}
+        count = args.get("count") or 10
+        query = args.get("query") or ""
+        return inbox_emails(count=int(count), query=str(query))
+    except Exception as e:
+        logger.warning(f"Could not build structured inbox recap: {e}")
+        return None
 
 
 @app.get("/api/email/inbox")
@@ -238,6 +268,33 @@ async def email_mark_read(data: dict):
     except Exception as e:
         logger.error(f"Mark-read failed: {e}")
         raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+_GREETING_MARKERS = (
+    "help you with today",
+    "help you with anything",
+    "how can i help",
+    "what can i do",
+    "anything else",
+    "anything i can help",
+    "welcome back",
+    "at your service",
+    "what's up",
+    "how are you",
+    "how's it going",
+    "good morning",
+    "good afternoon",
+    "good evening",
+)
+
+
+def _is_clarifying_question(text: str) -> bool:
+    """True when a reply is a genuine clarifying question that needs an inline
+    answer — not a greeting or chit-chat that merely happens to end with '?'."""
+    t = (text or "").strip().lower()
+    if not t.endswith("?"):
+        return False
+    return not any(marker in t for marker in _GREETING_MARKERS)
 
 
 def _connection_status_block() -> str:
@@ -774,6 +831,8 @@ async def process_command(
             executor.finish_planning(client_id, planning_id)
             natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
             response_msg = create_response_message(natural_response, [])
+            if _is_clarifying_question(natural_response):
+                response_msg["needsAnswer"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
             ConversationContext.add_exchange(
@@ -872,22 +931,25 @@ async def process_command(
 
         failed_steps = [s for s in executed_steps if s["status"] == "failed"]
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
+        recap_emails = None
 
         if failed_steps:
             failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
-            recap_sentence = (
-                f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
-            )
+            first_error = (failed_steps[0].get("error") or "").strip()
+            if first_error:
+                recap_sentence = f"I couldn't finish that. {first_error}"
+            else:
+                recap_sentence = (
+                    f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
+                )
         elif completed_steps:
             tools_used = {s["tool"] for s in completed_steps}
             last_result = (completed_steps[-1].get("result") or "").strip()
             if "send_email" in tools_used:
                 recap_sentence = "Your email was sent."
             elif "read_inbox" in tools_used:
-                if last_result:
-                    recap_sentence = last_result if len(last_result) <= 3000 else last_result[:3000] + "…"
-                else:
-                    recap_sentence = "I checked your inbox."
+                recap_sentence = "Here's what I found in your inbox."
+                recap_emails = _structured_inbox_from_steps(completed_steps)
             elif "move_file" in tools_used:
                 recap_sentence = last_result if last_result else "Your file was moved."
             elif "create_folder" in tools_used:
@@ -918,6 +980,8 @@ async def process_command(
                 "timestamp": __import__("time").time() * 1000,
                 "steps": [],
             }
+            if recap_emails is not None:
+                recap_msg["emails"] = recap_emails
             await ws_manager.send_agent_response(recap_msg, client_id)
 
         # Notify if task is reversible
@@ -1102,13 +1166,26 @@ async def process_companion_command(
 
 if __name__ == "__main__":
     import uvicorn
+    import socket
 
+    def find_available_port(start_port: int, host: str = "0.0.0.0", max_attempts: int = 10) -> int:
+        for p in range(start_port, start_port + max_attempts):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind((host, p))
+                    return p
+            except OSError:
+                continue
+        return start_port
+
+    target_port = find_available_port(settings.port, settings.host)
     reload_enabled = os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
 
+    logger.info(f"Starting server process on port {target_port}")
     uvicorn.run(
         "main:app",
         host=settings.host,
-        port=settings.port,
+        port=target_port,
         reload=reload_enabled,
         log_level="info",
     )

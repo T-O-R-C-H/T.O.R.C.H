@@ -72,16 +72,19 @@ export function FloatingOverlay(): JSX.Element {
       void refreshContext()
       inputRef.current?.focus()
     }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        window.torchAPI?.hideOverlay()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
     window.torchAPI?.onOverlayActivate(handleActivate)
     return () => {
       window.clearTimeout(initialRefresh)
+      window.removeEventListener('keydown', handleKeyDown)
       window.torchAPI?.removeOverlayActivate()
     }
   }, [refreshContext])
-
-  useEffect(() => {
-    if (agentStatus === 'idle') setTaskStartedAt(null)
-  }, [agentStatus])
 
   useEffect(() => {
     const height =

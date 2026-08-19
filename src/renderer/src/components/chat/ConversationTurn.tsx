@@ -10,6 +10,8 @@ import { AgentActivity } from './AgentActivity'
 import { TextResponse } from '../aicss/TextResponse'
 import { StreamingText } from '../aicss/StreamingText'
 import { LinkifiedText } from './LinkifiedText'
+import { MailResults } from '../mail/MailResults'
+import { AgentQuestion } from './AgentQuestion'
 import {
   formatAgentContent,
   formatUserContent,
@@ -27,6 +29,7 @@ interface ConversationTurnProps {
   onApprove?: (stepId: string) => void
   onEdit?: (stepId: string) => void
   onCancel?: (stepId: string) => void
+  onSend?: (command: string) => void
 }
 
 export function ConversationTurn({
@@ -38,7 +41,8 @@ export function ConversationTurn({
   onActivityTimeout,
   onApprove,
   onEdit,
-  onCancel
+  onCancel,
+  onSend
 }: ConversationTurnProps): JSX.Element | null {
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const { sendUndoCommand, sendStopCommand } = useWebSocket()
@@ -56,9 +60,8 @@ export function ConversationTurn({
     let timer: ReturnType<typeof setTimeout> | undefined
     if (agent?.reversible && agent.undoState === 'available') {
       const elapsed = Date.now() - agent.timestamp
-      const remaining = 300000 - elapsed
-      if (remaining <= 0) setExpired(true)
-      else timer = setTimeout(() => setExpired(true), remaining)
+      const remaining = Math.max(0, 300000 - elapsed)
+      timer = setTimeout(() => setExpired(true), remaining)
     }
     return () => {
       if (timer) clearTimeout(timer)
@@ -103,13 +106,17 @@ export function ConversationTurn({
             </div>
           )}
 
-{bodyText && !isErrorReply && (
+          {bodyText && !isErrorReply && agent.needsAnswer && (
+            <AgentQuestion question={bodyText} onSubmit={(answer) => onSend?.(answer)} />
+          )}
+
+          {bodyText && !isErrorReply && !agent.needsAnswer && (
             <motion.div
               className="chat-turn__body chat-turn__body--revealed"
               layout="position"
               transition={{ layout: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
             >
-              {agent.isStreaming ? (
+              {agent.isStreaming || agent.isNew ? (
                 <StreamingText text={bodyText} />
               ) : (
                 <TextResponse>
@@ -119,7 +126,11 @@ export function ConversationTurn({
             </motion.div>
           )}
 
-          {agent.steps && agent.steps.length > 0 && <StepList steps={agent.steps} />}
+          {agent.emails && agent.emails.length > 0 && <MailResults emails={agent.emails} />}
+
+          {agent.steps && agent.steps.length > 0 && (
+            <StepList steps={agent.steps} command={user?.content} />
+          )}
 
           {hitlStep && agent && (
             <ApprovalCard

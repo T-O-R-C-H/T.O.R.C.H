@@ -1,0 +1,65 @@
+.iconQuestion {
+  background: color-mix(in srgb, #3b82f6 14%, #ffffff);
+  color: #3b82f6;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0.5px solid #e6e8ec;
+  border-radius: 7px;
+  background: transparent;
+  color: #1a1a1a;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: -0.005em;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.input::placeholder {
+  color: #a1a1a1;
+}
+
+.input:focus {
+  border-color: color-mix(in srgb, #3b82f6 55%, #e6e8ec);
+  box-shadow: 0 0 0 3px color-mix(in srgb, #3b82f6 16%, transparent);
+}
+
+.sent {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #16a34a 10%, transparent);
+  color: color-mix(in srgb, #16a34a 85%, #1a1a1a);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  .iconQuestion {
+    background: color-mix(in srgb, #3b82f6 20%, #1a1a1a);
+    color: #60a5fa;
+  }
+
+  .input {
+    border-color: #303030;
+    color: #f5f5f5;
+  }
+
+  .input:focus {
+    border-color: color-mix(in srgb, #3b82f6 55%, #303030);
+  }
+
+  .sent {
+    background: color-mix(in srgb, #16a34a 16%, transparent);
+    color: #4ade80;
+  }
+}

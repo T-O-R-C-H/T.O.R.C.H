@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 
 interface StepListProps {
   steps: Step[]
+  command?: string
 }
 
 function getStepPhrase(
@@ -77,6 +78,15 @@ function getStepPhrase(
   return fallbackLabel || (isPending ? 'Working on it...' : 'Completed.')
 }
 
+function reasoningForStep(step: Step): string {
+  const phrase = getStepPhrase(step.tool, step.args, step.status, step.label)
+  if (step.status === 'failed') return `That didn't work: ${phrase}`
+  const present = phrase.toLowerCase()
+  if (step.status === 'active') return `Now I'm ${present}`
+  if (step.status === 'pending' || step.status === 'hitl_required') return `Up next: ${present}`
+  return `Done — ${phrase}`
+}
+
 function mapStatus(status: Step['status']): TodoStep['status'] {
   switch (status) {
     case 'done':
@@ -91,7 +101,7 @@ function mapStatus(status: Step['status']): TodoStep['status'] {
   }
 }
 
-export function StepList({ steps }: StepListProps): JSX.Element {
+export function StepList({ steps, command }: StepListProps): JSX.Element {
   const running = steps.some(
     (s) => s.status === 'pending' || s.status === 'active' || s.status === 'hitl_required'
   )
@@ -109,9 +119,16 @@ export function StepList({ steps }: StepListProps): JSX.Element {
     status: mapStatus(step.status)
   }))
 
-  const reasoningSentences = steps.map((step) =>
-    getStepPhrase(step.tool, step.args, step.status, step.label)
-  )
+  const reasoningSentences: string[] = []
+  if (command) {
+    const cmd = command.replace(/\s+/g, ' ').trim()
+    reasoningSentences.push(
+      cmd.length > 160
+        ? `The user asked me to ${cmd.slice(0, 160)}…`
+        : `The user asked me to ${cmd}`
+    )
+  }
+  steps.forEach((step) => reasoningSentences.push(reasoningForStep(step)))
 
   return (
     <div>

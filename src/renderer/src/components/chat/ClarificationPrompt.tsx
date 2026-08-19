@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { useTorchStore } from '../../store/torchStore'
 
@@ -10,12 +10,15 @@ export function ClarificationPrompt(): JSX.Element | null {
   const [submitted, setSubmitted] = useState(false)
   const [sendError, setSendError] = useState('')
 
-  useEffect(() => {
+  const [prevId, setPrevId] = useState<string | null>(null)
+  const currentId = clarification?.taskId ?? null
+  if (currentId !== prevId) {
+    setPrevId(currentId)
     setShowOtherInput(false)
     setOtherAnswer('')
     setSubmitted(false)
     setSendError('')
-  }, [clarification?.taskId, clarification?.question])
+  }
 
   if (!clarification) return null
 

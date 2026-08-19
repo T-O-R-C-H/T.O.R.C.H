@@ -33,11 +33,7 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
     if (message.reversible && message.undoState === 'available') {
       const elapsed = Date.now() - message.timestamp
       const remaining = 300000 - elapsed
-      if (remaining <= 0) {
-        setExpired(true)
-      } else {
-        timer = setTimeout(() => setExpired(true), remaining)
-      }
+      timer = setTimeout(() => setExpired(true), Math.max(0, remaining))
     }
     return () => {
       if (timer) clearTimeout(timer)

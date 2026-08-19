@@ -45,6 +45,76 @@ _VISIBLE_BROWSER_SEARCH_PATTERNS = (
 _LOGIN_NAVIGATION_PREFIX = (
     r"\b(?:go\s+to|navigate\s+to|open|visit|take\s+me\s+to)\b.*"
 )
+_ONLINE_ORDER_PATTERNS = (
+    re.compile(
+        r"^(?:please\s+)?(?:can\s+you\s+)?go\s+online\s+and\s+"
+        r"(?:order|buy)\s+(?P<query>.+?)[.!?]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:please\s+)?(?:can\s+you\s+)?(?:order|buy)\s+"
+        r"(?P<query>.+?)\s+(?:for\s+me|online)[.!?]*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:please\s+)?(?:can\s+you\s+)?buy\s+(?P<query>.+?)\s*"
+        r"(?:online)?\s*(?:for\s+me)?[.!?]*$",
+        re.IGNORECASE,
+    ),
+)
+
+_GREETING_PREFIX = re.compile(
+    r"^(?:hey|hi|hello|sup|yo|howdy|hiya|what'?s up|wassup|greetings)\b",
+    re.IGNORECASE,
+)
+_HOW_ARE_YOU_PREFIX = re.compile(r"^how are you\b", re.IGNORECASE)
+_TIMEOFDAY_PREFIX = re.compile(
+    r"^(?:good morning|good afternoon|good evening|good night)\b",
+    re.IGNORECASE,
+)
+_CAPABILITY_PREFIX = re.compile(
+    r"^(?:what (?:can|could) you do|who are you|what are you)\b",
+    re.IGNORECASE,
+)
+_FULL_SENTENCE_PATTERNS = (
+    re.compile(r"^(?:thanks|thank you|ty|thx|cheers)[.!]*$", re.IGNORECASE),
+    re.compile(r"^(?:bye|goodbye|see you|cya|later)[.!]*$", re.IGNORECASE),
+    re.compile(r"^(?:ok|okay|cool|got it|got you|understood|sure|alright|sounds good)[.!]*$", re.IGNORECASE),
+    re.compile(r"^(?:nice|great|awesome|perfect|wonderful|excellent|amazing|fantastic)[.!]*$", re.IGNORECASE),
+    re.compile(r"^help[.!]*$", re.IGNORECASE),
+)
+
+_CONVERSATIONAL_REPLIES = {
+    "greeting": "Hey! I'm TORCH, your AI agent. What can I help you with today?",
+    "how_are_you": "I'm running great. What can I do for you?",
+    "timeofday": "Hello! I'm TORCH, your AI agent. What can I help you with today?",
+    "capability": "I'm TORCH, your AI agent. I can find and read files, send emails, search the web, and control your browser and apps. What would you like to do?",
+    "thanks": "You're welcome! Anything else I can do for you?",
+    "bye": "Goodbye! Ping me anytime you need something done.",
+    "ok": "Got it. Let me know what you need next.",
+    "nice": "Glad to hear it! What's next?",
+    "help": "I can help with tasks like finding files, sending emails, searching the web, and controlling apps. Just tell me what you want to do.",
+}
+
+
+def _canned_conversational_reply(user_command: str) -> Optional[str]:
+    """Return a local, offline reply for pure chit-chat so a greeting never
+    depends on (or fails because of) the AI API connection."""
+    if not user_command:
+        return None
+    if _GREETING_PREFIX.match(user_command):
+        return _CONVERSATIONAL_REPLIES["greeting"]
+    if _HOW_ARE_YOU_PREFIX.match(user_command):
+        return _CONVERSATIONAL_REPLIES["how_are_you"]
+    if _TIMEOFDAY_PREFIX.match(user_command):
+        return _CONVERSATIONAL_REPLIES["timeofday"]
+    if _CAPABILITY_PREFIX.match(user_command):
+        return _CONVERSATIONAL_REPLIES["capability"]
+    for index, pattern in enumerate(_FULL_SENTENCE_PATTERNS):
+        if pattern.match(user_command):
+            key = ("thanks", "bye", "ok", "nice", "help")[index]
+            return _CONVERSATIONAL_REPLIES[key]
+    return None
 _KNOWN_LOGIN_DESTINATIONS = (
     (
         re.compile(
@@ -116,6 +186,54 @@ def _visible_browser_search_plan(user_command: str) -> Optional[List[Dict[str, A
                 ),
                 "browser": app_name,
                 "search_query": query,
+            },
+            "requires_approval": False,
+        },
+    ]
+
+
+def _online_order_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
+    """Route online-ordering requests to a visible browser + vision_control flow.
+
+    A bare `search_web` (invisible HTTP search) can never satisfy "order X" —
+    the user expects to see the browser open, the cursor move, text get typed,
+    and the item get added to the cart. This deterministic route forces that.
+    """
+    request_line = user_command.splitlines()[0].strip() if user_command else ""
+    match = None
+    for pattern in _ONLINE_ORDER_PATTERNS:
+        match = pattern.fullmatch(request_line)
+        if match:
+            break
+    if not match:
+        return None
+
+    query = match.group("query").strip().strip("'\"")
+    query = re.sub(r"\s+(?:for\s+me|online)\s*$", "", query, flags=re.IGNORECASE).strip()
+    if not query:
+        return None
+
+    return [
+        {
+            "tool": "open_app",
+            "label": "Opening Chrome",
+            "args": {"name": "chrome"},
+            "requires_approval": False,
+        },
+        {
+            "tool": "vision_control",
+            "label": f"Ordering {query} online",
+            "args": {
+                "task": (
+                    f"Order {query} online. Open Google, search for exactly '{query}', "
+                    f"then open the most suitable website that sells it. Browse that site, "
+                    f"find the item that matches '{query}', and add it to the cart. "
+                    "Do not enter any personal, delivery, or payment information and do NOT "
+                    "complete the checkout. When the item is in the cart, stop and report "
+                    "exactly what you added. If you are unsure which result or item to pick, "
+                    "ask the user instead of guessing."
+                ),
+                "browser": "chrome",
             },
             "requires_approval": False,
         },
@@ -235,6 +353,11 @@ async def plan_command(
         if spotify_plan is not None:
             return spotify_plan
 
+        order_plan = _online_order_plan(user_command)
+        if order_plan is not None:
+            logger.info("Using deterministic online-ordering plan")
+            return order_plan
+
         browser_search_plan = _visible_browser_search_plan(user_command)
         if browser_search_plan is not None:
             logger.info("Using deterministic visible-browser search plan")
@@ -317,6 +440,17 @@ async def plan_command(
                 "requires_approval": False,
             }]
 
+# Greetings and chit-chat never need the LLM API — answer instantly and offline.
+        canned = _canned_conversational_reply(user_command)
+        if canned is not None:
+            logger.info("Using canned conversational reply")
+            return [{
+                "tool": "respond",
+                "label": "Replying to you",
+                "args": {"message": canned},
+                "requires_approval": False,
+            }]
+
         # Determine the active provider
         provider = get_provider(model)
         if not provider:
@@ -342,7 +476,8 @@ async def plan_command(
     except Exception as e:
         logger.error(f"Brain error: {e}")
         err_msg = str(e)
-        if "429" in err_msg or "quota" in err_msg.lower() or "limit" in err_msg.lower() or "exhausted" in err_msg.lower():
+        lowered = err_msg.lower()
+        if "429" in lowered or "quota" in lowered or "limit" in lowered or "exhausted" in lowered:
             return [{
                 "tool": "error",
                 "label": "AI Provider rate limit hit",
@@ -350,10 +485,22 @@ async def plan_command(
                 "requires_approval": False,
                 "error": "Rate limit exceeded. Please try again later or configure another provider."
             }]
+        if any(marker in lowered for marker in [
+            "getaddrinfo", "gaierror", "name or service not known",
+            "failed to establish a new connection", "connection refused",
+            "connection timed out", "timed out", "dns", "network is unreachable",
+        ]):
+            return [{
+                "tool": "error",
+                "label": "Could not reach the AI service",
+                "args": {},
+                "requires_approval": False,
+                "error": "I couldn't reach the AI service. Check your internet connection and try again."
+            }]
         return [{
             "tool": "error",
-            "label": f"AI planning failed: {str(e)[:100]}",
+            "label": f"AI planning failed: {err_msg[:100]}",
             "args": {},
             "requires_approval": False,
-            "error": str(e),
+            "error": err_msg,
         }]

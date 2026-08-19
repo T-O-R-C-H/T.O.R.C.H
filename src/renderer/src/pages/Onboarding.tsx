@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ObArrowRight as ArrowRight,
@@ -111,7 +111,6 @@ export function Onboarding(): JSX.Element {
   const [direction, setDirection] = useState(1)
   const [userName, setUserName] = useState(() => localStorage.getItem('torch_user_name') || '')
   const [nameError, setNameError] = useState<string | null>(null)
-  const [nameSubmitted, setNameSubmitted] = useState(false)
 
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
@@ -143,17 +142,13 @@ export function Onboarding(): JSX.Element {
       setNameError('Remove symbols and special characters.')
       return false
     }
-    if (!/^[a-zA-Z0-9\s'\-]+$/.test(trimmed)) {
+    if (!/^[a-zA-Z0-9\s'-]+$/.test(trimmed)) {
       setNameError('Use letters, numbers, spaces, or hyphens only.')
       return false
     }
     setNameError(null)
     return true
   }
-
-  useEffect(() => {
-    if (currentStep === 'name') validateName(userName, nameSubmitted)
-  }, [userName, currentStep, nameSubmitted])
 
   const goTo = (step: OnboardingStep, dir: number): void => {
     setDirection(dir)
@@ -163,7 +158,6 @@ export function Onboarding(): JSX.Element {
   const handleNext = (): void => {
     if (currentStep === 'welcome') goTo('name', 1)
     else if (currentStep === 'name') {
-      setNameSubmitted(true)
       if (validateName(userName, true)) {
         localStorage.setItem('torch_user_name', userName.trim())
         goTo('permissions', 1)
@@ -173,7 +167,6 @@ export function Onboarding(): JSX.Element {
 
   const handleBack = (): void => {
     if (currentStep === 'name') {
-      setNameSubmitted(false)
       goTo('welcome', -1)
     } else if (currentStep === 'permissions') goTo('name', -1)
     else if (currentStep === 'first_task') goTo('permissions', -1)

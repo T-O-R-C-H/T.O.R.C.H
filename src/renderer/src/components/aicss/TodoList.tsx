@@ -106,7 +106,7 @@ const FilledCheckIcon = (): JSX.Element => (
 
 export function TodoList({
   steps,
-  title = 'To-dos'
+  title = 'Agenda'
 }: {
   steps: TodoStep[]
   title?: string
@@ -124,7 +124,7 @@ export function TodoList({
         type="button"
         className={styles.todoHead}
         aria-expanded={!collapsed}
-        aria-label="Toggle to-dos"
+        aria-label="Toggle agenda"
         onClick={() => setCollapsed((c) => !c)}
       >
         <span className={styles.todoHeadIcon}>

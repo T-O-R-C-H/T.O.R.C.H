@@ -6,7 +6,7 @@ import { Orb, type OrbVariant } from '../aicss/Orb'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
-const TIMEOUT_MS = 28000
+const TIMEOUT_MS = 45000
 const OFFLINE_STOP_MS = 20000
 
 function statusLabel(
@@ -94,12 +94,14 @@ export function AgentActivity({
   const showOffline = browserOffline || (!demoMode && !wsConnected)
 
   useEffect(() => {
-    setSlow(false)
-    setVerySlow(false)
-    setTimedOut(false)
-    setReconnected(false)
-    firedRef.current = false
-    wasOfflineRef.current = showOffline
+    const resetTimer = window.setTimeout(() => {
+      setSlow(false)
+      setVerySlow(false)
+      setTimedOut(false)
+      setReconnected(false)
+      firedRef.current = false
+      wasOfflineRef.current = showOffline
+    }, 0)
 
     const elapsed = startedAt ? Date.now() - startedAt : 0
 
@@ -114,7 +116,15 @@ export function AgentActivity({
         },
         Math.max(OFFLINE_STOP_MS - elapsed, 0)
       )
-      return () => clearTimeout(offlineTimer)
+      return () => {
+        clearTimeout(offlineTimer)
+        clearTimeout(resetTimer)
+      }
+    }
+
+    // While the user is choosing (approval / an answer), never time out.
+    if (status === 'awaiting_approval' || status === 'awaiting_input') {
+      return () => clearTimeout(resetTimer)
     }
 
     const slowTimer = setTimeout(() => setSlow(true), Math.max(SLOW_THRESHOLD_MS - elapsed, 0))
@@ -134,6 +144,7 @@ export function AgentActivity({
     )
 
     return () => {
+      clearTimeout(resetTimer)
       clearTimeout(slowTimer)
       clearTimeout(verySlowTimer)
       clearTimeout(timeoutTimer)
@@ -217,22 +228,4 @@ export function AgentActivity({
       )}
     </div>
   )
-}
-
-export function useAgentWatchdog(
-  active: boolean,
-  startedAt: number | undefined,
-  onTimeout: () => void
-): void {
-  useEffect(() => {
-    if (!active || !startedAt) return
-
-    const wsConnected = useTorchStore.getState().wsConnected
-    const demoMode = useTorchStore.getState().demoMode
-    const offline = !navigator.onLine || (!demoMode && !wsConnected)
-    const limit = offline ? OFFLINE_STOP_MS : TIMEOUT_MS
-    const elapsed = Date.now() - startedAt
-    const timer = setTimeout(onTimeout, Math.max(limit - elapsed, 0))
-    return () => clearTimeout(timer)
-  }, [active, startedAt, onTimeout])
 }

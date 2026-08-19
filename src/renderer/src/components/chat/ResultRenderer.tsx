@@ -256,8 +256,8 @@ export function ResultRenderer({
     // Detect file with size e.g. "Sales.pdf (1.2MB)" or "C:\...\Sales.pdf (1.2MB)"
     const match = trimmed.match(/^(.*?)\s+\(([\d.]+[A-Z]+)\)$/)
     if (match) {
-      let fullPath = match[1]
-      let size = match[2]
+      const fullPath = match[1]
+      const size = match[2]
       let name = fullPath
       if (fullPath.includes('\\') || fullPath.includes('/')) {
         name = fullPath.split(/[\\/]/).pop() || fullPath

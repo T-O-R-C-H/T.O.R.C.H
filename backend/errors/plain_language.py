@@ -3,6 +3,8 @@ TORCH Plain-Language Error Translator (HIDE-2)
 Converts technical exceptions/errors into calm, plain-English explanations with next steps.
 """
 
+import re
+
 def translate_error(error_str: str) -> dict:
     """
     Translates a raw exception or error message into user-friendly terms.
@@ -29,6 +31,24 @@ def translate_error(error_str: str) -> dict:
         return {
             "what_happened": "I couldn't find the file you requested.",
             "what_to_do": "Please double-check the file name and make sure it exists."
+        }
+
+    # 1b. Search completed but no matching file exists
+    if any(marker in err for marker in [
+        "no files matching", "no exact match", "no file matching",
+        "could not find a safe file match", "safe file match"
+    ]):
+        name = ""
+        m = re.search(r"'([^']+)'", error_str)
+        if m:
+            name = m.group(1).strip()
+        what_happened = (
+            f"I searched the folder but couldn't find a file matching '{name}'."
+            if name else "I searched the folder but couldn't find a matching file."
+        )
+        return {
+            "what_happened": what_happened,
+            "what_to_do": "Double-check the file name, or tell me another folder to look in (like Downloads or Desktop)."
         }
     
     # 2. Permission Denied

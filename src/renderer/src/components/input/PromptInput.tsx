@@ -13,6 +13,8 @@ const FALLBACK_MODELS = [
   { id: 'auto', label: 'Auto' },
   { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
   { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },

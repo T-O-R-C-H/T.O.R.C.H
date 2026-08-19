@@ -125,10 +125,10 @@ export function useWebSocket(): {
       case 'agent_response': {
         const msg = data.message as Message
         if (data.stream === true) {
-          store.addMessage({ ...msg, content: '', isStreaming: true })
+          store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
         } else {
           const fullText = formatAgentContent(msg.content || '')
-          store.addMessage({ ...msg, content: '', isStreaming: true })
+          store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
           void streamMessageContent(msg.id, fullText)
         }
         break

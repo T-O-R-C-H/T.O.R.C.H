@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconInbox as InboxIcon, IconRefresh as RefreshIcon } from '../components/icons'
 import { API_BASE } from '../config/api'
 import { useTorchStore } from '../store/torchStore'
 import type { EmailDetail, EmailSummary } from '../types/email'
+import { SenderAvatar } from '../components/mail/SenderAvatar'
+import { formatFullDate, formatTime, sanitizeEmailHtml, stripHtml } from '../utils/emailFormat'
 
 const PAGE_SIZE = 50
 
@@ -15,85 +17,6 @@ function friendlyError(err: unknown): string {
   if (err instanceof TypeError)
     return 'Could not reach the mail server. Check your connection and try again.'
   return err instanceof Error ? err.message : 'Inbox sync failed'
-}
-
-function formatTime(raw: string): string {
-  const date = new Date(raw)
-  if (Number.isNaN(date.getTime())) return raw.slice(0, 16)
-  const now = new Date()
-  const sameDay = date.toDateString() === now.toDateString()
-  return sameDay
-    ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
-
-function formatFullDate(raw: string): string {
-  const date = new Date(raw)
-  if (Number.isNaN(date.getTime())) return raw
-  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-}
-
-function initialsOf(name: string): string {
-  const clean = name.replace(/<[^>]+>/g, '').trim()
-  const parts = clean.split(/[\s.@]+/).filter(Boolean)
-  const letters = parts.slice(0, 2).map((p) => p[0].toUpperCase())
-  return letters.join('') || '?'
-}
-
-function SenderAvatar({
-  from,
-  fromEmail,
-  large
-}: {
-  from: string
-  fromEmail?: string
-  large?: boolean
-}): JSX.Element {
-  const [failed, setFailed] = useState(false)
-  const domain = useMemo(() => {
-    const match = /@([^@\s]+)/.exec(fromEmail || '')
-    return match ? match[1] : null
-  }, [fromEmail])
-  const cls = 'inbox-avatar' + (large ? ' inbox-avatar--lg' : '')
-  if (!domain || failed) {
-    return <span className={cls}>{initialsOf(from)}</span>
-  }
-  return (
-    <span className={cls + ' inbox-avatar--img'}>
-      <img
-        src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`}
-        alt=""
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-      />
-    </span>
-  )
-}
-
-function stripHtml(html: string): string {
-  const doc = html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-  const text = doc
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<[^>]+>/g, ' ')
-  return text
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-}
-
-function sanitizeEmailHtml(html: string): string {
-  return html
-    .replace(
-      /<\s*(script|style|iframe|object|embed|meta|link|form|input|button|textarea|select)[\s\S]*?<\s*\/\s*\1\s*>/gi,
-      ' '
-    )
-    .replace(/<\s*(script|style|iframe|object|embed)[^>]*>/gi, ' ')
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ' ')
-    .replace(/(\shref|\ssrc|\sbackground)\s*=\s*(["']?)\s*javascript:[^"'\s>]+/gi, ' ')
-    .replace(/(\shref|\ssrc|\sbackground)\s*=\s*(["']?)\s*data:[^"'\s>]+/gi, ' ')
 }
 
 export function Inbox(): JSX.Element {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { API_BASE } from '../config/api'
-import type { InboxCache } from '../types/email'
+import type { EmailSummary, InboxCache } from '../types/email'
 
 // ─── TYPES ───
 
@@ -32,8 +32,11 @@ export interface Message {
   content: string
   timestamp: number
   steps?: Step[]
+  emails?: EmailSummary[]
   isTyping?: boolean
   isStreaming?: boolean
+  isNew?: boolean
+  needsAnswer?: boolean
   reversible?: boolean
   undoState?: 'available' | 'undone' | 'expired'
   undoResult?: string

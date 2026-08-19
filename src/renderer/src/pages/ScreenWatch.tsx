@@ -2,51 +2,51 @@ import { IconMonitor as Monitor, IconEye as Eye, IconEyeOff as EyeOff } from '..
 import { useTorchStore } from '../store/torchStore'
 import { useMemoryStore } from '../store/memoryStore'
 
+const NOW = Date.now()
+const INITIAL_DEMO_ACTIVITY = [
+  {
+    id: '1',
+    timestamp: NOW - 300000,
+    app: 'VS Code',
+    description: 'Editing TORCH main.ts — Electron configuration',
+    screenshot: ''
+  },
+  {
+    id: '2',
+    timestamp: NOW - 240000,
+    app: 'Chrome',
+    description: 'Browsing Gemini API documentation',
+    screenshot: ''
+  },
+  {
+    id: '3',
+    timestamp: NOW - 180000,
+    app: 'Terminal',
+    description: 'Running npm install dependencies',
+    screenshot: ''
+  },
+  {
+    id: '4',
+    timestamp: NOW - 120000,
+    app: 'Slack',
+    description: 'Messaging team channel — project updates',
+    screenshot: ''
+  },
+  {
+    id: '5',
+    timestamp: NOW - 60000,
+    app: 'VS Code',
+    description: 'Writing React component — ChatArea.tsx',
+    screenshot: ''
+  }
+]
+
 export function ScreenWatch(): JSX.Element {
   const screenWatchEnabled = useTorchStore((s) => s.screenWatchEnabled)
   const setScreenWatchEnabled = useTorchStore((s) => s.setScreenWatchEnabled)
   const activityLog = useMemoryStore((s) => s.activityLog)
 
-  const demoActivity =
-    activityLog.length > 0
-      ? activityLog
-      : [
-          {
-            id: '1',
-            timestamp: Date.now() - 300000,
-            app: 'VS Code',
-            description: 'Editing TORCH main.ts — Electron configuration',
-            screenshot: ''
-          },
-          {
-            id: '2',
-            timestamp: Date.now() - 240000,
-            app: 'Chrome',
-            description: 'Browsing Gemini API documentation',
-            screenshot: ''
-          },
-          {
-            id: '3',
-            timestamp: Date.now() - 180000,
-            app: 'Terminal',
-            description: 'Running npm install dependencies',
-            screenshot: ''
-          },
-          {
-            id: '4',
-            timestamp: Date.now() - 120000,
-            app: 'Slack',
-            description: 'Messaging team channel — project updates',
-            screenshot: ''
-          },
-          {
-            id: '5',
-            timestamp: Date.now() - 60000,
-            app: 'VS Code',
-            description: 'Writing React component — ChatArea.tsx',
-            screenshot: ''
-          }
-        ]
+  const demoActivity = activityLog.length > 0 ? activityLog : INITIAL_DEMO_ACTIVITY
 
   return (
     <div className="page-shell page-enter">
