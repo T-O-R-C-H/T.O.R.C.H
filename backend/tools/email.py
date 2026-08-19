@@ -34,6 +34,32 @@ def _short_address(from_header: str) -> str:
     return from_header[:60]
 
 
+def _extract_email(from_header: str) -> str:
+    match = re.search(r"<([^>]+)>", from_header or "")
+    if match:
+        return match.group(1)
+    value = (from_header or "").strip()
+    if "@" in value:
+        return value[:120]
+    return ""
+
+
+def _query_tokens(query: str) -> list[str]:
+    return [t for t in re.split(r"[^A-Za-z0-9]+", query.lower()) if t]
+
+
+def _matches_topic(subject: str, from_addr: str, query: str) -> bool:
+    """True when any query token appears as a whole word in subject or sender."""
+    tokens = _query_tokens(query)
+    if not tokens:
+        return True
+    haystack = f"{subject} {from_addr}".lower()
+    for token in tokens:
+        if re.search(rf"\b{re.escape(token)}\b", haystack):
+            return True
+    return False
+
+
 def _app_password() -> str:
     """Return the Gmail app password with all whitespace stripped.
 
@@ -167,8 +193,9 @@ def send_email(
 def read_inbox(count: int = 10, query: str = "") -> str:
     """Read recent emails from Gmail inbox.
 
-    When ``query`` is provided, only emails matching that term (subject,
-    sender, or body) are returned, newest first.
+    When ``query`` is provided, only emails that mention that topic in their
+    subject or sender are returned (body mentions are ignored to avoid noise),
+    newest first.
     """
     if not settings.gmail_address or not _app_password():
         raise ValueError("Gmail not configured. Add credentials in Settings.")
@@ -178,16 +205,12 @@ def read_inbox(count: int = 10, query: str = "") -> str:
 
         search_term = (query or "").strip().replace('"', " ")
         if search_term:
-            criteria = (
-                '(OR (SUBJECT "%s") (OR (FROM "%s") (BODY "%s")))'
-                % (search_term, search_term, search_term)
-            )
+            criteria = '(OR (SUBJECT "%s") (FROM "%s"))' % (search_term, search_term)
             typ, message_numbers = mail.search(None, criteria)
         else:
             typ, message_numbers = mail.search(None, "ALL")
 
         nums = message_numbers[0].split()
-
         recent = nums[-count:] if len(nums) >= count else nums
         recent.reverse()
 
@@ -199,11 +222,14 @@ def read_inbox(count: int = 10, query: str = "") -> str:
 
             subject_str = _decode_subject(msg.get("Subject"))
             from_addr = _short_address(msg.get("From", ""))
-            date = (msg.get("Date") or "")[:16]
 
+            if search_term and not _matches_topic(subject_str, from_addr, search_term):
+                continue
+
+            date = (msg.get("Date") or "")[:16]
             body_snip = _snippet(msg, length=120)
 
-            line = f"• {subject_str} — from {from_addr}"
+            line = f"• **{subject_str}** — from {from_addr}"
             if date:
                 line += f" ({date})"
             if body_snip:
@@ -215,7 +241,7 @@ def read_inbox(count: int = 10, query: str = "") -> str:
 
         if not summaries:
             if search_term:
-                return f"No emails matching '{search_term}' were found."
+                return f"No emails about '{search_term}' were found."
             return "Your inbox is empty."
 
         header = f"Latest {len(summaries)} email(s) in {settings.gmail_address}:"
@@ -261,18 +287,20 @@ def fetch_inbox(limit: int = 100, offset: int = 0) -> dict:
                 current_uid = uid_match.group(1)
                 entry = by_uid.setdefault(
                     current_uid,
-                    {"uid": current_uid, "subject": "", "from": "", "date": "", "snippet": "", "read": False},
+                    {"uid": current_uid, "subject": "", "from": "", "from_email": "", "date": "", "snippet": "", "read": False},
                 )
             if current_uid is None:
                 continue
             entry = by_uid.setdefault(
                 current_uid,
-                {"uid": current_uid, "subject": "", "from": "", "date": "", "snippet": "", "read": False},
+                {"uid": current_uid, "subject": "", "from": "", "from_email": "", "date": "", "snippet": "", "read": False},
             )
             if "HEADER.FIELDS" in meta:
                 msg = email.message_from_bytes(item[1])
+                from_header = msg.get("From", "")
                 entry["subject"] = _decode_subject(msg.get("Subject"))
-                entry["from"] = _short_address(msg.get("From", ""))
+                entry["from"] = _short_address(from_header)
+                entry["from_email"] = _extract_email(from_header)
                 entry["date"] = msg.get("Date", "")
                 entry["read"] = "\\Seen" in meta
             elif "BODY[1]" in meta or "BODY[TEXT]" in meta:
@@ -302,6 +330,7 @@ def fetch_email(uid: str) -> dict:
             "uid": uid,
             "subject": _decode_subject(msg.get("Subject")),
             "from": _short_address(msg.get("From", "")),
+            "from_email": _extract_email(msg.get("From", "")),
             "to": msg.get("To", ""),
             "date": msg.get("Date", ""),
             "text": _body_text(msg),

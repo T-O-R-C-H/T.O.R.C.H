@@ -58,7 +58,12 @@ export function sanitizeDisplayText(text: string): string {
 }
 
 export function formatAgentContent(text: string): string {
-  let out = sanitizeDisplayText(text)
+  let out = text
+    .replace(/(?<!\*)\*(?!\*)/g, '')
+    .replace(/__/g, '')
+    .replace(/-{2,}/g, ' — ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
   out = out.replace(/^[-•]\s+/gm, '• ')
   return out
 }

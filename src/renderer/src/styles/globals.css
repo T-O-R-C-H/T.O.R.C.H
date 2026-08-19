@@ -1270,6 +1270,21 @@
   font-size: 15px;
 }
 
+.inbox-avatar--img {
+  overflow: hidden;
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.inbox-avatar--img img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 999px;
+  display: block;
+  padding: 6px;
+}
+
 .inbox-item--unread .inbox-avatar {
   border-color: var(--color-torch-link, #3b82f6);
   color: var(--color-torch-text);

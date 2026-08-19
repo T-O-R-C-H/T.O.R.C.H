@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconInbox as InboxIcon, IconRefresh as RefreshIcon } from '../components/icons'
 import { API_BASE } from '../config/api'
@@ -38,6 +38,36 @@ function initialsOf(name: string): string {
   const parts = clean.split(/[\s.@]+/).filter(Boolean)
   const letters = parts.slice(0, 2).map((p) => p[0].toUpperCase())
   return letters.join('') || '?'
+}
+
+function SenderAvatar({
+  from,
+  fromEmail,
+  large
+}: {
+  from: string
+  fromEmail?: string
+  large?: boolean
+}): JSX.Element {
+  const [failed, setFailed] = useState(false)
+  const domain = useMemo(() => {
+    const match = /@([^@\s]+)/.exec(fromEmail || '')
+    return match ? match[1] : null
+  }, [fromEmail])
+  const cls = 'inbox-avatar' + (large ? ' inbox-avatar--lg' : '')
+  if (!domain || failed) {
+    return <span className={cls}>{initialsOf(from)}</span>
+  }
+  return (
+    <span className={cls + ' inbox-avatar--img'}>
+      <img
+        src={`https://www.google.com/s2/favicons?sz=64&domain=${encodeURIComponent(domain)}`}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+    </span>
+  )
 }
 
 function stripHtml(html: string): string {
@@ -338,7 +368,7 @@ export function Inbox(): JSX.Element {
           <article className="inbox-detail">
             <header className="inbox-detail__header">
               <div className="inbox-detail__sender">
-                <span className="inbox-avatar inbox-avatar--lg">{initialsOf(detail.from)}</span>
+                <SenderAvatar from={detail.from} fromEmail={detail.from_email} large />
                 <div className="inbox-detail__sender-meta">
                   <h2 className="inbox-detail__subject">{detail.subject}</h2>
                   <div className="inbox-detail__meta">
@@ -420,7 +450,7 @@ export function Inbox(): JSX.Element {
                   className={'inbox-item' + (email.read ? '' : ' inbox-item--unread')}
                   onClick={() => void openEmail(email)}
                 >
-                  <span className="inbox-avatar">{initialsOf(email.from)}</span>
+                  <SenderAvatar from={email.from} fromEmail={email.from_email} />
                   <span className="inbox-item__content">
                     <span className="inbox-item__row">
                       <span className="inbox-item__from">{email.from}</span>

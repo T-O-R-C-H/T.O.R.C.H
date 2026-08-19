@@ -1,6 +1,8 @@
 import type { Step } from '../../store/torchStore'
 import { toPlainLanguage } from '../../utils/plainLanguage'
 import { TodoList, type TodoStep } from '../aicss/TodoList'
+import { ThinkingReasoning } from '../aicss/ThinkingReasoning'
+import { useEffect, useState } from 'react'
 
 interface StepListProps {
   steps: Step[]
@@ -90,14 +92,30 @@ function mapStatus(status: Step['status']): TodoStep['status'] {
 }
 
 export function StepList({ steps }: StepListProps): JSX.Element {
+  const running = steps.some(
+    (s) => s.status === 'pending' || s.status === 'active' || s.status === 'hitl_required'
+  )
+  const [hasRun, setHasRun] = useState(running)
+
+  useEffect(() => {
+    if (!running) return
+    const t = window.setTimeout(() => setHasRun(true), 0)
+    return () => window.clearTimeout(t)
+  }, [running])
+
   const todos: TodoStep[] = steps.map((step) => ({
     id: step.id,
     label: getStepPhrase(step.tool, step.args, step.status, step.label),
     status: mapStatus(step.status)
   }))
 
+  const reasoningSentences = steps.map((step) =>
+    getStepPhrase(step.tool, step.args, step.status, step.label)
+  )
+
   return (
     <div>
+      {hasRun && <ThinkingReasoning running={running} sentences={reasoningSentences} />}
       <TodoList steps={todos} />
       {steps.map((step) => {
         const isFailed = step.status === 'failed' || step.status === 'hitl_required'

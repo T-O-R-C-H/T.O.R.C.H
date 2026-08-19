@@ -3,61 +3,58 @@ import { useEffect, useRef, useState } from 'react'
 
 export interface ThinkingReasoningProps {
   sentences?: string[]
-  delays?: number[]
+  running: boolean
   width?: number | string
 }
 
+const SENT_H = 40
+const GAP = 4
+const MAX_H = 180
+const FADE = 16
+const REVEAL_MS = 480
+
 export function ThinkingReasoning({
   sentences,
-  delays,
-  width = 360
+  running,
+  width
 }: ThinkingReasoningProps): JSX.Element {
-  const SENTENCES = sentences ?? [
-    'Parsing the request and pulling the context together.',
-    'Checking which tools are available and which are safe to run.',
-    'Planning the steps: gather, act, verify, then report back.',
-    'Watching for anything that needs your approval before it runs.'
-  ]
-  const DELAYS = delays ?? [700, 800, 750, 700]
-  const THINK_MS = DELAYS.reduce((a, b) => a + b, 0)
-  const ELAPSED_S = Math.max(1, Math.round(THINK_MS / 1000))
-  const COLLAPSE_BEAT = 360
-
-  const SENT_H = 40
-  const GAP = 4
-  const MAX_H = 180
-  const FADE = 16
-
-  const [phase, setPhase] = useState<'thinking' | 'done'>('thinking')
+  const SENTENCES = sentences ?? []
   const [revealed, setRevealed] = useState(0)
+  const [elapsedS, setElapsedS] = useState(0)
   const [open, setOpen] = useState(false)
   const [fade, setFade] = useState({ top: false, bottom: true })
   const viewportRef = useRef<HTMLDivElement>(null)
+  const startedAtRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      const raf = requestAnimationFrame(() => {
-        setRevealed(SENTENCES.length)
-        setPhase('done')
-      })
-      return () => cancelAnimationFrame(raf)
-    }
-    const timers: ReturnType<typeof setTimeout>[] = []
-    const at = (ms: number, fn: () => void): void => {
-      timers.push(setTimeout(fn, ms))
-    }
-    let t = 0
-    DELAYS.forEach((d, i) => {
-      t += d
-      at(t, () => setRevealed(i + 1))
-    })
-    at(THINK_MS + COLLAPSE_BEAT, () => setPhase('done'))
-    return () => timers.forEach(clearTimeout)
-  }, [DELAYS, SENTENCES.length])
+    if (startedAtRef.current === null) startedAtRef.current = Date.now()
+  }, [])
 
-  const done = phase === 'done'
-  const expanded = done ? open : true
+  useEffect(() => {
+    if (running) return
+    const t = window.setTimeout(() => {
+      const start = startedAtRef.current ?? Date.now()
+      setElapsedS(Math.max(1, Math.round((Date.now() - start) / 1000)))
+    }, 0)
+    return () => clearTimeout(t)
+  }, [running])
+
+  useEffect(() => {
+    if (!running) return
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      const t = window.setTimeout(() => setRevealed(SENTENCES.length), 0)
+      return () => clearTimeout(t)
+    }
+    const timer = window.setInterval(() => {
+      setRevealed((r) => Math.min(r + 1, SENTENCES.length))
+    }, REVEAL_MS)
+    return () => clearInterval(timer)
+  }, [running, SENTENCES.length])
+
+  const done = !running
   const count = done ? SENTENCES.length : revealed
+
+  const expanded = done ? open : true
   const contentH = count > 0 ? count * SENT_H + (count - 1) * GAP : 0
   const capped = contentH > MAX_H
   const viewH = capped ? MAX_H : contentH
@@ -89,24 +86,37 @@ export function ThinkingReasoning({
   }
 
   return (
-    <div className={styles.tr} style={{ width }}>
+    <div className={styles.tr} style={width ? { width } : undefined}>
       <button
         type="button"
         className={styles.trHeader + (done ? ' ' + styles.isClickable : '')}
         aria-expanded={expanded}
-        aria-label="Toggle thought"
+        aria-label="Toggle reasoning"
         onClick={done ? toggle : undefined}
       >
         {done ? (
           <span className={styles.trLabel}>
-            <span className={styles.trVerb}>Thought</span> for {ELAPSED_S}s
+            <span className={styles.trVerb}>Reasoned</span> for {elapsedS}s
           </span>
         ) : (
-          <span className={styles.trLabel + ' ' + styles.trShimmer}>Thinking…</span>
+          <span className={styles.trLabel + ' ' + styles.trShimmer}>Reasoning…</span>
         )}
         {done && (
-          <svg className={styles.trChevron} viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-            <path d="m4.5 15.75 7.5-7.5 7.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            className={styles.trChevron}
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            aria-hidden="true"
+          >
+            <path
+              d="m4.5 15.75 7.5-7.5 7.5 7.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
       </button>
@@ -121,7 +131,9 @@ export function ThinkingReasoning({
           >
             <div className={styles.trStream} style={{ transform: `translateY(${translate}px)` }}>
               {SENTENCES.slice(0, count).map((line, i) => (
-                <p key={i} className={styles.trSentence}>{line}</p>
+                <p key={i} className={styles.trSentence}>
+                  {line}
+                </p>
               ))}
             </div>
           </div>

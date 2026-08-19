@@ -10,7 +10,13 @@ export interface TodoStep {
 const cls = (base: string, on?: boolean): string => base + (on ? ' ' + styles.on : '')
 
 const CheckIcon = ({ on }: { on?: boolean }): JSX.Element => (
-  <svg className={cls(styles.todoIcon, on)} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+  <svg
+    className={cls(styles.todoIcon, on)}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+  >
     <path
       d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
       fill="none"
@@ -23,7 +29,13 @@ const CheckIcon = ({ on }: { on?: boolean }): JSX.Element => (
 )
 
 const ArrowIcon = ({ on }: { on?: boolean }): JSX.Element => (
-  <svg className={cls(styles.todoIcon + ' ' + styles.strong, on)} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+  <svg
+    className={cls(styles.todoIcon + ' ' + styles.strong, on)}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+  >
     <path
       d="m12.75 15 3-3m0 0-3-3m3 3h-7.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
       fill="none"
@@ -36,19 +48,53 @@ const ArrowIcon = ({ on }: { on?: boolean }): JSX.Element => (
 )
 
 const DashedIcon = ({ on }: { on?: boolean }): JSX.Element => (
-  <svg className={cls(styles.todoIcon, on)} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeDasharray="1.8 3.6" strokeLinecap="round" />
+  <svg
+    className={cls(styles.todoIcon, on)}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+  >
+    <circle
+      cx="12"
+      cy="12"
+      r="9"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeDasharray="1.8 3.6"
+      strokeLinecap="round"
+    />
   </svg>
 )
 
 const XIcon = ({ on }: { on?: boolean }): JSX.Element => (
-  <svg className={cls(styles.todoIcon, on)} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-    <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+  <svg
+    className={cls(styles.todoIcon, on)}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+  >
+    <path
+      d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 )
 
 const FilledCheckIcon = (): JSX.Element => (
-  <svg className={styles.todoHeadCheck} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+  <svg
+    className={styles.todoHeadCheck}
+    viewBox="0 0 24 24"
+    width="16"
+    height="16"
+    aria-hidden="true"
+  >
     <path
       fillRule="evenodd"
       clipRule="evenodd"
@@ -58,7 +104,13 @@ const FilledCheckIcon = (): JSX.Element => (
   </svg>
 )
 
-export function TodoList({ steps, title = 'To-dos' }: { steps: TodoStep[]; title?: string }): JSX.Element {
+export function TodoList({
+  steps,
+  title = 'To-dos'
+}: {
+  steps: TodoStep[]
+  title?: string
+}): JSX.Element {
   const [collapsed, setCollapsed] = useState(false)
 
   const done = steps.filter((s) => s.status === 'done').length
@@ -68,18 +120,48 @@ export function TodoList({ steps, title = 'To-dos' }: { steps: TodoStep[]; title
 
   return (
     <div className={styles.todo}>
-      <button type="button" className={styles.todoHead} aria-expanded={!collapsed} aria-label="Toggle to-dos" onClick={() => setCollapsed((c) => !c)}>
+      <button
+        type="button"
+        className={styles.todoHead}
+        aria-expanded={!collapsed}
+        aria-label="Toggle to-dos"
+        onClick={() => setCollapsed((c) => !c)}
+      >
         <span className={styles.todoHeadIcon}>
           {allDone ? (
             <FilledCheckIcon />
           ) : running ? (
-            <span className={styles.todoHeadPie} style={{ ['--todo-pie' as string]: pct + '%' }} aria-hidden="true">
+            <span
+              className={styles.todoHeadPie}
+              style={{ ['--todo-pie' as string]: pct + '%' }}
+              aria-hidden="true"
+            >
               <svg className={styles.todoHeadPieRing} viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeDasharray="2.2 4.4" strokeLinecap="round" />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeDasharray="2.2 4.4"
+                  strokeLinecap="round"
+                />
               </svg>
             </span>
           ) : (
-            <svg className={styles.todoListIcon} viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg
+              className={styles.todoListIcon}
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
               <path d="M13 5h8" />
               <path d="M13 12h8" />
               <path d="M13 19h8" />
@@ -87,29 +169,51 @@ export function TodoList({ steps, title = 'To-dos' }: { steps: TodoStep[]; title
               <path d="m3 7 2 2 4-4" />
             </svg>
           )}
-          <svg className={styles.todoChevron} viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-            <path d="m19.5 8.25-7.5 7.5-7.5-7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            className={styles.todoChevron}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              d="m19.5 8.25-7.5 7.5-7.5-7.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </span>
         <span className={styles.todoTitle}>{title}</span>
-        <span className={styles.todoCount}>{done}/{steps.length}</span>
+        <span className={styles.todoCount}>
+          {done}/{steps.length}
+        </span>
       </button>
 
       <div className={styles.todoCollapsible + (collapsed ? ' ' + styles.isCollapsed : '')}>
         <div className={styles.todoInner}>
-          {running && (
-            <div className={styles.todoThinking}>
-              <span className={styles.todoThinkingDot} aria-hidden="true" />
-              <span>Thinking…</span>
-            </div>
-          )}
           <ul className={styles.todoList}>
             {steps.map((step, i) => {
               const isDone = step.status === 'done'
               const isActive = step.status === 'active'
               const isFailed = step.status === 'failed'
               return (
-                <li key={step.id} className={styles.todoItem + (isDone ? ' ' + styles.done : isActive ? ' ' + styles.active : isFailed ? ' ' + styles.failed : '')} style={{ ['--i' as string]: i }}>
+                <li
+                  key={step.id}
+                  className={
+                    styles.todoItem +
+                    (isDone
+                      ? ' ' + styles.done
+                      : isActive
+                        ? ' ' + styles.active
+                        : isFailed
+                          ? ' ' + styles.failed
+                          : '')
+                  }
+                  style={{ ['--i' as string]: i }}
+                >
                   <span className={styles.todoIconWrap}>
                     {isFailed ? (
                       <XIcon on />
