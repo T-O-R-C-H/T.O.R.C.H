@@ -195,7 +195,7 @@ export function FloatingOverlay(): JSX.Element {
           ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Tell TORCH what to do…"
+          placeholder="Ask TORCH or type a command… (Esc to hide)"
           rows={1}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -211,8 +211,33 @@ export function FloatingOverlay(): JSX.Element {
           onClick={handleSend}
           aria-label="Send"
         >
-          <CmdArrowUp size={15} />
+          <CmdArrowUp size={14} />
         </button>
+      </div>
+
+      <div className="fo-chips overlay-no-drag">
+        {['Summarize screen', 'Find a file', 'Check unread emails'].map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => {
+              if (!isBusy && wsConnected) {
+                setInput(chip)
+                const store = useTorchStore.getState()
+                store.addMessage({
+                  id: crypto.randomUUID(),
+                  role: 'user',
+                  content: chip,
+                  timestamp: Date.now()
+                })
+                store.setAgentStatus('processing')
+                sendCommand(`${chip}\n\nActive desktop: ${context.appName} — ${context.windowTitle}`)
+              }
+            }}
+          >
+            {chip}
+          </button>
+        ))}
       </div>
     </div>
   )

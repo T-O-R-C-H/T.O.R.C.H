@@ -1,8 +1,10 @@
 import { useTorchStore } from '../../store/torchStore'
+import { useWebSocket } from '../../hooks/useWebSocket'
 import { ClarificationPrompt } from '../chat/ClarificationPrompt'
 import { TorchLogo } from '../ui/TorchLogo'
 
 export function NarrationView({ onStop }: { onStop: () => void }): JSX.Element {
+  const { sendApproval } = useWebSocket()
   const messages = useTorchStore((state) => state.messages)
   const agentStatus = useTorchStore((state) => state.agentStatus)
   const clarification = useTorchStore((state) => state.clarificationRequest)
@@ -47,14 +49,27 @@ export function NarrationView({ onStop }: { onStop: () => void }): JSX.Element {
         )}
       </div>
 
-      {approvalStep && (
-        <button
-          type="button"
-          className="narration-approval overlay-no-drag"
-          onClick={() => window.torchAPI?.openMainWindow()}
-        >
-          Review approval in TORCH
-        </button>
+      {approvalStep && latestMessage && (
+        <div className="narration-approval-card overlay-no-drag">
+          <div className="narration-approval-card__title">⚠️ User Approval Required</div>
+          <div className="narration-approval-card__label">{approvalStep.label}</div>
+          <div className="narration-approval-card__actions">
+            <button
+              type="button"
+              className="btn-approve"
+              onClick={() => sendApproval(latestMessage.id, approvalStep.id, 'approve')}
+            >
+              ✓ Approve
+            </button>
+            <button
+              type="button"
+              className="btn-reject"
+              onClick={() => sendApproval(latestMessage.id, approvalStep.id, 'cancel')}
+            >
+              ✕ Deny
+            </button>
+          </div>
+        </div>
       )}
 
       <ClarificationPrompt />

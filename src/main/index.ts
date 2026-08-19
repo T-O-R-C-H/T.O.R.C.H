@@ -10,7 +10,8 @@ import {
   clipboard,
   desktopCapturer,
   session,
-  globalShortcut
+  globalShortcut,
+  powerMonitor
 } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -635,17 +636,14 @@ function createOverlayWindow(): void {
     minHeight: OVERLAY_MIN_HEIGHT,
     show: false,
     frame: false,
-    // Transparent BrowserWindows can remain present but stop painting after a
-    // native minimize transition on Windows. The overlay is intentionally a
-    // solid TORCH surface, so an opaque window is both safer and equivalent.
-    transparent: false,
+    transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
     focusable: true,
-    hasShadow: true,
+    hasShadow: false,
     thickFrame: false,
-    backgroundColor: '#0d0d0d',
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -827,6 +825,18 @@ app.whenReady().then(() => {
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+  })
+
+  // ─── POWER MONITOR (SLEEP / WAKE GUARDS) ───
+  powerMonitor.on('suspend', () => {
+    hideFloatingOverlay()
+  })
+  powerMonitor.on('resume', () => {
+    // Keep overlay hidden when waking from sleep unless explicitly requested by user
+    hideFloatingOverlay()
+  })
+  powerMonitor.on('unlock-screen', () => {
+    hideFloatingOverlay()
   })
 
   // ─── GLOBAL SHORTCUTS ───
