@@ -883,6 +883,7 @@ app.whenReady().then(() => {
     completeVisionControl()
   })
   ipcMain.on('overlay:openMain', () => {
+    if (mainWindow?.isMinimized()) mainWindow.restore()
     mainWindow?.show()
     mainWindow?.focus()
     hideFloatingOverlay()
