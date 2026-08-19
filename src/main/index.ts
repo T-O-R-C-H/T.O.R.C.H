@@ -562,11 +562,12 @@ function createMainWindow(): void {
     height: 900,
     minWidth: 1100,
     minHeight: 700,
-    show: false,
-    frame: false,
-    titleBarStyle: 'hidden',
-    backgroundColor: '#000000',
-    autoHideMenuBar: true,
+    show: true,
+    frame: true,
+    center: true,
+    skipTaskbar: false,
+    backgroundColor: '#0f172a',
+    autoHideMenuBar: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -586,32 +587,22 @@ function createMainWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    console.log('[Electron] ready-to-show event fired! Showing main window.')
+    console.log('[Electron] ready-to-show event fired! Center and show main window.')
+    mainWindow?.center()
     mainWindow?.show()
     mainWindow?.focus()
+    mainWindow?.moveTop()
   })
 
   mainWindow.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault()
-      quitTorch()
+      mainWindow?.hide()
     }
   })
 
-  mainWindow.on('hide', () => {
-    hideGuidanceOverlay()
-    if (!isQuitting) showFloatingOverlay()
-  })
-
-  mainWindow.on('minimize', () => {
-    setTimeout(() => {
-      if (mainWindow?.isMinimized()) mainWindow.restore()
-      minimizeToOverlay()
-    }, 0)
-  })
-
   mainWindow.on('show', () => {
-    hideFloatingOverlay()
+    // Keep main window visible on taskbar
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -864,7 +855,9 @@ app.whenReady().then(() => {
       mainWindow?.maximize()
     }
   })
-  ipcMain.on('window:close', () => quitTorch())
+  ipcMain.on('window:close', () => {
+    mainWindow?.hide()
+  })
 
   // Overlay controls
   ipcMain.on('overlay:show', () => {
