@@ -121,6 +121,8 @@ export interface TorchState {
   setWsPhase: (phase: 'disconnected' | 'connecting' | 'connected') => void
   hasConnectedOnce: boolean
   setHasConnectedOnce: (val: boolean) => void
+  wsLatencyMs: number | null
+  setWsLatencyMs: (ms: number | null) => void
 
   // Onboarding
   onboardingComplete: boolean
@@ -235,6 +237,8 @@ export const useTorchStore = create<TorchState>((set) => ({
   setWsPhase: (phase): void => set({ wsPhase: phase }),
   hasConnectedOnce: false,
   setHasConnectedOnce: (val): void => set({ hasConnectedOnce: val }),
+  wsLatencyMs: null,
+  setWsLatencyMs: (ms): void => set({ wsLatencyMs: ms }),
 
   // Onboarding
   onboardingComplete: localStorage.getItem('torch_onboarding_complete') === 'true',

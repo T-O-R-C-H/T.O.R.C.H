@@ -6,6 +6,7 @@ import { streamMessageContent } from '../utils/streamContent'
 
 let sharedSocket: WebSocket | null = null
 let sharedReconnectTimer: ReturnType<typeof setTimeout> | undefined
+let sharedPingInterval: ReturnType<typeof setInterval> | undefined
 let sharedConsumerCount = 0
 let sharedTaskOwnerSocket: WebSocket | null = null
 
@@ -78,11 +79,20 @@ export function useWebSocket(): {
           content: 'WebSocket connected to backend',
           type: 'success'
         })
+        // Start periodic latency ping
+        clearInterval(sharedPingInterval)
+        sharedPingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
+          }
+        }, 10_000)
       }
 
       ws.onclose = (): void => {
         if (sharedSocket === ws) sharedSocket = null
         if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
+        clearInterval(sharedPingInterval)
+        useTorchStore.getState().setWsLatencyMs(null)
         resetInterruptedTaskUi()
         setWsConnected(false)
         setWsPhase('disconnected')
@@ -268,6 +278,13 @@ export function useWebSocket(): {
           undoState: 'undone',
           undoResult: resultText
         })
+        break
+      }
+      case 'pong': {
+        const sent = data.ts as number
+        if (sent) {
+          useTorchStore.getState().setWsLatencyMs(Date.now() - sent)
+        }
         break
       }
     }
