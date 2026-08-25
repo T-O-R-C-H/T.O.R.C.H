@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { EmailDetail, EmailSummary } from '../../types/email'
-import { API_BASE } from '../../config/api'
+import { API_BASE, torchFetch } from '../../config/api'
 import { SenderAvatar } from './SenderAvatar'
 import { formatFullDate, formatTime, sanitizeEmailHtml, stripHtml } from '../../utils/emailFormat'
 
@@ -26,7 +26,7 @@ export function MailResults({ emails }: MailResultsProps): JSX.Element {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
+      const res = await torchFetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || 'Could not open that message')

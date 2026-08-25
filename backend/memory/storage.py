@@ -22,7 +22,10 @@ class TorchDatabase:
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or settings.db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        # A bare filename has no directory part, and makedirs("") raises.
+        parent_dir = os.path.dirname(self.db_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         self._init_db()
 
     def _init_db(self) -> None:

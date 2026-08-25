@@ -82,7 +82,7 @@ def translate_error(error_str: str) -> dict:
     # 6. Unknown tool / capability error
     if any(marker in err for marker in ["unknown tool", "tool not registered", "not found in"]):
         return {
-            "what_happened": "I wasn't able to check that folder.",
+            "what_happened": "That isn't something I know how to do yet.",
             "what_to_do": "Want me to try a different way?"
         }
 

@@ -6,12 +6,21 @@ from fastapi import WebSocketDisconnect
 import main as backend_main
 
 
+_TEST_TOKEN = "disconnect-test-token"
+
+
 class _FailingWebSocket:
     def __init__(self, error):
         self.error = error
+        # The endpoint authenticates before the message loop, so the fake has
+        # to carry a valid token to reach the disconnect path under test.
+        self.query_params = {"token": _TEST_TOKEN}
 
     async def receive_text(self):
         raise self.error
+
+    async def close(self, code=1000):
+        raise AssertionError("connection should have authenticated successfully")
 
 
 class WebSocketDisconnectTests(unittest.IsolatedAsyncioTestCase):
@@ -25,6 +34,7 @@ class WebSocketDisconnectTests(unittest.IsolatedAsyncioTestCase):
             cleanup_events.append(("disconnect", client_id))
 
         with (
+            patch.object(backend_main.settings, "auth_token", _TEST_TOKEN),
             patch.object(backend_main.uuid, "uuid4", return_value="alpha001-client"),
             patch.object(backend_main.ws_manager, "connect", new=AsyncMock()),
             patch.object(backend_main.ws_manager, "send_terminal_line", new=AsyncMock()),

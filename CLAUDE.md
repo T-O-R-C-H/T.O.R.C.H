@@ -1,0 +1,330 @@
+# TORCH — Claude Code Context File
+
+Read this entire file before touching any code. Every decision here was made deliberately.
+
+---
+
+## What TORCH is
+
+TORCH is an autonomous PC automation agent for Windows. The user types or speaks a plain-English command ("find my invoice and email it to John") and TORCH executes it on their real computer — finding files, sending emails, opening apps, controlling the screen with vision AI, and doing anything a person could do at a keyboard.
+
+It is built for everyone — non-technical users, students, developers, freelancers, small business owners. The non-technical user experience is the design constraint that governs every decision.
+
+**The two core modes:**
+- **Do Mode** — TORCH executes tasks by calling named tool functions (find_file, send_email, open_app etc.) or by using a vision loop (Qwen2.5-VL via Ollama) that literally sees the screen and controls the mouse/keyboard like a human
+- **See Mode** — TORCH takes a screenshot, analyzes what's on screen, and guides the user or acts on what it sees directly (Clicky-style screen-aware assistant)
+
+---
+
+## Tech Stack
+
+**Frontend:** React 18 + TypeScript + Tailwind CSS + Zustand + Framer Motion + React Router
+**Backend:** Python 3.11 + FastAPI + WebSocket
+**Shell:** Electron (wraps the whole app as a Windows desktop application)
+**AI Models:**
+- Fast local tier: Llama 3.1 8B via Ollama (simple commands)
+- Reasoning local tier: Phi-4 via Ollama (multi-step plans)
+- Vision local tier: Qwen2.5-VL 7B via Ollama (screen control — sees screen, generates mouse/keyboard actions)
+- Escalation tier: Gemini 2.5 Flash (cloud, complex/ambiguous commands)
+**Voice:** OpenAI Whisper (local, for STT) + pyttsx3 (local TTS)
+**Database:** SQLite (local, torch.db)
+**Memory:** ChromaDB (vector embeddings for pattern recognition)
+**Screen capture:** PyAutoGUI + mss
+**Browser automation:** Playwright
+
+---
+
+## Project Structure
+
+```
+T.O.R.C.H/
+├── backend/
+│   ├── main.py              # FastAPI app, WebSocket handler, all REST endpoints
+│   ├── agent/
+│   │   ├── brain.py         # LLM planning — sends command to Gemini/local, gets JSON plan
+│   │   ├── planner.py       # Plan validation and tool routing
+│   │   ├── executor.py      # Executes each step, HITL flow, rollback, step phrasing
+│   │   ├── context.py       # Conversation history (10-turn rolling window)
+│   │   └── providers/       # LLM provider abstractions (gemini, openai, claude)
+│   ├── tools/               # All tool functions
+│   │   ├── files.py         # find_file, move_file, copy_file, delete_file, read_file
+│   │   ├── email.py         # send_email, check_emails
+│   │   ├── system.py        # open_app, close_app, run_terminal
+│   │   ├── browser.py       # web search, open_browser (Playwright)
+│   │   ├── screen.py        # screenshot, screen_watch
+│   │   ├── voice.py         # speak(), listen(), WakeWordDetector
+│   │   └── vision_control.py # Qwen2.5-VL vision loop — sees screen, clicks/types
+│   ├── errors/
+│   │   └── plain_language.py # Converts all raw errors to plain-English user messages
+│   ├── memory/
+│   │   └── storage.py       # SQLite + ChromaDB operations, get_metrics_today(), save_task()
+│   ├── agent/rollback.py    # Snapshot before destructive ops, rollback_last_batch()
+│   ├── auth.py              # Session-token checks for REST + WebSocket
+│   └── config/
+│       └── settings.py      # All config (API keys, ports, auth token, feature flags)
+├── src/
+│   ├── main/
+│   │   └── index.ts         # Electron main process — spawns Python, creates windows, IPC
+│   ├── preload/
+│   │   └── index.ts         # Electron preload — exposes torchAPI bridge to renderer
+│   └── renderer/src/
+│       ├── App.tsx           # React router, all routes
+│       ├── store/
+│       │   └── torchStore.ts # Zustand global state (agentStatus, messages, metrics)
+│       ├── hooks/
+│       │   └── useWebSocket.ts # WebSocket connection, message handling
+│       ├── pages/
+│       │   ├── Command.tsx   # Main chat page (Command Center)
+│       │   ├── Onboarding.tsx # 5-screen onboarding flow
+│       │   ├── Settings.tsx  # Settings page
+│       │   ├── History.tsx   # Task history
+│       │   ├── HeyTorch.tsx  # Voice overlay
+│       │   └── ControlBorder.tsx # Full-screen blue border during vision control
+│       └── components/
+│           ├── layout/
+│           │   ├── Sidebar.tsx
+│           │   └── Topbar.tsx
+│           ├── chat/
+│           │   ├── ChatArea.tsx
+│           │   ├── CommandInput.tsx
+│           │   ├── ConversationTurn.tsx
+│           │   └── StepList.tsx
+│           └── ui/TorchLogo.tsx # The logo (wraps resources/logo.png)
+```
+
+---
+
+## Design System
+
+TORCH uses a **light theme**. The single source of truth is the `@theme` token
+block at the top of `src/renderer/src/styles/globals.css` — read it before
+adding any color, and use the `--color-torch-*` tokens rather than hardcoding
+hex values, so a future theme change stays a one-file edit.
+
+**Colors:**
+- Background: `#f4f4f5` — surfaces `#ffffff`
+- Text: muted greys, defined as `--color-torch-text*` tokens
+- Status dots may use color (`#10b981` connected, `#ef4444` disconnected) — this
+  is the one place color carries meaning
+- The blue border (`#3b82f6`) appears full-screen during vision control
+
+**Typography:**
+- UI text: Inter or system sans-serif
+- Labels, status, mono: `JetBrains Mono` or `Courier New` (monospace)
+
+**Shape and depth:**
+- The floating overlay companion is deliberately glassmorphic (translucent
+  white + `backdrop-filter` blur). This is intentional design, not a bug.
+- Everything else stays flat and calm — compact type, restrained hierarchy.
+
+> Historical note: this project began with a near-black, zero-radius,
+> no-glassmorphism design system. It was deliberately replaced by the current
+> light aesthetic in Aug 2026. If you find a component that still looks dark,
+> that is legacy, not the target.
+
+---
+
+## UI Architecture — The Three Windows
+
+TORCH runs three Electron windows simultaneously:
+
+**1. Main window** — the full Command Center with sidebar, chat, metrics. The primary app UI.
+
+**2. Floating pill + right panel** — this is the new minimized experience replacing the old overlay:
+- A small floating pill at the bottom-center of the screen (above the taskbar), always visible when TORCH is minimized
+- The pill shows the TORCH logo mark and a text input
+- When a task is running, a panel slides in from the RIGHT EDGE of the screen showing live step-by-step narration
+- The right panel appears ONLY when a task is running and disappears when done
+- The pill stays always, the right panel is task-scoped
+
+**3. Control border window** — a full-screen transparent window with a blue pulsing border that appears ONLY during vision control tasks to signal "TORCH is in control of your screen"
+
+---
+
+## Core Data Flow
+
+```
+User types command in pill or Command Center
+→ Zustand store updates (agentStatus → processing)
+→ useWebSocket sends message over ws://127.0.0.1:8000/ws?token=<session token>
+→ FastAPI checks the token before accepting → process_command()
+→ brain.py sends to LLM → gets JSON plan (array of steps with tool names)
+→ planner.py validates the plan and sets requires_approval from HITL_TOOLS
+→ executor.py executes each step:
+    - Pauses on any step planner.py marked requires_approval
+    - If risky: sends hitl_request over WS, awaits asyncio.Event for approval
+    - If safe: calls tool function directly
+    - Each step: sends step_update over WS (label, status: active/done/failed)
+    - Resolves {{step_N_result}} references between steps
+    - On success: saves to SQLite via storage.py
+    - On failure: translates error via plain_language.py
+→ WS streams step_update messages to frontend in real time
+→ Frontend renders live step list in right panel (if minimized) or StepList (if main window open)
+→ Task complete: sends agent_response with plain-language summary
+→ Undo button appears (wired to rollback_last_batch() via rollback.py)
+```
+
+---
+
+## Vision Control Loop
+
+When no named tool covers the task (e.g. "play Doja on Spotify", "fill in this form"), TORCH falls back to the vision loop:
+
+```python
+# backend/tools/vision_control.py
+# 1. Take screenshot with mss
+# 2. Send screenshot + task to Qwen2.5-VL:7b via Ollama
+# 3. Model returns JSON: {"action": "click", "x": 450, "y": 230, "reason": "..."}
+# 4. Execute with PyAutoGUI
+# 5. Repeat until model returns {"action": "done"} or max 25 steps
+```
+
+When vision control starts: emit `vision_control_start` WS message → frontend shows blue border window
+When vision control ends: emit `vision_control_end` WS message → frontend hides blue border window
+
+---
+
+## Safety Rules — Never Break These
+
+- **Backend auth**: Electron generates a session token at launch, passes it to
+  Python as `TORCH_AUTH_TOKEN`, and exposes it to the renderer over IPC. Every
+  REST route requires it in the `Authorization` header; the WebSocket requires
+  it as `?token=` and is rejected **before** `accept()`. The backend binds to
+  `127.0.0.1` only. Never add a route that bypasses this, and never widen the
+  bind address — this agent can run terminal commands and send mail.
+- **HITL always fires** for the tools in `HITL_TOOLS` (`backend/agent/planner.py`):
+  send_email, post_social, send_message, delete_file, download_file, run_terminal.
+  Approval is decided in Python, never by the model — `validate_plan` recomputes
+  it and overrides whatever the plan claimed.
+- **Vision control** gets a second check: `_vision_task_requires_approval` flags
+  tasks that imply purchases, sending/uploading, deleting, terminal access, or
+  security-setting changes.
+- **HITL never fires** for read-only tools: find_file, read_file, search_web,
+  screenshot, open_app. Prompting on these trains users to click through.
+- **move_file, create_folder, zip_files** are covered by Undo rather than a
+  prompt — they are in `REVERSIBLE_TOOLS` (`backend/agent/rollback.py`).
+- **`run_terminal` keeps `shell=True`** — running arbitrary commands is the
+  feature. Its safety comes from mandatory approval plus session auth, not from
+  a command blocklist (trivially bypassed, false confidence). Nothing else in
+  `backend/` may use `shell=True`.
+- **Rollback snapshots** are taken AFTER HITL approval, immediately before execution — never before
+- **The Stop button** must cancel the current task within 2 seconds — wired to `executor.stop_task()`
+- **Undo** must appear after every task that touched the filesystem
+- **Plain language errors only** — no stack traces, no error codes, no technical strings ever reach the chat UI
+- **A failed task must say so in the chat.** Never let a task end silently, and
+  never report failure as success.
+
+---
+
+## Language Rules for User-Facing Text
+
+TORCH is used by non-technical users. Every string visible to the user must pass this test: would someone who has never opened a terminal understand this?
+
+- Never show model names (no "Gemini", "Llama", "Phi-4", "GPT")
+- Never show tier names ("escalating to reasoning tier")
+- Never show raw error messages or exception types
+- Never show HTTP status codes
+- Step narration must be plain English present tense: "Looking for your file..." not "Executing find_file(query='...')"
+- Status must be plain: "Ready" not "AGENT: IDLE"
+- Connection state: "Connecting..." (cold start), "Reconnecting..." (after drop), never "OFFLINE" in red
+
+---
+
+## The Floating Pill + Right Panel (New Feature — Build This)
+
+This replaces the old overlay. Two separate Electron windows:
+
+**Pill window** (`createPillWindow()`):
+- Always-on-top, frameless, transparent, not in taskbar
+- Positioned: bottom-center of screen, just above taskbar (y = screenHeight - taskbarHeight - pillHeight - 8px)
+- Size: ~220px wide, ~40px tall
+- Contains: TORCH logo mark (R), text input, mic button
+- Shows when main window is minimized, hides when main window is focused
+- Clicking input or sending a command works exactly like Command Center — same WS pipeline
+
+**Right details panel** (`createRightPanel()`):
+- Always-on-top, frameless, transparent, not in taskbar
+- Positioned: right edge of screen, vertically centered
+- Width: 220px, slides in from right
+- Shows ONLY when a task is running (agentStatus !== 'idle')
+- Hidden when task completes (after 3 second delay showing the recap)
+- Contains: task name, live step list with status indicators, elapsed time, Stop button
+- Receives the same step_update WS messages as the main window
+
+---
+
+## Tests
+
+```bash
+cd backend && python -m pytest        # backend  (pytest.ini, tests live in backend/tests/)
+npm run test                          # frontend (vitest, *.test.ts beside the source)
+npm run typecheck && npm run lint
+```
+
+Backend test deps are in `backend/requirements-dev.txt`. Fixtures live in
+`backend/tests/conftest.py` — `auth_headers` for authenticated requests,
+`temp_db` for an isolated database (a temp **file**, not `:memory:`: every query
+opens a fresh connection and in-memory databases are not shared between them).
+
+Tests to keep passing whatever else changes: `test_auth.py` (nothing reaches the
+agent unauthenticated), `test_system_tools.py` (nothing on the `open_app` path
+reaches a shell), `test_planner_hitl.py` (the approval policy), and
+`test_main_completion_recap.py` (a failed task always says so).
+
+---
+
+## Known Issues / Active Work
+
+**Open:**
+
+1. **Status label inconsistency** — the floating overlay shows a colored status
+   dot, the main Command Center input shows the word "Ready". Pick one and use
+   it in both places.
+2. **Standalone backend + Electron collide** — Electron reuses an already-running
+   backend only if it can authenticate to it. A backend started by hand (with its
+   own generated token) is not reusable, and Electron's health check hardcodes
+   port 8000, so the fallback spawn lands on a different port and reports
+   unhealthy. Only affects the run-the-backend-in-a-terminal dev workflow.
+3. **`useWebSocket.ts` is untested** — its module-level socket singletons
+   (`sharedSocket`, `sharedReconnectTimer`, …) are not hook-instance scoped, so
+   tests need manual resets plus a `WebSocket` stub. Worth doing.
+
+**Fixed (Aug 2026) — do not "re-fix" these:**
+
+- Cat mascot — gone. The logo component is `ui/TorchLogo.tsx` (there is no `TorchMark.tsx`).
+- Overlay is white — **not a bug.** The light glassmorphic overlay is the intended design.
+- Native menu bar — `frame: false` + `Menu.setApplicationMenu(null)`; the custom title bar is `layout/Topbar.tsx`.
+- Model names in the UI — `/api/models` and the input pickers now return speed/depth labels ("Automatic", "Faster", "More thorough") that map to real model ids under the hood.
+- False success on failure — `process_command` returns before the success recap; a failure now sends its own plain-language message.
+- Raw error in chat — `validate_plan` translates unknown-tool errors before the plan is sent, with a frontend backstop in `utils/plainLanguage.ts`.
+- Stop button — `executor.stop_task()` exists and releases pending approvals.
+- Session token — implemented; see the auth bullet in Safety Rules.
+- Onboarding gating — `onboardingComplete` is checked before routing.
+
+---
+
+## What NOT to Do
+
+- Do not hardcode colors — use the `--color-torch-*` tokens in `globals.css`
+- Do not show any model/tier/technical name to the user
+- Do not let any raw Python exception reach the chat UI
+- Do not make HITL fire for read-only operations
+- Do not let the model decide its own approval requirement — policy lives in `planner.py`
+- Do not optimistically mark a step as done before the backend confirms it
+- Do not use `shell=True` in any subprocess call **except** the existing
+  `run_terminal`, which is intentional and approval-gated
+- Do not add a route or WS path that skips the session-token check
+- Do not bind the backend to anything other than `127.0.0.1`
+- Do not add any new npm packages without checking if something already in the stack covers it
+- Do not create new Zustand stores — use the existing `torchStore.ts`
+- Do not add new WebSocket message types without adding them to the handler in `useWebSocket.ts`
+
+---
+
+## Repo
+
+GitHub: https://github.com/T-O-R-C-H/T.O.R.C.H
+Team size: 10 contributors
+Founder: Yusuf Muyideen (@Muyideen-js)
+Stage: Pre-launch, active development
+Location: Ilorin, Nigeria

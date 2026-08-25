@@ -7,7 +7,7 @@ import {
 } from '../components/icons'
 import { useMemoryStore, type HistoryEntry } from '../store/memoryStore'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 const demoHistory: HistoryEntry[] = [
   {
@@ -35,7 +35,7 @@ const demoHistory: HistoryEntry[] = [
     steps: [
       { label: 'Searching: "latest AI agent frameworks 2026"', status: 'done' },
       { label: 'Scraped 5 articles', status: 'done' },
-      { label: 'Generating summary with Gemini', status: 'done' },
+      { label: 'Generating summary', status: 'done' },
       { label: 'Summary delivered', status: 'done' }
     ]
   },
@@ -74,7 +74,7 @@ export function History(): JSX.Element {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${API_BASE}/api/history`)
+        const res = await torchFetch(`${API_BASE}/api/history`)
         if (!res.ok) throw new Error('Failed to fetch history')
         const data = await res.json()
         if (active) setHistory(data)
@@ -98,7 +98,7 @@ export function History(): JSX.Element {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/history`, { method: 'DELETE' })
+      const res = await torchFetch(`${API_BASE}/api/history`, { method: 'DELETE' })
       if (res.ok) {
         clearHistory()
       } else {

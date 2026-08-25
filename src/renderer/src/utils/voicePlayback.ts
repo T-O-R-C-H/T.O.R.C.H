@@ -1,4 +1,4 @@
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 let activeUtterance: SpeechSynthesisUtterance | null = null
 let activeAudio: HTMLAudioElement | null = null
@@ -75,7 +75,7 @@ export async function speakWithNaturalVoice(text: string): Promise<void> {
   const timeout = window.setTimeout(() => controller.abort(), 7000)
 
   try {
-    const response = await fetch(`${API_BASE}/api/voice/synthesize`, {
+    const response = await torchFetch(`${API_BASE}/api/voice/synthesize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),

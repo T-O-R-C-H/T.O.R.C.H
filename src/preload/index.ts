@@ -95,6 +95,9 @@ const torchAPI = {
   // Desktop context
   getDesktopContext: (): Promise<DesktopContext> => ipcRenderer.invoke('context:getDesktop'),
 
+  // Backend session token — required on every REST call and the WS handshake
+  getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
+
   // Backend health
   getBackendHealth: (): Promise<BackendHealth> => ipcRenderer.invoke('backend:getHealth'),
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void): void => {

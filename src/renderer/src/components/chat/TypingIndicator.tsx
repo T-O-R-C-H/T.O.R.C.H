@@ -5,7 +5,7 @@ interface TypingIndicatorProps {
 }
 
 export const TypingIndicator: React.FC<TypingIndicatorProps> = React.memo(({ status }) => {
-  const caption = status === 'processing' ? 'planning with Gemini...' : 'running task...'
+  const caption = status === 'processing' ? 'working out the steps...' : 'running task...'
   return (
     <div
       style={{

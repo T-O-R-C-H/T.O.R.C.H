@@ -7,7 +7,7 @@ import {
 } from '../components/icons'
 import { useMemoryStore } from '../store/memoryStore'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 const demoCommands = [
   { command: 'Send email', count: 34 },
@@ -81,7 +81,7 @@ export function Memory(): JSX.Element {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${API_BASE}/api/memory`)
+        const res = await torchFetch(`${API_BASE}/api/memory`)
         if (!res.ok) throw new Error('Failed to fetch memory data')
         const data = await res.json()
         if (active) {

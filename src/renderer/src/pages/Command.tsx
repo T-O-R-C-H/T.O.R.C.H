@@ -2,7 +2,7 @@ import { ChatArea } from '../components/chat/ChatArea'
 import { ActivityOverlay } from '../components/chat/ActivityOverlay'
 import { PromptInput } from '../components/input/PromptInput'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useEffect, useCallback } from 'react'
 import { handleDemoCommand, handleDemoApproval, handleDemoCancel } from '../demo/demoAgent'
@@ -23,7 +23,7 @@ export function Command(): JSX.Element {
 
   useEffect(() => {
     if (!demoMode) {
-      fetch(`${API_BASE}/api/metrics`)
+      torchFetch(`${API_BASE}/api/metrics`)
         .then((r) => r.json())
         .then((data) => useTorchStore.getState().setMetrics(data))
         .catch(() => {})

@@ -51,6 +51,7 @@ interface TorchAPI {
     clipboardText: string
     focusLabel?: string
   }>
+  getAuthToken: () => Promise<string>
   getBackendHealth: () => Promise<BackendHealth>
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void) => void
   onBackendStatus: (callback: (status: 'online' | 'offline') => void) => void

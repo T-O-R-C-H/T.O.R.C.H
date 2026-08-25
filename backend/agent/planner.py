@@ -100,6 +100,7 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     validated_steps = []
     from agent.step_phrasing import get_plain_phrase
+    from errors.plain_language import translate_error
 
     for i, step in enumerate(raw_steps):
         tool = step.get("tool", "unknown")
@@ -107,8 +108,13 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # Validate tool exists
         if tool not in VALID_TOOLS and tool != "error":
             logger.warning(f"Unknown tool: {tool}, marking as error")
-            step["tool"] = "error"
-            step["error"] = f"Unknown tool: {tool}"
+            # Rebind the local too: everything below (approval policy, phrasing,
+            # the validated step itself) reads `tool`, so mutating only the
+            # incoming dict would let the unknown name through unchanged.
+            step["tool"] = tool = "error"
+            # This plan is sent to the UI before execution starts, so the error
+            # has to be readable now — not only once the executor reaches it.
+            step["error"] = translate_error("Unknown tool")["what_happened"]
 
         tool_args = step.get("args", {})
 

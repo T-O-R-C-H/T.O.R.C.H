@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconInbox as InboxIcon, IconRefresh as RefreshIcon } from '../components/icons'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 import { useTorchStore } from '../store/torchStore'
 import type { EmailDetail, EmailSummary } from '../types/email'
 import { SenderAvatar } from '../components/mail/SenderAvatar'
@@ -68,7 +68,7 @@ export function Inbox(): JSX.Element {
     abortRef.current = controller
     const timer = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS)
     try {
-      const res = await fetch(`${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=0`, {
+      const res = await torchFetch(`${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=0`, {
         signal: controller.signal
       })
       if (!res.ok) {
@@ -116,7 +116,7 @@ export function Inbox(): JSX.Element {
 
   useEffect(() => {
     let active = true
-    fetch(`${API_BASE}/api/settings`)
+    torchFetch(`${API_BASE}/api/settings`)
       .then((r) => r.json())
       .then((data) => {
         if (active) setConfigured(Boolean(data.gmail_configured))
@@ -152,7 +152,9 @@ export function Inbox(): JSX.Element {
       setDetailError('')
       setDetailLoading(true)
       try {
-        const res = await fetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
+        const res = await torchFetch(
+          `${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`
+        )
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           throw new Error(data.detail || 'Could not open that message')
@@ -160,7 +162,7 @@ export function Inbox(): JSX.Element {
         const data = await res.json()
         setDetail(data)
         if (!summary.read) {
-          void fetch(`${API_BASE}/api/email/mark-read`, {
+          void torchFetch(`${API_BASE}/api/email/mark-read`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uid: summary.uid, read: true })
@@ -182,7 +184,7 @@ export function Inbox(): JSX.Element {
     async (read: boolean): Promise<void> => {
       if (!selected) return
       try {
-        await fetch(`${API_BASE}/api/email/mark-read`, {
+        await torchFetch(`${API_BASE}/api/email/mark-read`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uid: selected.uid, read })

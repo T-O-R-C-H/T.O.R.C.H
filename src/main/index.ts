@@ -14,6 +14,7 @@ import {
   powerMonitor
 } from 'electron'
 import { join } from 'path'
+import { randomBytes } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
 import { existsSync } from 'fs'
@@ -47,6 +48,10 @@ const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_
 const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
 const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
 const backendStatusUrl = 'http://127.0.0.1:8000/api/status'
+// Session token for this launch. Handed to the Python backend via env var and
+// to the renderer over IPC, so only this app instance can drive the agent.
+const backendAuthToken = randomBytes(32).toString('hex')
+const backendAuthHeaders = { Authorization: `Bearer ${backendAuthToken}` }
 const gotTheLock = app.requestSingleInstanceLock()
 
 if (!gotTheLock) {
@@ -92,7 +97,10 @@ async function isBackendReachable(): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
 
   try {
-    const response = await fetch(backendStatusUrl, { signal: controller.signal })
+    const response = await fetch(backendStatusUrl, {
+      signal: controller.signal,
+      headers: backendAuthHeaders
+    })
     return response.ok
   } catch {
     return false
@@ -158,7 +166,8 @@ async function startBackend(): Promise<void> {
     env: {
       ...process.env,
       PYTHONUNBUFFERED: '1',
-      TORCH_RELOAD: 'false'
+      TORCH_RELOAD: 'false',
+      TORCH_AUTH_TOKEN: backendAuthToken
     }
   })
 
@@ -258,7 +267,8 @@ async function checkBackendHealth(): Promise<void> {
 
   try {
     const response = await fetch(backendStatusUrl, {
-      signal: controller.signal
+      signal: controller.signal,
+      headers: backendAuthHeaders
     })
 
     if (!response.ok) {
@@ -288,8 +298,10 @@ async function checkBackendHealth(): Promise<void> {
 
     if (backendFailedChecks >= backendMaxFailedChecks) {
       const startupGracePeriodMs = 60000 // 60s grace period for cold start
-      const isStillStarting =
-        backendHealth.status === 'starting' && Date.now() - backendStartTime < startupGracePeriodMs
+      // Judge "still starting" by elapsed time, not by backendHealth.status:
+      // the failure was just published as 'unhealthy' above, so the status can
+      // never read 'starting' here. Checking it restarted every cold start.
+      const isStillStarting = Date.now() - backendStartTime < startupGracePeriodMs
       if (isStillStarting) {
         console.log(
           `[TORCH] Backend is still starting (elapsed: ${Math.round((Date.now() - backendStartTime) / 1000)}s). Skipping restart.`
@@ -563,11 +575,11 @@ function createMainWindow(): void {
     minWidth: 1100,
     minHeight: 700,
     show: true,
-    frame: true,
+    frame: false,
     center: true,
     skipTaskbar: false,
     backgroundColor: '#0f172a',
-    autoHideMenuBar: false,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -809,6 +821,7 @@ app.whenReady().then(() => {
   if (!gotTheLock) return
 
   electronApp.setAppUserModelId('com.torch.agent')
+  Menu.setApplicationMenu(null)
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')
@@ -980,6 +993,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('backend:getHealth', () => backendHealth)
+  ipcMain.handle('backend:getAuthToken', () => backendAuthToken)
 
   ipcMain.handle('clipboard:list', () => getClipboardEntries())
   ipcMain.on('clipboard:copy', (_, text: string) => copyToClipboard(text))

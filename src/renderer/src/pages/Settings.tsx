@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 import {
   IconKey as Key,
@@ -107,7 +107,7 @@ export function Settings(): JSX.Element {
 
   useEffect(() => {
     const loadSystemCheck = (retries = 5): void => {
-      fetch(`${API_BASE}/api/system-check`)
+      torchFetch(`${API_BASE}/api/system-check`)
         .then((r) => {
           if (!r.ok) throw new Error()
           return r.json()
@@ -123,7 +123,7 @@ export function Settings(): JSX.Element {
     }
 
     const loadSettings = (retries = 5): void => {
-      fetch(`${API_BASE}/api/settings`)
+      torchFetch(`${API_BASE}/api/settings`)
         .then((r) => {
           if (!r.ok) throw new Error()
           return r.json()
@@ -158,7 +158,7 @@ export function Settings(): JSX.Element {
     setEmailTest('testing')
     setEmailTestMsg('')
     try {
-      const res = await fetch(`${API_BASE}/api/email/test`, { method: 'POST' })
+      const res = await torchFetch(`${API_BASE}/api/email/test`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         setEmailTest('ok')
@@ -189,7 +189,7 @@ export function Settings(): JSX.Element {
         payload.gmail_app_password = gmailPassword
       }
 
-      const res = await fetch(`${API_BASE}/api/settings`, {
+      const res = await torchFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

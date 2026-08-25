@@ -9,7 +9,7 @@ import {
 } from '../components/icons/cleanIcons'
 import { TorchLogo } from '../components/ui/TorchLogo'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 const ONBOARDING_STEPS = ['welcome', 'name', 'permissions', 'first_task'] as const
 type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
@@ -174,7 +174,7 @@ export function Onboarding(): JSX.Element {
 
   const finishAndLaunch = async (): Promise<void> => {
     try {
-      await fetch(`${API_BASE}/api/settings`)
+      await torchFetch(`${API_BASE}/api/settings`)
       setShowSettingsKeyBanner(false)
     } catch {
       setShowSettingsKeyBanner(true)

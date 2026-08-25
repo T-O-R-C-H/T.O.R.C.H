@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useTorchStore, type Message, type TerminalLine } from '../store/torchStore'
-import { WS_URL } from '../config/api'
+import { buildWsUrl } from '../config/api'
 import { formatAgentContent } from '../utils/plainLanguage'
 import { streamMessageContent } from '../utils/streamContent'
 
@@ -17,9 +17,7 @@ function resetInterruptedTaskUi(): void {
   const activeMessage = [...store.messages]
     .reverse()
     .find((message) =>
-      message.steps?.some(
-        (step) => step.status === 'active' || step.status === 'hitl_required'
-      )
+      message.steps?.some((step) => step.status === 'active' || step.status === 'hitl_required')
     )
   activeMessage?.steps
     ?.filter((step) => step.status === 'active' || step.status === 'hitl_required')
@@ -52,243 +50,266 @@ export function useWebSocket(): {
   const handleMessageRef = useRef<
     (data: Record<string, unknown>, sourceSocket: WebSocket | null) => void
   >(() => undefined)
-  const { setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine } = useTorchStore.getState()
+  const { setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine } =
+    useTorchStore.getState()
 
-  const connect = useCallback(function connectSocket(): void {
-    // Skip WebSocket connection in demo mode
-    if (useTorchStore.getState().demoMode) {
-      return
-    }
-    if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) {
-      wsRef.current = sharedSocket
-      return
-    }
-    try {
-      setWsPhase('connecting')
-      const ws = new WebSocket(WS_URL)
-      sharedSocket = ws
-      wsRef.current = ws
-
-      ws.onopen = (): void => {
-        setWsConnected(true)
-        setWsPhase('connected')
-        setHasConnectedOnce(true)
-        addTerminalLine({
-          id: crypto.randomUUID(),
-          timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
-          content: 'WebSocket connected to backend',
-          type: 'success'
-        })
-        // Start periodic latency ping
-        clearInterval(sharedPingInterval)
-        sharedPingInterval = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
-          }
-        }, 10_000)
+  const connect = useCallback(
+    function connectSocket(): void {
+      // Skip WebSocket connection in demo mode
+      if (useTorchStore.getState().demoMode) {
+        return
       }
-
-      ws.onclose = (): void => {
-        if (sharedSocket === ws) sharedSocket = null
-        if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
-        clearInterval(sharedPingInterval)
-        useTorchStore.getState().setWsLatencyMs(null)
-        resetInterruptedTaskUi()
-        setWsConnected(false)
-        setWsPhase('disconnected')
-        window.torchAPI?.completeVisionControl()
-        if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
-          sharedReconnectTimer = setTimeout(connectSocket, 3000)
-        }
+      if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) {
+        wsRef.current = sharedSocket
+        return
       }
+      void openSocket()
 
-      ws.onerror = (): void => {
-        resetInterruptedTaskUi()
-        setWsConnected(false)
-        setWsPhase('disconnected')
-        window.torchAPI?.completeVisionControl()
-      }
-
-      ws.onmessage = (event): void => {
+      async function openSocket(): Promise<void> {
         try {
-          const data = JSON.parse(event.data)
-          handleMessageRef.current(data, ws)
-          window.torchAPI?.publishTaskEvent(data)
+          setWsPhase('connecting')
+          // The backend rejects the handshake without a session token.
+          const url = await buildWsUrl()
+          // Another consumer may have opened the socket while the token resolved.
+          if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) {
+            wsRef.current = sharedSocket
+            return
+          }
+          const ws = new WebSocket(url)
+          sharedSocket = ws
+          wsRef.current = ws
+
+          ws.onopen = (): void => {
+            setWsConnected(true)
+            setWsPhase('connected')
+            setHasConnectedOnce(true)
+            addTerminalLine({
+              id: crypto.randomUUID(),
+              timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+              content: 'WebSocket connected to backend',
+              type: 'success'
+            })
+            // Start periodic latency ping
+            clearInterval(sharedPingInterval)
+            sharedPingInterval = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
+              }
+            }, 10_000)
+          }
+
+          ws.onclose = (): void => {
+            if (sharedSocket === ws) sharedSocket = null
+            if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
+            clearInterval(sharedPingInterval)
+            useTorchStore.getState().setWsLatencyMs(null)
+            resetInterruptedTaskUi()
+            setWsConnected(false)
+            setWsPhase('disconnected')
+            window.torchAPI?.completeVisionControl()
+            if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
+              sharedReconnectTimer = setTimeout(connectSocket, 3000)
+            }
+          }
+
+          ws.onerror = (): void => {
+            resetInterruptedTaskUi()
+            setWsConnected(false)
+            setWsPhase('disconnected')
+            window.torchAPI?.completeVisionControl()
+          }
+
+          ws.onmessage = (event): void => {
+            try {
+              const data = JSON.parse(event.data)
+              handleMessageRef.current(data, ws)
+              window.torchAPI?.publishTaskEvent(data)
+            } catch {
+              // ignore parse errors
+            }
+          }
         } catch {
-          // ignore parse errors
-        }
-      }
-    } catch {
-      resetInterruptedTaskUi()
-      setWsPhase('disconnected')
-      window.torchAPI?.completeVisionControl()
-      if (!useTorchStore.getState().demoMode) {
-        sharedReconnectTimer = setTimeout(connectSocket, 3000)
-      }
-    }
-  }, [setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine])
-
-  const handleMessage = useCallback((data: Record<string, unknown>, sourceSocket: WebSocket | null): void => {
-    const store = useTorchStore.getState()
-
-    switch (data.type) {
-      case 'agent_response': {
-        const msg = data.message as Message
-        if (data.stream === true) {
-          store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
-        } else {
-          const fullText = formatAgentContent(msg.content || '')
-          store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
-          void streamMessageContent(msg.id, fullText)
-        }
-        break
-      }
-      case 'content_delta': {
-        const { messageId, delta } = data as { messageId: string; delta: string }
-        store.appendMessageContent(messageId, delta as string)
-        break
-      }
-      case 'content_done': {
-        const { messageId } = data as { messageId: string }
-        store.updateMessage(messageId, { isStreaming: false })
-        break
-      }
-      case 'step_update': {
-        const { messageId, stepId, ...updates } = data as Record<string, unknown>
-        store.updateStep(messageId as string, stepId as string, updates)
-        break
-      }
-      case 'status': {
-        store.setAgentStatus(data.status as typeof store.agentStatus)
-        if (data.status === 'idle') {
-          if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
-            sharedTaskOwnerSocket = null
-          }
+          resetInterruptedTaskUi()
+          setWsPhase('disconnected')
           window.torchAPI?.completeVisionControl()
-          store.setClarificationRequest(null)
-        }
-        break
-      }
-      case 'vision_control_start': {
-        window.torchAPI?.showControlBorder()
-        break
-      }
-      case 'vision_control_end': {
-        window.torchAPI?.completeVisionControl()
-        break
-      }
-      case 'vision_capture_start': {
-        window.torchAPI?.suspendOverlayForVisionCapture()
-        break
-      }
-      case 'vision_capture_end': {
-        window.torchAPI?.restoreOverlayAfterVisionCapture()
-        break
-      }
-      case 'hitl_request': {
-        store.setAgentStatus('awaiting_approval')
-        break
-      }
-      case 'approval_result': {
-        const { messageId, stepId, accepted, error } = data as {
-          messageId: string
-          stepId: string
-          accepted: boolean
-          error?: string
-        }
-        store.updateStep(
-          messageId,
-          stepId,
-          accepted
-            ? { status: 'active' }
-            : { status: 'failed', error: error || 'Approval was not accepted' }
-        )
-        if (!accepted) {
-          if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
-            sharedTaskOwnerSocket = null
+          if (!useTorchStore.getState().demoMode) {
+            sharedReconnectTimer = setTimeout(connectSocket, 3000)
           }
-          store.setAgentStatus('idle')
         }
-        break
       }
-      case 'clarification_request': {
-        const { taskId, question, options } = data as {
-          taskId: string
-          question: string
-          options: string[]
+    },
+    [setWsConnected, setWsPhase, setHasConnectedOnce, addTerminalLine]
+  )
+
+  const handleMessage = useCallback(
+    (data: Record<string, unknown>, sourceSocket: WebSocket | null): void => {
+      const store = useTorchStore.getState()
+
+      switch (data.type) {
+        case 'agent_response': {
+          const msg = data.message as Message
+          if (data.stream === true) {
+            store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
+          } else {
+            const fullText = formatAgentContent(msg.content || '')
+            store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
+            void streamMessageContent(msg.id, fullText)
+          }
+          break
         }
-        store.setClarificationRequest({ taskId, question, options })
-        store.setAgentStatus('awaiting_input')
-        break
-      }
-      case 'clarification_result': {
-        const { accepted, error } = data as { accepted: boolean; error?: string }
-        if (accepted) {
-          store.setClarificationRequest(null)
-          store.setAgentStatus('executing')
-        } else if (error) {
-          store.addTerminalLine({
-            id: crypto.randomUUID(),
-            timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
-            content: error,
-            type: 'warning'
+        case 'content_delta': {
+          const { messageId, delta } = data as { messageId: string; delta: string }
+          store.appendMessageContent(messageId, delta as string)
+          break
+        }
+        case 'content_done': {
+          const { messageId } = data as { messageId: string }
+          store.updateMessage(messageId, { isStreaming: false })
+          break
+        }
+        case 'step_update': {
+          const { messageId, stepId, ...updates } = data as Record<string, unknown>
+          store.updateStep(messageId as string, stepId as string, updates)
+          break
+        }
+        case 'status': {
+          store.setAgentStatus(data.status as typeof store.agentStatus)
+          if (data.status === 'idle') {
+            if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
+              sharedTaskOwnerSocket = null
+            }
+            window.torchAPI?.completeVisionControl()
+            store.setClarificationRequest(null)
+          }
+          break
+        }
+        case 'vision_control_start': {
+          window.torchAPI?.showControlBorder()
+          break
+        }
+        case 'vision_control_end': {
+          window.torchAPI?.completeVisionControl()
+          break
+        }
+        case 'vision_capture_start': {
+          window.torchAPI?.suspendOverlayForVisionCapture()
+          break
+        }
+        case 'vision_capture_end': {
+          window.torchAPI?.restoreOverlayAfterVisionCapture()
+          break
+        }
+        case 'hitl_request': {
+          store.setAgentStatus('awaiting_approval')
+          break
+        }
+        case 'approval_result': {
+          const { messageId, stepId, accepted, error } = data as {
+            messageId: string
+            stepId: string
+            accepted: boolean
+            error?: string
+          }
+          store.updateStep(
+            messageId,
+            stepId,
+            accepted
+              ? { status: 'active' }
+              : { status: 'failed', error: error || 'Approval was not accepted' }
+          )
+          if (!accepted) {
+            if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
+              sharedTaskOwnerSocket = null
+            }
+            store.setAgentStatus('idle')
+          }
+          break
+        }
+        case 'clarification_request': {
+          const { taskId, question, options } = data as {
+            taskId: string
+            question: string
+            options: string[]
+          }
+          store.setClarificationRequest({ taskId, question, options })
+          store.setAgentStatus('awaiting_input')
+          break
+        }
+        case 'clarification_result': {
+          const { accepted, error } = data as { accepted: boolean; error?: string }
+          if (accepted) {
+            store.setClarificationRequest(null)
+            store.setAgentStatus('executing')
+          } else if (error) {
+            store.addTerminalLine({
+              id: crypto.randomUUID(),
+              timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+              content: error,
+              type: 'warning'
+            })
+          }
+          break
+        }
+        case 'terminal': {
+          store.addTerminalLine(data.line as TerminalLine)
+          break
+        }
+        case 'overlay': {
+          if (data.status)
+            store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
+          if (data.reply) store.setOverlayReply(data.reply as string)
+          if (data.guidance) {
+            const guidance = {
+              ...(data.guidance as {
+                type: 'point' | 'none'
+                x?: number
+                y?: number
+                label?: string
+              }),
+              transcript: data.reply as string | undefined
+            }
+            if (guidance.type === 'point') window.torchAPI?.showGuidance(guidance)
+            else window.torchAPI?.hideGuidance()
+          }
+          break
+        }
+        case 'metrics': {
+          store.setMetrics(data.metrics as Record<string, number>)
+          break
+        }
+        case 'task_completed_metadata': {
+          const { messageId, reversible } = data as { messageId: string; reversible: boolean }
+          store.updateMessage(messageId, { reversible, undoState: 'available' })
+          break
+        }
+        case 'undo_result': {
+          const { messageId, status, reversed, failed } = data as {
+            messageId: string
+            status: string
+            reversed: string[]
+            failed: string[]
+          }
+          const resultText =
+            status === 'success'
+              ? `Undone successfully: ${reversed.join(', ')}`
+              : `Partial undo: ${reversed.join(', ')}. Could not reverse: ${failed.join(', ')}`
+          store.updateMessage(messageId, {
+            undoState: 'undone',
+            undoResult: resultText
           })
+          break
         }
-        break
-      }
-      case 'terminal': {
-        store.addTerminalLine(data.line as TerminalLine)
-        break
-      }
-      case 'overlay': {
-        if (data.status)
-          store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
-        if (data.reply) store.setOverlayReply(data.reply as string)
-        if (data.guidance) {
-          const guidance = {
-            ...(data.guidance as { type: 'point' | 'none'; x?: number; y?: number; label?: string }),
-            transcript: data.reply as string | undefined
+        case 'pong': {
+          const sent = data.ts as number
+          if (sent) {
+            useTorchStore.getState().setWsLatencyMs(Date.now() - sent)
           }
-          if (guidance.type === 'point') window.torchAPI?.showGuidance(guidance)
-          else window.torchAPI?.hideGuidance()
+          break
         }
-        break
       }
-      case 'metrics': {
-        store.setMetrics(data.metrics as Record<string, number>)
-        break
-      }
-      case 'task_completed_metadata': {
-        const { messageId, reversible } = data as { messageId: string; reversible: boolean }
-        store.updateMessage(messageId, { reversible, undoState: 'available' })
-        break
-      }
-      case 'undo_result': {
-        const { messageId, status, reversed, failed } = data as {
-          messageId: string
-          status: string
-          reversed: string[]
-          failed: string[]
-        }
-        const resultText =
-          status === 'success'
-            ? `Undone successfully: ${reversed.join(', ')}`
-            : `Partial undo: ${reversed.join(', ')}. Could not reverse: ${failed.join(', ')}`
-        store.updateMessage(messageId, {
-          undoState: 'undone',
-          undoResult: resultText
-        })
-        break
-      }
-      case 'pong': {
-        const sent = data.ts as number
-        if (sent) {
-          useTorchStore.getState().setWsLatencyMs(Date.now() - sent)
-        }
-        break
-      }
-    }
-  }, [])
+    },
+    []
+  )
 
   useEffect(() => {
     const isFirstConsumer = sharedConsumerCount === 0
@@ -336,11 +357,16 @@ export function useWebSocket(): {
     handleMessageRef.current = handleMessage
   }, [handleMessage])
 
-  const sendCompanionCommand = useCallback((command: string, screenshots: unknown[], audio?: unknown): void => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'companion_command', content: command, screenshots, audio }))
-    }
-  }, [])
+  const sendCompanionCommand = useCallback(
+    (command: string, screenshots: unknown[], audio?: unknown): void => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ type: 'companion_command', content: command, screenshots, audio })
+        )
+      }
+    },
+    []
+  )
 
   const sendApproval = useCallback(
     (
@@ -361,10 +387,7 @@ export function useWebSocket(): {
   )
 
   const sendStopCommand = useCallback((): void => {
-    if (
-      sharedTaskOwnerSocket === wsRef.current &&
-      wsRef.current?.readyState === WebSocket.OPEN
-    ) {
+    if (sharedTaskOwnerSocket === wsRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'stop_task' }))
       return
     }
@@ -372,10 +395,7 @@ export function useWebSocket(): {
   }, [])
 
   const sendClarification = useCallback((taskId: string, response: string): boolean => {
-    if (
-      sharedTaskOwnerSocket === wsRef.current &&
-      wsRef.current?.readyState === WebSocket.OPEN
-    ) {
+    if (sharedTaskOwnerSocket === wsRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'clarification_response', taskId, response }))
       return true
     }

@@ -6,35 +6,13 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 
 import { CmdArrowUp } from '../icons/cleanIcons'
 
-import { API_BASE } from '../../config/api'
+import { API_BASE, torchFetch } from '../../config/api'
+
+import { FALLBACK_MODELS } from '../../config/models'
 
 interface CommandInputProps {
   onSend: (command: string) => void
 }
-
-const FALLBACK_MODELS = [
-  { id: 'auto', label: 'Auto' },
-
-  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-
-  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
-
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-
-  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
-  ,
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-
-  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
-
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' }
-]
 
 export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
   const [text, setText] = useState('')
@@ -60,7 +38,7 @@ export function CommandInput({ onSend }: CommandInputProps): JSX.Element {
   useEffect(() => {
     if (demoMode) return
 
-    fetch(`${API_BASE}/api/models`)
+    torchFetch(`${API_BASE}/api/models`)
       .then((r) => r.json())
 
       .then((data) => {

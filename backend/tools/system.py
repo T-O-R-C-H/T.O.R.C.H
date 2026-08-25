@@ -48,11 +48,17 @@ def open_app(name: str) -> str:
             subprocess.Popen([name])
             return f"Opened {name}."
     except Exception as e:
+        logger.warning(f"Primary launch for '{name}' failed ({e}); trying shell-free fallback")
         try:
+            # `name` comes from a model-generated plan, so it never reaches a
+            # shell: os.startfile hands it to the OS launcher directly, and the
+            # other platforms use an argv list rather than a command string.
             if system == "Windows":
-                subprocess.Popen(f'start "" "{name}"', shell=True)
+                os.startfile(name)  # type: ignore[attr-defined]
+            elif system == "Darwin":
+                subprocess.Popen(["open", name])
             else:
-                subprocess.Popen(name, shell=True)
+                subprocess.Popen(["xdg-open", name])
             return f"Opened {name}."
         except Exception as e2:
             logger.error(f"Failed to open app: {e2}")

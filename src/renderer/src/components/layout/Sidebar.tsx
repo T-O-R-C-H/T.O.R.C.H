@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { useTorchStore, type Skill } from '../../store/torchStore'
-import { API_BASE } from '../../config/api'
+import { API_BASE, torchFetch } from '../../config/api'
 import { TorchLogo } from '../ui/TorchLogo'
 import { runShortcut } from '../../utils/runShortcut'
 import {
@@ -130,7 +130,7 @@ export function Sidebar(): JSX.Element {
       return
     }
     let cancelled = false
-    fetch(`${API_BASE}/api/settings`)
+    torchFetch(`${API_BASE}/api/settings`)
       .then((r) => r.json())
       .then((data) => {
         if (!cancelled) setAccountTier(data.gemini_configured ? 'Pro' : 'Free')
@@ -203,7 +203,7 @@ export function Sidebar(): JSX.Element {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/skills`, {
+      const response = await torchFetch(`${API_BASE}/api/skills`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 import type { EmailSummary, InboxCache } from '../types/email'
 
 // ─── TYPES ───
@@ -303,7 +303,7 @@ export const useTorchStore = create<TorchState>((set) => ({
       return
     }
     try {
-      const response = await fetch(`${API_BASE}/api/skills`)
+      const response = await torchFetch(`${API_BASE}/api/skills`)
       if (response.ok) {
         const data = await response.json()
         set({ skills: data })

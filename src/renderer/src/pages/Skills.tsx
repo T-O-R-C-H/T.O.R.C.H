@@ -8,7 +8,7 @@ import {
   IconAdd as Add
 } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 import { runShortcut } from '../utils/runShortcut'
 
 function getErrorMessage(err: unknown): string {
@@ -99,7 +99,7 @@ export function Skills(): JSX.Element {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/skills/${skillId}`, {
+      const response = await torchFetch(`${API_BASE}/api/skills/${skillId}`, {
         method: 'DELETE'
       })
       if (!response.ok) {
@@ -135,7 +135,7 @@ export function Skills(): JSX.Element {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/skills`, {
+      const response = await torchFetch(`${API_BASE}/api/skills`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

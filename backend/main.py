@@ -11,7 +11,7 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -29,6 +29,7 @@ class SkillCreateRequest(BaseModel):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import settings
+from auth import verify_token, verify_ws_token
 from websocket import manager as ws_manager
 from agent.brain import plan_command
 from agent.planner import validate_plan, create_response_message
@@ -112,13 +113,17 @@ app = FastAPI(
     description="Thinking, Observing, Reasoning, Creating & Handling",
     version="1.0.0",
     lifespan=lifespan,
+    # Every REST route requires the session token. The WebSocket route is not
+    # covered by this and checks the token itself before accepting.
+    dependencies=[Depends(verify_token)],
 )
 
-# CORS
+# CORS. Credentials stay off: auth rides on the Authorization header, not
+# cookies, and "*" origins with credentials enabled is invalid per spec.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -157,23 +162,26 @@ async def system_check():
 
 @app.get("/api/models")
 async def list_models():
-    """Available AI models for the command input picker."""
-    return {
-        "models": [
-            {"id": "auto", "label": "Auto"},
-            {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
-            {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
-            {"id": "gemini-3.5-flash", "label": "Gemini 3.5 Flash"},
-            {"id": "gemini-3.6-flash", "label": "Gemini 3.6 Flash"},
-            {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
-            {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
-            {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
-            {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
-            {"id": "claude-opus-4-8", "label": "Claude Opus 4.8"},
-            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5"},
-        ],
-        "current": settings.gemini_model,
-    }
+    """
+    Speed/depth choices for the command input picker.
+
+    Users never see model or vendor names, so these are labelled by what they
+    do. The ids stay real model identifiers because get_provider() routes on
+    them; only whichever provider is actually configured is offered.
+    """
+    tiers = [{"id": "auto", "label": "Automatic"}]
+
+    if settings.gemini_api_key:
+        tiers.append({"id": "gemini-2.5-flash", "label": "Faster"})
+        tiers.append({"id": "gemini-2.5-pro", "label": "More thorough"})
+    elif settings.deepseek_api_key:
+        tiers.append({"id": "deepseek-v4-flash", "label": "Faster"})
+        tiers.append({"id": "deepseek-v4-pro", "label": "More thorough"})
+    elif settings.anthropic_api_key:
+        tiers.append({"id": "claude-haiku-4-5", "label": "Faster"})
+        tiers.append({"id": "claude-sonnet-4-6", "label": "More thorough"})
+
+    return {"models": tiers, "current": "auto"}
 
 
 @app.post("/api/email/test")
@@ -640,6 +648,13 @@ async def synthesize_companion_voice(data: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint for real-time communication."""
+    # Reject before accept() so an unauthorized client never reaches the
+    # message loop that can issue commands.
+    if not verify_ws_token(websocket):
+        logger.warning("Rejected WebSocket connection with missing or invalid token")
+        await websocket.close(code=4401)
+        return
+
     client_id = str(uuid.uuid4())[:8]
     await ws_manager.connect(websocket, client_id)
 
@@ -765,6 +780,13 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         audio = message.get("audio")
         logger.info(f"Visual companion command: {content[:80]} ({len(screenshots)} screens)")
         asyncio.create_task(process_companion_command(content, screenshots, client_id, audio))
+
+    elif msg_type == "ping":
+        # Latency probe. Echo the client's timestamp back so it can measure the
+        # round trip; the frontend sends one of these every 10 seconds.
+        await ws_manager.send_message(
+            {"type": "pong", "ts": message.get("ts")}, client_id
+        )
 
     else:
         logger.warning(f"Unknown message type: {msg_type}")
@@ -900,11 +922,25 @@ async def process_command(
         # Check if execution failed
         failed_steps = [s for s in executed_steps if s["status"] == "failed"]
         if failed_steps:
+            # Say what went wrong in the chat. Without this the task simply
+            # stops and the only trace is the inline step card, which reads as
+            # the agent having ignored the request.
+            # Step errors are already plain language: the executor runs them
+            # through translate_error() before reporting a step as failed.
+            first_error = (failed_steps[0].get("error") or "").strip()
+            if first_error:
+                recap_sentence = f"I couldn't finish that. {first_error}"
+            else:
+                failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
+                recap_sentence = (
+                    f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
+                )
+
             # Save exchange to context
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
-                reply_summary="Task execution failed.",
+                reply_summary=recap_sentence,
                 step_results=executed_steps
             )
             # Log failure in database for accurate metrics
@@ -915,6 +951,14 @@ async def process_command(
                 await ws_manager.send_metrics(metrics_data, client_id)
             except Exception as db_err:
                 logger.warning(f"Failed to log task failure: {db_err}")
+
+            await ws_manager.send_agent_response({
+                "id": str(uuid.uuid4()),
+                "role": "torch",
+                "content": recap_sentence,
+                "timestamp": __import__("time").time() * 1000,
+                "steps": [],
+            }, client_id)
             await ws_manager.send_status("idle", client_id)
             return
 
@@ -929,20 +973,11 @@ async def process_command(
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
 
-        failed_steps = [s for s in executed_steps if s["status"] == "failed"]
+        # Failures returned above, so everything from here on succeeded.
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
         recap_emails = None
 
-        if failed_steps:
-            failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
-            first_error = (failed_steps[0].get("error") or "").strip()
-            if first_error:
-                recap_sentence = f"I couldn't finish that. {first_error}"
-            else:
-                recap_sentence = (
-                    f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
-                )
-        elif completed_steps:
+        if completed_steps:
             tools_used = {s["tool"] for s in completed_steps}
             last_result = (completed_steps[-1].get("result") or "").strip()
             if "send_email" in tools_used:
@@ -1168,7 +1203,7 @@ if __name__ == "__main__":
     import uvicorn
     import socket
 
-    def find_available_port(start_port: int, host: str = "0.0.0.0", max_attempts: int = 10) -> int:
+    def find_available_port(start_port: int, host: str = "127.0.0.1", max_attempts: int = 10) -> int:
         for p in range(start_port, start_port + max_attempts):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

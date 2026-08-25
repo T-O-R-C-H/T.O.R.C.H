@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
 import os
+import secrets
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,8 +57,13 @@ class TorchSettings(BaseSettings):
     file_index_ttl_seconds: int = Field(default=600, alias="TORCH_FILE_INDEX_TTL_SECONDS")
 
     # Server
-    host: str = Field(default="0.0.0.0", alias="TORCH_HOST")
+    # Loopback only: TORCH drives the local machine, so exposing it on other
+    # interfaces would let anything on the network issue commands.
+    host: str = Field(default="127.0.0.1", alias="TORCH_HOST")
     port: int = Field(default=8000, alias="TORCH_PORT")
+
+    # Session auth — Electron generates this at launch and passes it in.
+    auth_token: str = Field(default="", alias="TORCH_AUTH_TOKEN")
 
     # Paths
     data_dir: str = Field(default="./data", alias="TORCH_DATA_DIR")
@@ -75,4 +81,15 @@ class TorchSettings(BaseSettings):
 
 
 # Singleton
-settings = TorchSettings() 
+settings = TorchSettings()
+
+# Running the backend directly (outside Electron) leaves no token configured.
+# Generate one rather than leaving the agent open, and print it so a developer
+# working against the API by hand can still authenticate.
+if not settings.auth_token:
+    settings.auth_token = secrets.token_hex(32)
+    print(
+        f"[TORCH] No TORCH_AUTH_TOKEN provided - generated a session token for this run:\n"
+        f"        {settings.auth_token}",
+        flush=True,
+    )
