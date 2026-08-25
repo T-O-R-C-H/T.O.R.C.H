@@ -79,6 +79,13 @@ def translate_error(error_str: str) -> dict:
             "what_to_do": "Please double-check your email credentials and App Password in Settings."
         }
 
+    # 5b. Web search refused (rate limiting / bot challenge)
+    if "search is temporarily unavailable" in err:
+        return {
+            "what_happened": "Web search isn't responding at the moment.",
+            "what_to_do": "Give it a minute and try again."
+        }
+
     # 6. Unknown tool / capability error
     if any(marker in err for marker in ["unknown tool", "tool not registered", "not found in"]):
         return {
