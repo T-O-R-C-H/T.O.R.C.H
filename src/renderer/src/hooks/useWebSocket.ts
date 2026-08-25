@@ -10,6 +10,28 @@ let sharedPingInterval: ReturnType<typeof setInterval> | undefined
 let sharedConsumerCount = 0
 let sharedTaskOwnerSocket: WebSocket | null = null
 
+/**
+ * The live socket, or null if there isn't one right now.
+ *
+ * Every send goes through this rather than a component's own ref: a reconnect
+ * replaces sharedSocket, and hook instances that didn't run that reconnect
+ * would otherwise keep sending into the closed socket they captured.
+ */
+function openSocket(): WebSocket | null {
+  return sharedSocket?.readyState === WebSocket.OPEN ? sharedSocket : null
+}
+
+/** Wait for the socket to come up, for cold starts where the backend is still booting. */
+async function awaitOpenSocket(timeoutMs = 20000): Promise<WebSocket | null> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const socket = openSocket()
+    if (socket) return socket
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  return openSocket()
+}
+
 function resetInterruptedTaskUi(): void {
   const store = useTorchStore.getState()
   if (store.agentStatus === 'idle') return
@@ -63,9 +85,9 @@ export function useWebSocket(): {
         wsRef.current = sharedSocket
         return
       }
-      void openSocket()
+      void openConnection()
 
-      async function openSocket(): Promise<void> {
+      async function openConnection(): Promise<void> {
         try {
           setWsPhase('connecting')
           // The backend rejects the handshake without a session token.
@@ -346,11 +368,37 @@ export function useWebSocket(): {
   }, [connect])
 
   const sendCommand = useCallback((command: string): void => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const model = useTorchStore.getState().selectedModel
-      wsRef.current.send(JSON.stringify({ type: 'command', content: command, model }))
-      sharedTaskOwnerSocket = wsRef.current
+    const model = useTorchStore.getState().selectedModel
+    const payload = JSON.stringify({ type: 'command', content: command, model })
+
+    const socket = openSocket()
+    if (socket) {
+      socket.send(payload)
+      sharedTaskOwnerSocket = socket
+      return
     }
+
+    // The caller has already shown the command and set the agent to work, so
+    // dropping it here would leave the UI spinning until the watchdog fires.
+    // Wait for the connection instead, and say something if it never arrives.
+    void (async () => {
+      const reconnected = await awaitOpenSocket()
+      if (reconnected) {
+        reconnected.send(payload)
+        sharedTaskOwnerSocket = reconnected
+        return
+      }
+      const store = useTorchStore.getState()
+      store.addMessage({
+        id: crypto.randomUUID(),
+        role: 'torch',
+        content:
+          "I couldn't reach TORCH just then. It may still be starting up — try that again in a moment.",
+        timestamp: Date.now(),
+        steps: []
+      })
+      store.setAgentStatus('idle')
+    })()
   }, [])
 
   useEffect(() => {
@@ -359,11 +407,9 @@ export function useWebSocket(): {
 
   const sendCompanionCommand = useCallback(
     (command: string, screenshots: unknown[], audio?: unknown): void => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({ type: 'companion_command', content: command, screenshots, audio })
-        )
-      }
+      openSocket()?.send(
+        JSON.stringify({ type: 'companion_command', content: command, screenshots, audio })
+      )
     },
     []
   )
@@ -375,28 +421,29 @@ export function useWebSocket(): {
       action: 'approve' | 'edit' | 'cancel',
       editedData?: unknown
     ): boolean => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({ type: 'hitl_response', messageId, stepId, action, editedData })
-        )
-        return true
-      }
-      return false
+      const socket = openSocket()
+      if (!socket) return false
+      socket.send(JSON.stringify({ type: 'hitl_response', messageId, stepId, action, editedData }))
+      return true
     },
     []
   )
 
   const sendStopCommand = useCallback((): void => {
-    if (sharedTaskOwnerSocket === wsRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'stop_task' }))
+    // Only the window that started the task can stop it directly; others relay
+    // the request through the main process.
+    const socket = openSocket()
+    if (socket && sharedTaskOwnerSocket === socket) {
+      socket.send(JSON.stringify({ type: 'stop_task' }))
       return
     }
     window.torchAPI?.publishTaskCommand({ type: 'stop_task' })
   }, [])
 
   const sendClarification = useCallback((taskId: string, response: string): boolean => {
-    if (sharedTaskOwnerSocket === wsRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'clarification_response', taskId, response }))
+    const socket = openSocket()
+    if (socket && sharedTaskOwnerSocket === socket) {
+      socket.send(JSON.stringify({ type: 'clarification_response', taskId, response }))
       return true
     }
     if (window.torchAPI) {
@@ -407,9 +454,7 @@ export function useWebSocket(): {
   }, [])
 
   const sendUndoCommand = useCallback((messageId: string): void => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'undo_task', messageId }))
-    }
+    openSocket()?.send(JSON.stringify({ type: 'undo_task', messageId }))
   }, [])
 
   const reconnect = useCallback((): void => {
