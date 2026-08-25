@@ -46,3 +46,7 @@ data/
 *.exe
 *.dmg
 *.AppImage
+
+# Claude Code local permissions (machine-specific, may grant broad tool access)
+.claude/settings.json
+.claude/settings.local.json
