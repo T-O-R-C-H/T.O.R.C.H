@@ -162,7 +162,30 @@ export function Onboarding(): JSX.Element {
         localStorage.setItem('torch_user_name', userName.trim())
         goTo('permissions', 1)
       }
-    } else if (currentStep === 'permissions') goTo('first_task', 1)
+    } else if (currentStep === 'permissions') {
+      void savePermissions()
+      goTo('first_task', 1)
+    }
+  }
+
+  /**
+   * Persist the capability choices. The planner reads these and refuses tools
+   * whose capability is switched off, so the toggles decide real behaviour.
+   */
+  const savePermissions = async (): Promise<void> => {
+    try {
+      await torchFetch(`${API_BASE}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allow_files: allowFiles,
+          allow_apps: allowApps,
+          allow_email: allowEmail
+        })
+      })
+    } catch {
+      // Startup must not be blocked by this; Settings can set it later.
+    }
   }
 
   const handleBack = (): void => {

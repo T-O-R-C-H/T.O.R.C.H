@@ -10,14 +10,24 @@ interface PromptInputProps {
   onEnhance?: (prompt: string, signal?: AbortSignal) => Promise<string>
 }
 
-const ENHANCED =
-  'Be clear and specific: state the goal, add the relevant context and constraints, define the expected output format and tone, and note any assumptions. Ask a clarifying question first if key details are missing.'
-
-async function mockEnhance(prompt: string, signal?: AbortSignal): Promise<string> {
-  void prompt
-  await new Promise((r) => setTimeout(r, 2200))
-  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-  return ENHANCED
+/**
+ * Rewrite the prompt using the configured model.
+ *
+ * The result replaces what the user typed, so this must never fall back to
+ * generic text: if the rewrite fails, the original has to survive.
+ */
+async function enhanceViaBackend(prompt: string, signal?: AbortSignal): Promise<string> {
+  const response = await torchFetch(`${API_BASE}/api/prompt/enhance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: prompt }),
+    signal
+  })
+  if (!response.ok) throw new Error('enhance-failed')
+  const data = (await response.json()) as { text?: string }
+  const improved = (data.text || '').trim()
+  if (!improved) throw new Error('enhance-empty')
+  return improved
 }
 
 type Phase = 'idle' | 'enhancing' | 'enhanced'
@@ -155,11 +165,15 @@ function ModelGlyph({ id, size = 14 }: { id: string; size?: number }): JSX.Eleme
   return <SparklesIcon />
 }
 
-export function PromptInput({ onSend, onEnhance = mockEnhance }: PromptInputProps): JSX.Element {
+export function PromptInput({
+  onSend,
+  onEnhance = enhanceViaBackend
+}: PromptInputProps): JSX.Element {
   const [text, setText] = useState('')
   const [justSent, setJustSent] = useState(false)
   const [models, setModels] = useState(FALLBACK_MODELS)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [enhanceError, setEnhanceError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -227,12 +241,17 @@ export function PromptInput({ onSend, onEnhance = mockEnhance }: PromptInputProp
     const controller = new AbortController()
     abortRef.current = controller
     setPhase('enhancing')
+    setEnhanceError(null)
     try {
       const improved = await onEnhance(text, controller.signal)
       setText(improved)
       setPhase('enhanced')
     } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') setPhase('idle')
+      if ((err as Error)?.name !== 'AbortError') {
+        // The user's text is deliberately left untouched.
+        setPhase('idle')
+        setEnhanceError("Couldn't improve that just now — your text is unchanged.")
+      }
     }
   }
 
@@ -353,10 +372,17 @@ export function PromptInput({ onSend, onEnhance = mockEnhance }: PromptInputProp
 
         <div className={styles.meta}>
           <span className={styles.metaItem}>
-            {demoMode ? 'Demo mode' : wsConnected ? 'Ready' : 'Reconnecting'}
+            {enhanceError
+              ? enhanceError
+              : demoMode
+                ? 'Demo mode'
+                : wsConnected
+                  ? 'Ready'
+                  : 'Reconnecting'}
           </span>
           <span className={styles.metaItem}>
-            {selectedModel === 'auto' ? 'Auto model' : selectedModel}
+            {/* Show the speed/depth label, never the underlying model id. */}
+            {models.find((m) => m.id === selectedModel)?.label ?? 'Automatic'}
           </span>
           <span className={styles.metaItem}>Enter to send</span>
         </div>

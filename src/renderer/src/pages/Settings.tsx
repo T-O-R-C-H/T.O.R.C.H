@@ -91,19 +91,15 @@ export function Settings(): JSX.Element {
   const [wakeWordSensitivity, setWakeWordSensitivity] = useState(50)
   const [screenWatchInterval, setScreenWatchInterval] = useState('30')
   const [voiceModel, setVoiceModel] = useState('base')
+
+  // Capability permissions. The planner enforces these server-side.
+  const [allowFiles, setAllowFiles] = useState(true)
+  const [allowApps, setAllowApps] = useState(true)
+  const [allowEmail, setAllowEmail] = useState(true)
   const [theme, setTheme] = useState('light')
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
   const [playwrightInstalled, setPlaywrightInstalled] = useState<boolean | null>(null)
-
-  // Local state for social connection status (persisted via localStorage)
-  const [socialConnected, setSocialConnected] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('torch_social_connected') || '{}')
-    } catch {
-      return {}
-    }
-  })
 
   useEffect(() => {
     const loadSystemCheck = (retries = 5): void => {
@@ -135,6 +131,9 @@ export function Settings(): JSX.Element {
           setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
           setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
           setVoiceModel(data.whisper_model_size || 'base')
+          setAllowFiles(data.allow_files !== false)
+          setAllowApps(data.allow_apps !== false)
+          setAllowEmail(data.allow_email !== false)
         })
         .catch(() => {
           if (retries > 0) {
@@ -147,11 +146,10 @@ export function Settings(): JSX.Element {
     loadSettings()
   }, [])
 
-  const handleSocialLogin = (key: string, url: string): void => {
+  // Opens the site in the user's own browser. TORCH has no visibility into
+  // that session, so it cannot claim the account is connected.
+  const handleSocialLogin = (_key: string, url: string): void => {
     window.torchAPI?.openExternal(url)
-    const updated = { ...socialConnected, [key]: true }
-    setSocialConnected(updated)
-    localStorage.setItem('torch_social_connected', JSON.stringify(updated))
   }
 
   const handleTestEmail = async (): Promise<void> => {
@@ -179,7 +177,10 @@ export function Settings(): JSX.Element {
         gmail_address: gmailAddress,
         wake_word_sensitivity: wakeWordSensitivity / 100,
         screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
-        whisper_model_size: voiceModel
+        whisper_model_size: voiceModel,
+        allow_files: allowFiles,
+        allow_apps: allowApps,
+        allow_email: allowEmail
       }
 
       if (geminiKey && geminiKey !== '********') {
@@ -324,37 +325,27 @@ export function Settings(): JSX.Element {
                   <span className="t-label">CONNECTED ACCOUNTS</span>
                 </div>
                 <p className="text-[12px] text-[var(--color-torch-text-secondary)] mb-5 leading-relaxed">
-                  TORCH uses browser automation to post — no API keys needed. Just make sure you are
-                  logged into these platforms in your browser.
+                  TORCH can open these sites with a message ready for you, but it cannot post or
+                  send on your behalf — you publish it yourself.
                 </p>
 
-                {SOCIAL_PLATFORMS.map((platform) => {
-                  const connected = socialConnected[platform.key] || false
-                  return (
-                    <div key={platform.key} className="setting-row">
-                      <div>
-                        <div className="setting-row__label">{platform.name}</div>
-                        <div className="setting-row__desc font-mono">Login-based access</div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleSocialLogin(platform.key, platform.url)}
-                          className="btn-secondary text-[10px] px-3 py-1.5"
-                        >
-                          Open & login
-                        </button>
-                        <div className="pill-count flex items-center gap-1.5">
-                          <span
-                            className={`topbar-dot ${connected ? 'topbar-dot--live' : ''}`}
-                            style={{ width: 6, height: 6 }}
-                          />
-                          {connected ? 'connected' : 'not verified'}
-                        </div>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <div key={platform.key} className="setting-row">
+                    <div>
+                      <div className="setting-row__label">{platform.name}</div>
+                      <div className="setting-row__desc font-mono">
+                        Opens in your browser
                       </div>
                     </div>
-                  )
-                })}
+                    <button
+                      type="button"
+                      onClick={() => handleSocialLogin(platform.key, platform.url)}
+                      className="btn-secondary text-[10px] px-3 py-1.5"
+                    >
+                      Open site
+                    </button>
+                  </div>
+                ))}
 
                 {/* Playwright status */}
                 <div className="mt-4 p-4 card">
@@ -463,6 +454,27 @@ export function Settings(): JSX.Element {
                     value={theme}
                     onChange={setTheme}
                   />
+                </SettingRow>
+              </div>
+
+              {/* Permissions — enforced by the planner, not cosmetic */}
+              <div>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <Power size={13} className="text-[var(--color-torch-text-tertiary)]" />
+                  <span className="t-label">WHAT TORCH CAN DO</span>
+                </div>
+                <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
+                  Switching one off stops TORCH using those tools at all — it will say so instead
+                  of trying.
+                </p>
+                <SettingRow label="Find and open your files">
+                  <ToggleSwitch checked={allowFiles} onChange={() => setAllowFiles(!allowFiles)} />
+                </SettingRow>
+                <SettingRow label="Open apps and run commands">
+                  <ToggleSwitch checked={allowApps} onChange={() => setAllowApps(!allowApps)} />
+                </SettingRow>
+                <SettingRow label="Read and send your email">
+                  <ToggleSwitch checked={allowEmail} onChange={() => setAllowEmail(!allowEmail)} />
                 </SettingRow>
               </div>
 

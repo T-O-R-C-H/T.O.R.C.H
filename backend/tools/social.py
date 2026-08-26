@@ -1,7 +1,13 @@
 """
 TORCH Tools — Social Media & Messaging
-Automates posting and messaging across platforms via Playwright.
-All actions require HITL approval.
+
+These tools open the platform in a browser with the text prepared. They do NOT
+publish or send: every site here sits behind a login and anti-automation
+checks, and there is no reliable posting automation.
+
+Say so plainly in every message they return. Claiming a post went out when it
+did not is worse than not offering the feature, and the user has already
+approved the step by the time this runs.
 """
 
 import logging
@@ -16,9 +22,9 @@ async def post_social(
     image: Optional[str] = None,
 ) -> str:
     """
-    Post content to a social media platform via browser automation.
-    Always requires HITL approval.
+    Open a social platform with the message ready to paste.
 
+    This does not publish anything - the user posts it themselves.
     Supported platforms: twitter/x, linkedin, facebook, instagram, reddit
     """
     platform = platform.lower().strip()
@@ -45,19 +51,16 @@ async def post_social(
             await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         except PlaywrightTimeout:
             return (
-                f"Timeout while loading {platform}. This might be due to a slow connection. "
-                f"The page has been opened — please check if you need to log in manually."
+                f"{platform.title()} is slow to load. I've opened it, but you may "
+                f"need to wait or sign in. Nothing has been posted."
             )
 
-        # Platform-specific automation
-        # Note: Each platform requires user to be logged in already
-        logger.info(f"Navigated to {platform} for posting")
+        logger.info(f"Opened {platform} for the user to post manually")
 
         return (
-            f"Successfully opened {platform} for you. "
-            f"Ready to post: \"{message[:80]}...\" "
-            f"\n\nIMPORTANT: If you see a login screen, please log in first. "
-            f"TORCH will wait for you to complete the post or provide further instructions."
+            f"I've opened {platform.title()} for you. I can't post on your behalf, "
+            f"so you'll need to publish it yourself.\n\n"
+            f"Here's the message to paste:\n{message}"
         )
 
     except Exception as e:
@@ -74,9 +77,9 @@ async def send_message(
     message: str,
 ) -> str:
     """
-    Send a message on a messaging platform via browser automation.
-    Always requires HITL approval.
+    Open a messaging app with the message ready to paste.
 
+    This does not send anything - the user sends it themselves.
     Supported: whatsapp, telegram, slack, discord
     """
     platform = platform.lower().strip()
@@ -102,16 +105,16 @@ async def send_message(
             await page.goto(url, wait_until="domcontentloaded", timeout=45000)
         except PlaywrightTimeout:
             return (
-                f"Opened {platform}, but it's taking a while to load. "
-                f"Please check the browser window — you might need to scan a QR code or log in."
+                f"{platform.title()} is slow to load. I've opened it, but you may need "
+                f"to sign in or scan a QR code. Nothing has been sent."
             )
 
-        logger.info(f"Navigated to {platform} messaging")
+        logger.info(f"Opened {platform} for the user to send manually")
 
         return (
-            f"Opened {platform} for messaging. "
-            f"Contact: {contact}\nMessage: {message[:100]}... "
-            f"\n\nAction Required: Please ensure you are logged in and selecting the correct contact."
+            f"I've opened {platform.title()} for you. I can't send messages on your "
+            f"behalf, so you'll need to pick {contact} and send it yourself.\n\n"
+            f"Here's the message to paste:\n{message}"
         )
 
     except Exception as e:

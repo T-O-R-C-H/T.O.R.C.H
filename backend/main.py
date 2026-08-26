@@ -366,6 +366,9 @@ async def get_settings():
         "whisper_model_size": settings.whisper_model_size,
         "screen_watch_enabled": settings.screen_watch_enabled,
         "screen_watch_interval": settings.screen_watch_interval,
+        "allow_files": settings.allow_files,
+        "allow_apps": settings.allow_apps,
+        "allow_email": settings.allow_email,
     }
 
 
@@ -384,12 +387,18 @@ async def update_settings(data: dict):
         "deepseek_api_key",
         "gmail_app_password",
     }
+    # Fields typed as bool must not be assigned raw strings: "false" is a
+    # truthy string, which would quietly leave a disabled permission enabled.
+    boolean_fields = {"allow_files", "allow_apps", "allow_email", "screen_watch_enabled"}
+
     filtered = {}
     for key, value in data.items():
         if key in secret_fields and (value is None or str(value).strip() == ""):
             continue
         if key == "gmail_app_password" and isinstance(value, str):
             value = "".join(value.split())
+        if key in boolean_fields and not isinstance(value, bool):
+            value = str(value).strip().lower() in {"1", "true", "yes", "on"}
         filtered[key] = value
         if hasattr(settings, key):
             setattr(settings, key, value)
@@ -424,6 +433,9 @@ async def update_settings(data: dict):
         "whisper_model_size": "WHISPER_MODEL_SIZE",
         "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
         "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
+        "allow_files": "TORCH_ALLOW_FILES",
+        "allow_apps": "TORCH_ALLOW_APPS",
+        "allow_email": "TORCH_ALLOW_EMAIL",
     }
     
     for key, value in filtered.items():
@@ -640,6 +652,47 @@ async def synthesize_companion_voice(data: dict):
         logger.warning(f"Neural voice unavailable: {error}")
         raise HTTPException(status_code=503, detail="Neural voice unavailable") from error
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.post("/api/prompt/enhance")
+async def enhance_prompt(data: dict):
+    """
+    Rewrite the user's command so the agent has more to work with.
+
+    Returns the original text unchanged rather than inventing something when no
+    provider is configured — the caller replaces the user's input with whatever
+    comes back, so a canned answer would silently discard what they typed.
+    """
+    from agent.providers import get_provider
+
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    provider = get_provider("auto")
+    if provider is None:
+        raise HTTPException(status_code=503, detail="No AI provider is configured")
+
+    instruction = (
+        "Rewrite the following instruction for a computer assistant so it is "
+        "specific and unambiguous. Keep the user's original intent and any names, "
+        "paths or details exactly as given. Do not invent new requirements, do not "
+        "add commentary, and do not answer the request. Reply with the rewritten "
+        "instruction only.\n\n"
+        f"Instruction: {text}"
+    )
+
+    try:
+        improved = await asyncio.wait_for(provider.generate_text(instruction), timeout=20)
+    except Exception as error:
+        logger.warning(f"Prompt enhance failed: {error}")
+        raise HTTPException(status_code=503, detail="Could not improve that just now") from error
+
+    improved = str(improved or "").strip().strip('"')
+    if not improved:
+        raise HTTPException(status_code=503, detail="Could not improve that just now")
+
+    return {"text": improved}
 
 
 # ─── WEBSOCKET ───

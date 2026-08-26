@@ -29,8 +29,8 @@ AVAILABLE_TOOLS = [
     {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
     {"name": "vision_control", "description": "Visually control any application by clicking, typing, scrolling, and navigating", "params": ["task"]},
-    {"name": "post_social", "description": "Post content to a social media platform", "params": ["platform", "message", "image"], "hitl": True},
-    {"name": "send_message", "description": "Send a message on a messaging platform", "params": ["platform", "contact", "message"], "hitl": True},
+    {"name": "post_social", "description": "Open a social media site with a message ready for the user to post themselves. Does NOT publish anything.", "params": ["platform", "message", "image"], "hitl": True},
+    {"name": "send_message", "description": "Open a messaging app with a message ready for the user to send themselves. Does NOT send anything.", "params": ["platform", "contact", "message"], "hitl": True},
     {"name": "run_terminal", "description": "Run a terminal/command-line command", "params": ["command"]},
     {"name": "move_file", "description": "Move a file from one location to another", "params": ["src", "dst"]},
     {"name": "delete_file", "description": "Delete a file (irreversible)", "params": ["filepath"], "hitl": True},
@@ -66,8 +66,8 @@ Available tools:
 ━━━ CRITICAL APPROVAL RULES ━━━
 requires_approval: true MUST ONLY be set for these exact 6 tools:
   - send_email    (sends a real email — cannot be undone)
-  - post_social   (posts publicly on social media — cannot be undone)
-  - send_message  (sends a message to a real person — cannot be undone)
+  - post_social   (opens a social site with the message ready; the user posts it)
+  - send_message  (opens a messaging app with the message ready; the user sends it)
   - delete_file   (permanently deletes a file — cannot be undone)
   - download_file (downloads a file from internet)
   - run_terminal  (runs a system command)

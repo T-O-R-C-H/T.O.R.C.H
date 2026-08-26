@@ -31,6 +31,12 @@ class TorchSettings(BaseSettings):
     wake_word_sensitivity: float = Field(default=0.5, alias="WAKE_WORD_SENSITIVITY")
     whisper_model_size: str = Field(default="base", alias="WHISPER_MODEL_SIZE")
 
+    # Capability permissions chosen during onboarding and editable in Settings.
+    # planner.py refuses tools whose capability is switched off.
+    allow_files: bool = Field(default=True, alias="TORCH_ALLOW_FILES")
+    allow_apps: bool = Field(default=True, alias="TORCH_ALLOW_APPS")
+    allow_email: bool = Field(default=True, alias="TORCH_ALLOW_EMAIL")
+
     # Screen Watch
     screen_watch_enabled: bool = Field(default=False, alias="SCREEN_WATCH_ENABLED")
     screen_watch_interval: int = Field(default=30, alias="SCREEN_WATCH_INTERVAL")
