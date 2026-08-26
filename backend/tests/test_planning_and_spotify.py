@@ -33,6 +33,29 @@ EXPECTED_SPOTIFY_PLAN = [
 ]
 
 
+class LocalFirstTaskPlanningTests(unittest.IsolatedAsyncioTestCase):
+    async def test_home_folder_task_is_read_only_and_provider_independent(self):
+        command = (
+            "List the files and folders in my home folder\n\n"
+            "LIVE CONNECTION STATUS: no provider configured"
+        )
+        with patch("agent.brain.get_provider") as get_provider:
+            result = await plan_command(command)
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "tool": "list_directory",
+                    "label": "Checking your home folder",
+                    "args": {"path": "~"},
+                    "requires_approval": False,
+                }
+            ],
+        )
+        get_provider.assert_not_called()
+
+
 class SpotifyPlanningTests(unittest.IsolatedAsyncioTestCase):
     async def test_spotify_request_is_deterministic_before_provider_routing(self):
         with patch("agent.brain.get_provider") as get_provider:

@@ -74,6 +74,12 @@ export interface Skill {
   run_count: number
 }
 
+export interface TaskOutcome {
+  requestId: string
+  status: 'completed' | 'failed' | 'cancelled'
+  summary: string
+}
+
 export interface TorchState {
   // Agent
   agentStatus: AgentStatus
@@ -127,8 +133,8 @@ export interface TorchState {
   // Onboarding
   onboardingComplete: boolean
   setOnboardingComplete: (complete: boolean) => void
-  pendingLaunchCommand: string | null
-  setPendingLaunchCommand: (command: string | null) => void
+  lastTaskOutcome: TaskOutcome | null
+  setLastTaskOutcome: (outcome: TaskOutcome | null) => void
 
   // Current task count (for sidebar badge)
   activeTaskCount: number
@@ -246,8 +252,8 @@ export const useTorchStore = create<TorchState>((set) => ({
     localStorage.setItem('torch_onboarding_complete', String(complete))
     set({ onboardingComplete: complete })
   },
-  pendingLaunchCommand: null,
-  setPendingLaunchCommand: (command): void => set({ pendingLaunchCommand: command }),
+  lastTaskOutcome: null,
+  setLastTaskOutcome: (outcome): void => set({ lastTaskOutcome: outcome }),
 
   // Tasks
   activeTaskCount: 0,

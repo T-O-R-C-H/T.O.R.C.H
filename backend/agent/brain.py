@@ -76,6 +76,11 @@ _CAPABILITY_PREFIX = re.compile(
     r"^(?:what (?:can|could) you do|who are you|what are you)\b",
     re.IGNORECASE,
 )
+_LOCAL_HOME_LIST_REQUEST = re.compile(
+    r"^(?:please\s+)?(?:list|show)(?:\s+me)?\s+(?:the\s+)?files(?:\s+and\s+folders)?\s+"
+    r"in\s+my\s+home\s+folder[.!?]*$",
+    re.IGNORECASE,
+)
 _FULL_SENTENCE_PATTERNS = (
     re.compile(r"^(?:thanks|thank you|ty|thx|cheers)[.!]*$", re.IGNORECASE),
     re.compile(r"^(?:bye|goodbye|see you|cya|later)[.!]*$", re.IGNORECASE),
@@ -349,6 +354,18 @@ async def plan_command(
         List of step dictionaries with tool, label, args, requires_approval
     """
     try:
+        # The first-run task must work before an AI provider is configured. It
+        # is read-only, deterministic, and returns real data from this machine.
+        request_line = user_command.splitlines()[0].strip() if user_command else ""
+        if _LOCAL_HOME_LIST_REQUEST.fullmatch(request_line):
+            logger.info("Using deterministic local home-folder plan")
+            return [{
+                "tool": "list_directory",
+                "label": "Checking your home folder",
+                "args": {"path": "~"},
+                "requires_approval": False,
+            }]
+
         spotify_plan = _spotify_play_plan(user_command)
         if spotify_plan is not None:
             return spotify_plan

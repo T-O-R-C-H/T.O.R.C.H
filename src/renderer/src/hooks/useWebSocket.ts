@@ -55,7 +55,7 @@ function resetInterruptedTaskUi(): void {
 }
 
 export function useWebSocket(): {
-  sendCommand: (command: string) => void
+  sendCommand: (command: string, requestId?: string) => void
   sendApproval: (
     messageId: string,
     stepId: string,
@@ -299,6 +299,15 @@ export function useWebSocket(): {
           store.setMetrics(data.metrics as Record<string, number>)
           break
         }
+        case 'task_outcome': {
+          const outcome = data as unknown as {
+            requestId: string
+            status: 'completed' | 'failed' | 'cancelled'
+            summary: string
+          }
+          store.setLastTaskOutcome(outcome)
+          break
+        }
         case 'task_completed_metadata': {
           const { messageId, reversible } = data as { messageId: string; reversible: boolean }
           store.updateMessage(messageId, { reversible, undoState: 'available' })
@@ -367,9 +376,9 @@ export function useWebSocket(): {
     }
   }, [connect])
 
-  const sendCommand = useCallback((command: string): void => {
+  const sendCommand = useCallback((command: string, requestId: string = crypto.randomUUID()): void => {
     const model = useTorchStore.getState().selectedModel
-    const payload = JSON.stringify({ type: 'command', content: command, model })
+    const payload = JSON.stringify({ type: 'command', content: command, model, requestId })
 
     const socket = openSocket()
     if (socket) {
@@ -396,6 +405,11 @@ export function useWebSocket(): {
           "I couldn't reach TORCH just then. It may still be starting up — try that again in a moment.",
         timestamp: Date.now(),
         steps: []
+      })
+      store.setLastTaskOutcome({
+        requestId,
+        status: 'failed',
+        summary: "I couldn't reach TORCH. Check the connection and try again."
       })
       store.setAgentStatus('idle')
     })()

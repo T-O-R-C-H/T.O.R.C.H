@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ObArrowRight as ArrowRight,
@@ -10,11 +10,13 @@ import {
 import { TorchLogo } from '../components/ui/TorchLogo'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
+import { useWebSocket } from '../hooks/useWebSocket'
 
-const ONBOARDING_STEPS = ['welcome', 'name', 'permissions', 'first_task'] as const
+const ONBOARDING_STEPS = ['welcome', 'name', 'permissions', 'first_task', 'done'] as const
 type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
 
-const FIRST_TASK_COMMAND = 'Find and summarize my latest report'
+const LOCAL_FIRST_TASK = 'List the files and folders in my home folder'
+const RESTRICTED_FIRST_TASK = 'What can you do?'
 
 const STEP_TRANSITION = { duration: 0.32, ease: [0.22, 1, 0.36, 1] as const }
 
@@ -115,11 +117,21 @@ export function Onboarding(): JSX.Element {
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
   const [allowEmail, setAllowEmail] = useState(false)
+  const [permissionSaving, setPermissionSaving] = useState(false)
+  const [permissionError, setPermissionError] = useState<string | null>(null)
+  const [firstTaskRequestId, setFirstTaskRequestId] = useState<string | null>(null)
+  const [firstTaskRunning, setFirstTaskRunning] = useState(false)
+  const [firstTaskError, setFirstTaskError] = useState<string | null>(null)
+  const [firstTaskResult, setFirstTaskResult] = useState('')
 
   const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
   const setShowSettingsKeyBanner = useTorchStore((s) => s.setShowSettingsKeyBanner)
-  const setPendingLaunchCommand = useTorchStore((s) => s.setPendingLaunchCommand)
-  const setDemoMode = useTorchStore((s) => s.setDemoMode)
+  const wsConnected = useTorchStore((s) => s.wsConnected)
+  const lastTaskOutcome = useTorchStore((s) => s.lastTaskOutcome)
+  const setLastTaskOutcome = useTorchStore((s) => s.setLastTaskOutcome)
+  const { sendCommand } = useWebSocket()
+
+  const firstTaskCommand = allowFiles ? LOCAL_FIRST_TASK : RESTRICTED_FIRST_TASK
 
   const permissionState = {
     files: { value: allowFiles, set: setAllowFiles },
@@ -155,7 +167,7 @@ export function Onboarding(): JSX.Element {
     setCurrentStep(step)
   }
 
-  const handleNext = (): void => {
+  const handleNext = async (): Promise<void> => {
     if (currentStep === 'welcome') goTo('name', 1)
     else if (currentStep === 'name') {
       if (validateName(userName, true)) {
@@ -163,8 +175,11 @@ export function Onboarding(): JSX.Element {
         goTo('permissions', 1)
       }
     } else if (currentStep === 'permissions') {
-      void savePermissions()
-      goTo('first_task', 1)
+      setPermissionSaving(true)
+      setPermissionError(null)
+      const saved = await savePermissions()
+      setPermissionSaving(false)
+      if (saved) goTo('first_task', 1)
     }
   }
 
@@ -172,9 +187,9 @@ export function Onboarding(): JSX.Element {
    * Persist the capability choices. The planner reads these and refuses tools
    * whose capability is switched off, so the toggles decide real behaviour.
    */
-  const savePermissions = async (): Promise<void> => {
+  const savePermissions = async (): Promise<boolean> => {
     try {
-      await torchFetch(`${API_BASE}/api/settings`, {
+      const response = await torchFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,8 +198,13 @@ export function Onboarding(): JSX.Element {
           allow_email: allowEmail
         })
       })
+      if (!response.ok) throw new Error('Settings were not accepted')
+      return true
     } catch {
-      // Startup must not be blocked by this; Settings can set it later.
+      setPermissionError(
+        "TORCH couldn't save those permissions. Check the connection and try again."
+      )
+      return false
     }
   }
 
@@ -195,17 +215,50 @@ export function Onboarding(): JSX.Element {
     else if (currentStep === 'first_task') goTo('permissions', -1)
   }
 
-  const finishAndLaunch = async (): Promise<void> => {
+  const runFirstTask = async (): Promise<void> => {
+    if (!wsConnected || firstTaskRunning) {
+      setFirstTaskError('TORCH is still connecting. Wait a moment, then try again.')
+      return
+    }
+
+    setFirstTaskRunning(true)
+    setFirstTaskError(null)
+    setFirstTaskResult('')
+    setLastTaskOutcome(null)
+
     try {
-      await torchFetch(`${API_BASE}/api/settings`)
-      setShowSettingsKeyBanner(false)
+      const response = await torchFetch(`${API_BASE}/api/settings`)
+      if (!response.ok) throw new Error('Settings unavailable')
+      const data = await response.json()
+      setShowSettingsKeyBanner(
+        !(
+          data.gemini_configured ||
+          data.openai_configured ||
+          data.anthropic_configured ||
+          data.deepseek_configured
+        )
+      )
     } catch {
       setShowSettingsKeyBanner(true)
-      setDemoMode(true)
     }
-    setPendingLaunchCommand(FIRST_TASK_COMMAND)
-    setOnboardingComplete(true)
+
+    const requestId = crypto.randomUUID()
+    setFirstTaskRequestId(requestId)
+    sendCommand(firstTaskCommand, requestId)
   }
+
+  useEffect(() => {
+    if (!firstTaskRequestId || lastTaskOutcome?.requestId !== firstTaskRequestId) return
+
+    setFirstTaskRunning(false)
+    setLastTaskOutcome(null)
+    if (lastTaskOutcome.status === 'completed') {
+      setFirstTaskResult(lastTaskOutcome.summary)
+      goTo('done', 1)
+    } else {
+      setFirstTaskError(lastTaskOutcome.summary || 'That task did not finish. Try again.')
+    }
+  }, [firstTaskRequestId, lastTaskOutcome, setLastTaskOutcome])
 
   const stepIndex = ONBOARDING_STEPS.indexOf(currentStep) + 1
 
@@ -236,7 +289,11 @@ export function Onboarding(): JSX.Element {
                 ))}
               </div>
 
-              <button type="button" onClick={handleNext} className="ob-btn-primary">
+              <button
+                type="button"
+                onClick={() => void handleNext()}
+                className="ob-btn-primary"
+              >
                 Get Started
                 <ArrowRight size={14} />
               </button>
@@ -278,7 +335,7 @@ export function Onboarding(): JSX.Element {
                 </button>
                 <button
                   type="button"
-                  onClick={handleNext}
+                  onClick={() => void handleNext()}
                   disabled={!!nameError || !userName.trim()}
                   className="ob-btn-primary"
                 >
@@ -318,11 +375,17 @@ export function Onboarding(): JSX.Element {
                 <button type="button" onClick={handleBack} className="ob-btn-ghost">
                   Back
                 </button>
-                <button type="button" onClick={handleNext} className="ob-btn-primary">
-                  Continue
+                <button
+                  type="button"
+                  onClick={() => void handleNext()}
+                  disabled={permissionSaving}
+                  className="ob-btn-primary"
+                >
+                  {permissionSaving ? 'Saving…' : 'Continue'}
                   <ArrowRight size={13} />
                 </button>
               </div>
+              {permissionError && <p className="ob-name-field__error mt-3">{permissionError}</p>}
             </StepPanel>
           )}
 
@@ -330,15 +393,15 @@ export function Onboarding(): JSX.Element {
             <StepPanel stepKey="first_task" direction={direction}>
               <h2 className="ob-title">Run your first task</h2>
               <p className="ob-lead">
-                We&apos;ve filled in a sample command. Press Run — it will open Command Center and
-                execute there, just like a real task.
+                This read-only task runs through the real TORCH backend. Setup only finishes after
+                TORCH returns a successful result.
               </p>
 
               <div className="ob-command-block">
                 <textarea
                   readOnly
                   tabIndex={-1}
-                  value={FIRST_TASK_COMMAND}
+                  value={firstTaskCommand}
                   className="ob-command-input"
                   rows={2}
                   aria-label="Sample command"
@@ -347,15 +410,48 @@ export function Onboarding(): JSX.Element {
 
               <div className="ob-pointer-row">
                 <ObPointer size={22} className="ob-pointer-icon" />
-                <span className="ob-pointer-hint">Press Run to continue</span>
+                <span className="ob-pointer-hint">
+                  {firstTaskRunning
+                    ? 'Running your task…'
+                    : wsConnected
+                      ? 'Ready to run'
+                      : 'Connecting to TORCH…'}
+                </span>
+              </div>
+
+              {firstTaskError && <p className="ob-name-field__error mb-3">{firstTaskError}</p>}
+
+              <button
+                type="button"
+                onClick={() => void runFirstTask()}
+                disabled={!wsConnected || firstTaskRunning}
+                className="ob-btn-primary ob-btn-run"
+              >
+                {firstTaskRunning ? 'Running…' : firstTaskError ? 'Try again' : 'Run task'}
+                <ArrowRight size={14} />
+              </button>
+            </StepPanel>
+          )}
+
+          {currentStep === 'done' && (
+            <StepPanel stepKey="done" direction={direction}>
+              <TorchLogo size={40} />
+              <h2 className="ob-title">Your first task is complete</h2>
+              <p className="ob-lead">
+                TORCH ran the request on this computer and returned a real result.
+              </p>
+
+              <div className="ob-command-block text-left">
+                <p className="ob-name-field__label mb-2">Result</p>
+                <p className="ob-row-desc whitespace-pre-wrap">{firstTaskResult}</p>
               </div>
 
               <button
                 type="button"
-                onClick={() => void finishAndLaunch()}
+                onClick={() => setOnboardingComplete(true)}
                 className="ob-btn-primary ob-btn-run"
               >
-                Run in Command Center
+                Start using TORCH
                 <ArrowRight size={14} />
               </button>
             </StepPanel>

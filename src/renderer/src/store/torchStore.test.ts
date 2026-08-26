@@ -150,3 +150,33 @@ describe('metrics', () => {
     expect(useTorchStore.getState().metrics.tasksCompleted).toBe(0)
   })
 })
+
+describe('task outcomes', () => {
+  it('keeps the correlated terminal result for onboarding to inspect', () => {
+    useTorchStore.getState().setLastTaskOutcome({
+      requestId: 'first-task-1',
+      status: 'completed',
+      summary: 'Contents of your home folder'
+    })
+
+    expect(useTorchStore.getState().lastTaskOutcome).toEqual({
+      requestId: 'first-task-1',
+      status: 'completed',
+      summary: 'Contents of your home folder'
+    })
+  })
+
+  it('does not persist onboarding completion until explicitly finalized', () => {
+    useTorchStore.getState().setLastTaskOutcome({
+      requestId: 'first-task-2',
+      status: 'completed',
+      summary: 'Done'
+    })
+
+    expect(useTorchStore.getState().onboardingComplete).toBe(false)
+    expect(localStorage.getItem('torch_onboarding_complete')).not.toBe('true')
+
+    useTorchStore.getState().setOnboardingComplete(true)
+    expect(localStorage.getItem('torch_onboarding_complete')).toBe('true')
+  })
+})
