@@ -155,3 +155,134 @@ Still open from the audit, in rough severity order:
   Chromium is missing.
 - Web Search page's button has no handler.
 - Onboarding's first task closes before a real result is required.
+
+---
+
+# Week 3 (part 2)
+
+## 5. `/api/system-check` and onboarding first-task gating
+
+Both were **already implemented in the working tree** when this pass started —
+not authored here. Committed as found (`2d46011`) so the work was not lost, and
+verified: 154 backend tests passing before any of the changes below.
+
+- `backend/system_checks.py` launches headless Chromium rather than trusting a
+  successful `import playwright`, and reports package presence and browser
+  readiness as separate facts.
+- Commands now carry a request id; the backend emits a correlated
+  `task_outcome`, and onboarding waits for it instead of closing on a claim it
+  never verified.
+
+## 6. Audit: raw `setattr` from request data
+
+Searched the backend for `setattr(`, `__dict__`, `exec(`, `eval(`, `globals()[`
+and `vars(`.
+
+**`/api/settings` was the only production case.** Everything else is
+`monkeypatch.setattr` in tests. No `exec`, `eval`, or `__dict__` writes exist in
+production code.
+
+But that one case was worse than the boolean bug fixed in part 1:
+
+```python
+if hasattr(settings, key):
+    setattr(settings, key, value)
+```
+
+Any attribute that happened to exist on the settings object could be written
+from a request body — including `auth_token`, `host`, `db_path` and `data_dir`.
+An authenticated caller could overwrite the live session token, or point the
+database somewhere else.
+
+Writable fields are now an explicit allowlist, and values are coerced to the
+type the pydantic field declares rather than assigned raw. The part 1 fix
+covered a hardcoded set of boolean fields; deriving the type from the model
+covers every field, and an uncoercible value returns 400 instead of storing the
+wrong type.
+
+Verified:
+
+```
+POST auth_token   -> ignored, token unchanged
+POST db_path      -> ignored
+POST host         -> ignored
+POST allow_files="false" -> stored as False, not the truthy string
+POST bad integer  -> HTTP 400
+```
+
+**A test isolation bug of mine, found here.** The first version of these tests
+POSTed settings against the real `.env` and changed
+`SCREEN_WATCH_INTERVAL` from 30 to 45. The env path is now indirected so tests
+redirect it at a temp file, and the value was restored. API keys were never at
+risk — the handler preserves values it is not given — but the tests had no
+business writing that file.
+
+## 7. Credential encryption
+
+API keys and the Gmail app password sat in plain text in the repository's
+`.env`.
+
+The constraint that shapes the design: the Python backend needs the plaintext
+to *use* a credential, and it cannot call Electron's `safeStorage`. So:
+
+```
+Settings UI ──IPC──> main process ──safeStorage.encryptString──> credentials.enc
+                            │                                    (userData)
+                            └──decrypt at spawn──> env vars ──> Python backend
+```
+
+This is the route the session token already takes.
+
+- `src/main/credentialStore.ts` encrypts through the OS keystore — DPAPI on
+  Windows, Keychain on macOS, libsecret on Linux.
+- Plaintext secrets already in `.env` are imported on first launch and blanked
+  in the file.
+- `/api/settings` now **refuses** secrets, so a later save cannot write them
+  back in the clear and undo the migration.
+- Saving a credential restarts the backend, which was started with the old
+  values.
+
+If the OS keystore is unavailable, saving **fails and says so** rather than
+silently storing plaintext while the UI claims encryption. Settings shows which
+of the two states applies.
+
+## 8. Auto-update
+
+Without it, every fix is invisible to anyone who already installed TORCH.
+
+`electron-updater` checks on launch and every four hours, downloads in the
+background, and installs on quit. It never restarts on its own — TORCH can be
+mid-task with the agent driving the user's screen, so a forced restart could
+interrupt a file operation or a half-written email. A dismissible notice offers
+"Restart now"; dismissing leaves the update to apply on next quit.
+
+Update-check failures are logged and otherwise ignored: an unreachable feed
+must not reach the user or delay startup.
+
+**Not verifiable here.** Auto-update only runs in a packaged build, and
+`is.dev` short-circuits it in development. Confirming it end-to-end needs a
+signed release published to the GitHub repo and an older build installed on a
+real machine. The wiring is in place; the delivery path is untested.
+
+---
+
+## Tests
+
+```
+backend : 173 passed   (154 at the start of part 2)
+frontend:  32 passed
+typecheck and lint clean
+```
+
+New: `backend/tests/test_settings_security.py` — 19 tests covering the
+allowlist, type coercion, secret refusal, and that the endpoint still requires
+auth.
+
+## Still open from the audit
+
+- Approval "Edit" writes to the developer console only.
+- Screen Watch interval, wake-word sensitivity and voice model size are saved
+  but never consumed.
+- Theme, launch-on-login and minimize-to-tray change local state only.
+- Clear memory / Export history / Reset habits have no handlers.
+- Web Search page's button has no handler.
