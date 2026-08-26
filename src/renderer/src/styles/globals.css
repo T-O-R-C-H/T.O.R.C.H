@@ -3447,3 +3447,41 @@ button:not(:disabled):active,
   box-shadow: 0 6px 16px rgba(24,24,27,.2);
 }
 @keyframes guidance-caret { 50% { opacity: 0; } }
+
+/* ─── Update notice ─── */
+.update-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--color-torch-muted);
+  border-bottom: 1px solid var(--color-torch-border-subtle);
+  font-size: 12px;
+}
+
+.update-notice__text {
+  flex: 1;
+  color: var(--color-torch-text);
+}
+
+.update-notice__action,
+.update-notice__dismiss {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-torch-border);
+  background: transparent;
+  color: var(--color-torch-text-secondary);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.update-notice__action:hover,
+.update-notice__dismiss:hover {
+  color: var(--color-torch-text);
+  border-color: var(--color-torch-text-tertiary);
+}
+
+.update-notice__dismiss {
+  border-color: transparent;
+}

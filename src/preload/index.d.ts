@@ -52,6 +52,8 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  onUpdateReady: (callback: (info: { version: string }) => void) => void
+  installUpdate: () => void
   getCredentialStatus: () => Promise<{
     encryptionAvailable: boolean
     stored: Record<string, boolean>

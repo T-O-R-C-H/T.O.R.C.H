@@ -16,6 +16,7 @@ import {
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import { spawn, ChildProcess } from 'child_process'
 import { existsSync } from 'fs'
 import {
@@ -149,6 +150,41 @@ async function isBackendReachable(): Promise<boolean> {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+/**
+ * Background updates.
+ *
+ * Downloading happens on its own, but installing never interrupts the user:
+ * TORCH can be part-way through a task with the agent driving their screen, so
+ * the new version is applied when they next quit, or when they choose to
+ * restart from the notice in the UI.
+ */
+function setupAutoUpdate(): void {
+  if (is.dev) return
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-downloaded', (info) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send('update:ready', { version: info.version })
+    }
+  })
+
+  autoUpdater.on('error', (error) => {
+    // A failed update check must never surface to the user or block startup.
+    console.error('[TORCH] Update check failed:', error)
+  })
+
+  const check = (): void => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error('[TORCH] Update check failed:', error)
+    })
+  }
+
+  check()
+  setInterval(check, 4 * 60 * 60 * 1000)
 }
 
 /**
@@ -579,12 +615,21 @@ function createControlBorderWindow(): void {
   const bounds = getVirtualDisplayBounds()
   controlBorderWindow = new BrowserWindow({
     ...bounds,
-    show: false, transparent: true, frame: false, alwaysOnTop: true,
-    skipTaskbar: true, focusable: false, hasShadow: false, roundedCorners: false,
+    show: false,
+    transparent: true,
+    frame: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    roundedCorners: false,
     backgroundColor: '#00000000',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'), sandbox: false,
-      contextIsolation: true, nodeIntegration: false, backgroundThrottling: false
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   })
   registerControlBorderDisplayListeners()
@@ -594,7 +639,9 @@ function createControlBorderWindow(): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     controlBorderWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/control-border')
   } else {
-    controlBorderWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/control-border' })
+    controlBorderWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      hash: '/control-border'
+    })
   }
 }
 
@@ -814,7 +861,8 @@ async function captureDesktopScreens(): Promise<unknown[]> {
     })
     const activeSources = sources.filter((source) => source.display_id === String(activeDisplay.id))
     return (activeSources.length > 0 ? activeSources : sources.slice(0, 1)).map((source, index) => {
-      const display = displays.find((candidate) => String(candidate.id) === source.display_id) ?? displays[index]
+      const display =
+        displays.find((candidate) => String(candidate.id) === source.display_id) ?? displays[index]
       const thumbnail = source.thumbnail
       const size = thumbnail.getSize()
       return {
@@ -988,10 +1036,7 @@ app.whenReady().then(() => {
     const area = screen.getDisplayMatching(previous).workArea
     const right = previous.x + previous.width
     const bottom = previous.y + previous.height
-    const x = Math.min(
-      Math.max(area.x, right - width),
-      area.x + Math.max(0, area.width - width)
-    )
+    const x = Math.min(Math.max(area.x, right - width), area.x + Math.max(0, area.width - width))
     const y = Math.min(
       Math.max(area.y, bottom - height),
       area.y + Math.max(0, area.height - height)
@@ -1081,6 +1126,14 @@ app.whenReady().then(() => {
   ipcMain.handle('backend:getHealth', () => backendHealth)
   ipcMain.handle('backend:getPhase', () => backendPhase)
 
+  // Restarting is the user's call — an update must never interrupt a running
+  // task, so this only happens when they ask.
+  ipcMain.on('update:install', () => {
+    isQuitting = true
+    stopBackend()
+    autoUpdater.quitAndInstall()
+  })
+
   // Credentials never travel to the Python backend from the renderer. They are
   // encrypted here and injected into the backend process at spawn.
   ipcMain.handle('credentials:status', () => ({
@@ -1110,6 +1163,7 @@ app.whenReady().then(() => {
   createTray()
   void startBackend()
   startClipboardMonitor()
+  setupAutoUpdate()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

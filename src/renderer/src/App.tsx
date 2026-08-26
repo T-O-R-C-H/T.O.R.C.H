@@ -5,6 +5,8 @@ import { Sidebar } from './components/layout/Sidebar'
 
 import { Topbar } from './components/layout/Topbar'
 
+import { UpdateNotice } from './components/layout/UpdateNotice'
+
 import { FloatingOverlay } from './components/overlay/FloatingOverlay'
 import { GuidanceOverlay } from './components/overlay/GuidanceOverlay'
 
@@ -83,6 +85,8 @@ function AppLayout(): JSX.Element {
 
       <div className="app-main">
         <Topbar />
+
+        <UpdateNotice />
 
         <div className="app-routes">
           <Routes>

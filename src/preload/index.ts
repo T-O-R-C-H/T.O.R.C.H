@@ -98,6 +98,12 @@ const torchAPI = {
   // Backend session token — required on every REST call and the WS handshake
   getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
 
+  // Updates — downloaded in the background, installed only when the user asks
+  onUpdateReady: (callback: (info: { version: string }) => void): void => {
+    ipcRenderer.on('update:ready', (_e, info) => callback(info))
+  },
+  installUpdate: (): void => ipcRenderer.send('update:install'),
+
   // Credentials — encrypted by the main process, never sent to the backend
   // from here and never read back in plaintext.
   getCredentialStatus: (): Promise<{
