@@ -18,17 +18,14 @@ It is built for everyone — non-technical users, students, developers, freelanc
 
 ## Tech Stack
 
-**Frontend:** React 18 + TypeScript + Tailwind CSS + Zustand + Framer Motion + React Router
+**Frontend:** React 19 + TypeScript + Tailwind CSS 4 + Zustand 5 + Framer Motion + React Router 7
 **Backend:** Python 3.11 + FastAPI + WebSocket
-**Shell:** Electron (wraps the whole app as a Windows desktop application)
-**AI Models:**
-- Fast local tier: Llama 3.1 8B via Ollama (simple commands)
-- Reasoning local tier: Phi-4 via Ollama (multi-step plans)
-- Vision local tier: Qwen2.5-VL 7B via Ollama (screen control — sees screen, generates mouse/keyboard actions)
-- Escalation tier: Gemini 2.5 Flash (cloud, complex/ambiguous commands)
+**Shell:** Electron 39 (wraps the whole app as a Windows desktop application)
+**AI providers:** Gemini, DeepSeek, OpenAI, Claude, and explicit Ollama model selection through the provider abstraction. Automatic selection currently prefers configured cloud providers in that order; there is no implemented fast/reasoning local-tier router.
+**Vision model:** Qwen2.5-VL 7B via Ollama (screen control — sees screen and generates mouse/keyboard actions)
 **Voice:** OpenAI Whisper (local, for STT) + pyttsx3 (local TTS)
 **Database:** SQLite (local, torch.db)
-**Memory:** ChromaDB (vector embeddings for pattern recognition)
+**Memory:** SQLite-backed task, contact, file, and habit records. ChromaDB is installed but is not used by the current storage implementation.
 **Screen capture:** PyAutoGUI + mss
 **Browser automation:** Playwright
 
@@ -41,24 +38,24 @@ T.O.R.C.H/
 ├── backend/
 │   ├── main.py              # FastAPI app, WebSocket handler, all REST endpoints
 │   ├── agent/
-│   │   ├── brain.py         # LLM planning — sends command to Gemini/local, gets JSON plan
+│   │   ├── brain.py         # Deterministic routes + provider-backed JSON planning
 │   │   ├── planner.py       # Plan validation and tool routing
 │   │   ├── executor.py      # Executes each step, HITL flow, rollback, step phrasing
 │   │   ├── context.py       # Conversation history (10-turn rolling window)
-│   │   └── providers/       # LLM provider abstractions (gemini, openai, claude)
+│   │   └── providers/       # Gemini, DeepSeek, OpenAI, Claude, Ollama abstractions
 │   ├── tools/               # All tool functions
 │   │   ├── files.py         # find_file, move_file, copy_file, delete_file, read_file
-│   │   ├── email.py         # send_email, check_emails
+│   │   ├── email.py         # send_email, read_inbox
 │   │   ├── system.py        # open_app, close_app, run_terminal
 │   │   ├── browser.py       # web search, open_browser (Playwright)
-│   │   ├── screen.py        # screenshot, screen_watch
+│   │   ├── screen.py        # screenshot, analyse_screen
 │   │   ├── voice.py         # speak(), listen(), WakeWordDetector
 │   │   └── vision_control.py # Qwen2.5-VL vision loop — sees screen, clicks/types
 │   ├── errors/
 │   │   └── plain_language.py # Converts all raw errors to plain-English user messages
 │   ├── memory/
-│   │   └── storage.py       # SQLite + ChromaDB operations, get_metrics_today(), save_task()
-│   ├── agent/rollback.py    # Snapshot before destructive ops, rollback_last_batch()
+│   │   └── storage.py       # SQLite ops: save_task(), get_tasks(), get_stats_for_date()
+│   ├── agent/rollback.py    # register_step() before destructive ops, rollback(message_id)
 │   ├── auth.py              # Session-token checks for REST + WebSocket
 │   └── config/
 │       └── settings.py      # All config (API keys, ports, auth token, feature flags)
@@ -75,12 +72,12 @@ T.O.R.C.H/
 │       │   └── useWebSocket.ts # WebSocket connection, message handling
 │       ├── pages/
 │       │   ├── Command.tsx   # Main chat page (Command Center)
-│       │   ├── Onboarding.tsx # 5-screen onboarding flow
+│       │   ├── Onboarding.tsx # Current 4-step onboarding flow
 │       │   ├── Settings.tsx  # Settings page
 │       │   ├── History.tsx   # Task history
-│       │   ├── HeyTorch.tsx  # Voice overlay
 │       │   └── ControlBorder.tsx # Full-screen blue border during vision control
 │       └── components/
+│           ├── overlay/      # FloatingOverlay and GuidanceOverlay renderers
 │           ├── layout/
 │           │   ├── Sidebar.tsx
 │           │   └── Topbar.tsx
@@ -124,27 +121,26 @@ hex values, so a future theme change stays a one-file edit.
 
 ---
 
-## UI Architecture — The Three Windows
+## UI Architecture — The Current Four Windows
 
-TORCH runs three Electron windows simultaneously:
+`src/main/index.ts` currently creates four Electron windows:
 
-**1. Main window** — the full Command Center with sidebar, chat, metrics. The primary app UI.
+**1. Main window** — the full Command Center with sidebar and chat. It is frameless and uses the custom `Topbar` controls.
 
-**2. Floating pill + right panel** — this is the new minimized experience replacing the old overlay:
-- A small floating pill at the bottom-center of the screen (above the taskbar), always visible when TORCH is minimized
-- The pill shows the TORCH logo mark and a text input
-- When a task is running, a panel slides in from the RIGHT EDGE of the screen showing live step-by-step narration
-- The right panel appears ONLY when a task is running and disappears when done
-- The pill stays always, the right panel is task-scoped
+**2. Floating overlay** — a resizable 360×180 glassmorphic command companion. It is positioned at the saved location or the bottom-right of the active work area and appears when the main window is minimized or the global shortcut is pressed.
 
-**3. Control border window** — a full-screen transparent window with a blue pulsing border that appears ONLY during vision control tasks to signal "TORCH is in control of your screen"
+**3. Guidance overlay** — a click-through, full virtual-desktop window used to point at or narrate screen locations during companion guidance.
+
+**4. Control border** — a click-through, full virtual-desktop window with a blue pulsing border. It appears only while vision control is active.
+
+The production master plan replaces the floating overlay with a bottom-center command pill plus a task-scoped right panel during the later UI milestone. Those windows do not exist yet; do not describe them as implemented.
 
 ---
 
 ## Core Data Flow
 
 ```
-User types command in pill or Command Center
+User types command in the floating overlay or Command Center
 → Zustand store updates (agentStatus → processing)
 → useWebSocket sends message over ws://127.0.0.1:8000/ws?token=<session token>
 → FastAPI checks the token before accepting → process_command()
@@ -159,9 +155,9 @@ User types command in pill or Command Center
     - On success: saves to SQLite via storage.py
     - On failure: translates error via plain_language.py
 → WS streams step_update messages to frontend in real time
-→ Frontend renders live step list in right panel (if minimized) or StepList (if main window open)
+→ Frontend renders live steps in FloatingOverlay/NarrationView or the main ChatArea
 → Task complete: sends agent_response with plain-language summary
-→ Undo button appears (wired to rollback_last_batch() via rollback.py)
+→ Undo button appears (wired to rollback_manager.rollback(message_id) in rollback.py)
 ```
 
 ---
@@ -230,9 +226,9 @@ TORCH is used by non-technical users. Every string visible to the user must pass
 
 ---
 
-## The Floating Pill + Right Panel (New Feature — Build This)
+## Planned Floating Pill + Right Panel
 
-This replaces the old overlay. Two separate Electron windows:
+This is a later production-plan milestone, not the current implementation. It will replace the current floating overlay with two Electron windows:
 
 **Pill window** (`createPillWindow()`):
 - Always-on-top, frameless, transparent, not in taskbar
@@ -250,6 +246,8 @@ This replaces the old overlay. Two separate Electron windows:
 - Hidden when task completes (after 3 second delay showing the recap)
 - Contains: task name, live step list with status indicators, elapsed time, Stop button
 - Receives the same step_update WS messages as the main window
+
+Do not implement this before the ordered packaging, cold-start, and honesty milestones are complete.
 
 ---
 
@@ -288,13 +286,28 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
 3. **`useWebSocket.ts` is untested** — its module-level socket singletons
    (`sharedSocket`, `sharedReconnectTimer`, …) are not hook-instance scoped, so
    tests need manual resets plus a `WebSocket` stub. Worth doing.
+4. **Windows packaging is not production-ready** — `build:win` copies the full
+   development virtual environment twice (about 2.6 GB unpacked on the Aug 26 audit),
+   and the normal local build is blocked when electron-builder cannot create
+   symlinks while extracting its signing helper. Replace this with the planned
+   PyInstaller runtime before release.
+5. **Cold-start REST calls are not gated** — Electron creates all renderer
+   windows before starting the backend, and `torchFetch` does not wait for the
+   published backend-health state.
+6. **Visible honesty gaps remain** — Screen Watch and Insights show fabricated
+   data, Follow-ups and several tool pages are shells, and multiple Settings
+   controls are not wired. See `PRODUCTION_READINESS_AUDIT.md` for the verified
+   inventory.
+7. **Credentials are plaintext** — `/api/settings` persists API keys and the
+   Gmail app password directly to the root `.env`; Electron `safeStorage` is
+   not implemented.
 
 **Fixed (Aug 2026) — do not "re-fix" these:**
 
 - Cat mascot — gone. The logo component is `ui/TorchLogo.tsx` (there is no `TorchMark.tsx`).
 - Overlay is white — **not a bug.** The light glassmorphic overlay is the intended design.
 - Native menu bar — `frame: false` + `Menu.setApplicationMenu(null)`; the custom title bar is `layout/Topbar.tsx`.
-- Model names in the UI — `/api/models` and the input pickers now return speed/depth labels ("Automatic", "Faster", "More thorough") that map to real model ids under the hood.
+- Model picker option text — `/api/models` returns speed/depth labels ("Automatic", "Faster", "More thorough"). The selected non-auto id still leaks through the input metadata and remains an open honesty issue.
 - False success on failure — `process_command` returns before the success recap; a failure now sends its own plain-language message.
 - Raw error in chat — `validate_plan` translates unknown-tool errors before the plan is sent, with a frontend backstop in `utils/plainLanguage.ts`.
 - Stop button — `executor.stop_task()` exists and releases pending approvals.
