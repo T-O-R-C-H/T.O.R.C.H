@@ -286,3 +286,124 @@ auth.
 - Theme, launch-on-login and minimize-to-tray change local state only.
 - Clear memory / Export history / Reset habits have no handlers.
 - Web Search page's button has no handler.
+
+---
+
+# Week 3 (part 3) — remaining audit items
+
+Every surface from the audit is now either real or gone.
+
+## Approval "Edit" — wired
+
+The most serious of the batch. The button called `console.log`, but the backend
+made it worse: `submit_approval` accepted `"edit"` and the executor treated
+anything that was not `"cancel"` as proceed. `editedData` was never sent and
+never applied.
+
+So a user could open the approval card, correct a recipient, click Edit — and
+watch the step run against the **original** address. A confirmation prompt that
+executes something other than what it showed is worse than no prompt.
+
+The card now edits the step's string arguments inline and sends them. The
+executor replaces the step's arguments before running, restricted to keys the
+step already has so an edit cannot introduce a parameter the tool never
+expected.
+
+**A real ordering bug surfaced here.** `resolved_args` is built *before* the
+approval pause. Updating only `step["args"]` would have left the tool running
+the values the user had just changed away from. Both are updated now.
+
+Also found and deleted `chat/ApprovalCard.tsx` — a duplicate that nothing
+imported. The rendered component is `aicss/ApprovalCard`.
+
+## Wired
+
+- **Voice model size** — `voice.py` hardcoded Whisper `"base"` while Settings
+  saved the choice.
+- **Launch on login** — now goes through Electron's login-item settings.
+- **Minimize to tray** — decides whether the window hides to the companion or
+  minimises normally; persisted in `userData`.
+- **Clear memory / Export history / Reset all habits** — backed by
+  `DELETE /api/memory` and `DELETE /api/habits`, with targeted storage methods
+  rather than `clear_all()`, which would also have deleted task history. Export
+  downloads JSON. Each reports what it did.
+- **Web Search button** — routes the query through the Command Center, so
+  search runs through the agent rather than a second path.
+
+## Removed
+
+- **Theme** — the app is light-only; the dark option did nothing.
+- **Wake-word sensitivity** — `WakeWordDetector` is never instantiated.
+- **Screen Watch interval** — there is no capture worker.
+
+Nothing consumed these. Leaving a control that implies an effect it does not
+have is the thing this pass exists to remove.
+
+---
+
+# Week 4 — UI Automation screen control
+
+## Why
+
+| Method | Per action | Targeting |
+|---|---|---|
+| Local vision (Qwen2.5-VL, CPU) | ~183,000 ms | guesses coordinates |
+| Cloud vision (Gemini) | ~5,600 ms | guesses coordinates |
+| **UI Automation** | **~66–500 ms** | **exact, by name** |
+
+Speed is not the only gain. Vision infers a coordinate from an image; UIA reads
+the real bounding box of a control it can name, so "click Send" targets the
+actual Send button. It also never takes a screenshot — which matters for an
+agent pointed at whatever is on someone's screen.
+
+## What was built
+
+`backend/tools/uia_control.py` — `describe_screen`, `read_screen`,
+`click_element`, `type_into`.
+
+- Clicking prefers the invoke pattern over a synthetic click: it does not
+  depend on the control being unobscured or the pointer landing precisely.
+- An exact name match beats a partial one, so `"Save"` cannot select
+  `"Save As"`.
+- Disabled and zero-sized controls are skipped — they are in the tree but not
+  usable.
+
+`backend/gpu_check.py` — detects whether Ollama has a GPU it can actually use.
+It accelerates on NVIDIA, AMD and Apple silicon; Intel integrated graphics are
+not supported, which is exactly why local vision costs three minutes a step
+here. Local vision should not be offered where it cannot finish.
+
+The planner prompt now tells the model to prefer these tools and keep
+`vision_control` for surfaces that expose nothing readable.
+
+Registered in the executor, `VALID_TOOLS`, the `apps` capability, step phrasing
+and the PyInstaller bundle.
+
+## Verification, and its limit
+
+**Verified live.** `read_screen` returned 21 real named controls with
+coordinates from the focused window. Timing varied by window complexity — 0.2s
+on a small tree, ~3s on a large Chrome window. Both are orders of magnitude
+below the vision loop.
+
+**Not verified live: the click and type paths.** They have 13 unit tests
+covering invoke-pattern preference, exact-match precedence, disabled controls
+and plain-language failures. But a real click test needs a scratch application,
+and the obvious candidates on this machine hold real user data — Windows 11
+Notepad reuses one window with tabs, which is how a previous session's vision
+test ended up looking at a `.env.local`. Calculator would not launch here.
+
+That verification still stands open.
+
+## Known limitation
+
+Chromium and Electron apps expose very little of their tree unless
+accessibility is enabled. Measured: 5 controls in Chrome versus 36 in native
+Calculator. Web content should go through the browser tools; genuinely opaque
+surfaces still need vision.
+
+```
+backend : 193 passed
+frontend:  32 passed
+typecheck and lint clean
+```
