@@ -139,9 +139,51 @@ ERROR: Cannot create symbolic link : A required privilege is not held by the cli
 
 This is a host restriction, not an application packaging fault: the same run
 produced a valid `app.asar` and placed `resources/backend/torch-backend.exe`
-correctly. The unsigned diagnostic build is used to measure results.
+correctly. Enabling Windows Developer Mode, or running the build elevated,
+should clear it.
 
-## 8. Verification run
+The unsigned diagnostic build is used to measure results, and now completes:
+
+```powershell
+npx electron-builder --win --config.win.signAndEditExecutable=false   # exit 0
+```
+
+## 8. Size results
+
+| | Before | After |
+|---|---|---|
+| `app.asar` | 1.65 GB | **101 MB** |
+| Archive entries | 21,442 | **2,879** |
+| `win-unpacked` | 2.62 GB | **326 MB** |
+| Installer | 663 MB | **260 MB** |
+
+Installer: `dist/torch-1.0.0-setup.exe`
+SHA-256: `59450057b834135c611e49439463c86596964ec4fb23abdf7746732331445189`
+
+Unsigned. Not a release candidate.
+
+## 9. Packaged application run
+
+The built application was launched directly from `dist/win-unpacked/torch.exe`,
+which takes the production branch of `resolveBackendCommand()`:
+
+```
+port 8000 served by : torch-backend.exe
+                      dist\win-unpacked\resources\backend\torch-backend.exe
+python processes     : none
+window               : TORCH — AI Agent
+GET  /api/status     : 401 without a token, 200 with one
+WS   /ws?token=...   : accepted
+```
+
+No Python process is involved, which is the point of the exercise: the packaged
+app runs its own bundled interpreter.
+
+This is **not** a clean-machine test. Python is installed on this host, so the
+run proves the packaged app *uses* the bundle rather than proving the bundle
+works where Python is absent. Only a clean VM settles that.
+
+## 10. Verification run
 
 ```bash
 cd backend && python -m pytest      # 137 passed
