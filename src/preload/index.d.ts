@@ -52,6 +52,11 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  getCredentialStatus: () => Promise<{
+    encryptionAvailable: boolean
+    stored: Record<string, boolean>
+  }>
+  setCredentials: (updates: Record<string, string>) => Promise<{ ok: boolean; reason?: string }>
   getBackendPhase: () => Promise<'starting' | 'ready' | 'failed'>
   onBackendPhase: (callback: (phase: 'starting' | 'ready' | 'failed') => void) => void
   getBackendHealth: () => Promise<BackendHealth>

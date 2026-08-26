@@ -26,6 +26,13 @@ import {
 } from './clipboardManager'
 import { getDesktopContext } from './contextService'
 import { loadOverlayState, saveOverlayState } from './overlayPosition'
+import {
+  credentialEnv,
+  getCredentialStatus,
+  isEncryptionAvailable,
+  migratePlaintextSecrets,
+  setCredentials
+} from './credentialStore'
 
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
@@ -224,7 +231,10 @@ async function startBackend(): Promise<void> {
       ...process.env,
       PYTHONUNBUFFERED: '1',
       TORCH_RELOAD: 'false',
-      TORCH_AUTH_TOKEN: backendAuthToken
+      TORCH_AUTH_TOKEN: backendAuthToken,
+      // Decrypted here and handed over the same way as the session token.
+      // The backend cannot read the encrypted store itself.
+      ...credentialEnv()
     }
   })
 
@@ -884,6 +894,21 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.torch.agent')
   Menu.setApplicationMenu(null)
 
+  // Move any plaintext keys out of .env into the OS keystore. Runs before the
+  // backend starts so the migrated values are the ones it receives.
+  if (!isEncryptionAvailable()) {
+    console.warn('[TORCH] Secure storage unavailable — credentials cannot be encrypted here.')
+  } else {
+    try {
+      const migrated = migratePlaintextSecrets(join(getProjectRoot(), '.env'))
+      if (migrated.length > 0) {
+        console.log(`[TORCH] Moved ${migrated.length} credential(s) into encrypted storage.`)
+      }
+    } catch (error) {
+      console.error('[TORCH] Credential migration failed:', error)
+    }
+  }
+
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media')
   })
@@ -1055,6 +1080,24 @@ app.whenReady().then(() => {
 
   ipcMain.handle('backend:getHealth', () => backendHealth)
   ipcMain.handle('backend:getPhase', () => backendPhase)
+
+  // Credentials never travel to the Python backend from the renderer. They are
+  // encrypted here and injected into the backend process at spawn.
+  ipcMain.handle('credentials:status', () => ({
+    encryptionAvailable: isEncryptionAvailable(),
+    stored: getCredentialStatus()
+  }))
+  ipcMain.handle('credentials:set', (_event, updates: Record<string, string>) => {
+    if (!updates || typeof updates !== 'object') {
+      return { ok: false, reason: 'Nothing to save.' }
+    }
+    const result = setCredentials(updates)
+    if (result.ok) {
+      // The running backend was started with the old values.
+      scheduleBackendRestart('credentials changed')
+    }
+    return result
+  })
   ipcMain.handle('backend:getAuthToken', () => backendAuthToken)
 
   ipcMain.handle('clipboard:list', () => getClipboardEntries())

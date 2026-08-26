@@ -92,6 +92,8 @@ export function Settings(): JSX.Element {
   const [screenWatchInterval, setScreenWatchInterval] = useState('30')
   const [voiceModel, setVoiceModel] = useState('base')
 
+  const [secureStorage, setSecureStorage] = useState<boolean | null>(null)
+
   // Capability permissions. The planner enforces these server-side.
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
@@ -99,7 +101,12 @@ export function Settings(): JSX.Element {
   const [theme, setTheme] = useState('light')
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
-  const [playwrightInstalled, setPlaywrightInstalled] = useState<boolean | null>(null)
+  const [browserAutomation, setBrowserAutomation] = useState<{
+    playwrightInstalled: boolean
+    chromiumInstalled: boolean
+    ready: boolean
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     const loadSystemCheck = (retries = 5): void => {
@@ -108,15 +115,29 @@ export function Settings(): JSX.Element {
           if (!r.ok) throw new Error()
           return r.json()
         })
-        .then((data) => setPlaywrightInstalled(data.playwright_installed))
+        .then((data) =>
+          setBrowserAutomation({
+            playwrightInstalled: Boolean(data.playwright_installed),
+            chromiumInstalled: Boolean(data.chromium_installed),
+            ready: Boolean(data.browser_automation_ready),
+            message: String(data.message || 'Browser automation is not ready.')
+          })
+        )
         .catch(() => {
           if (retries > 0) {
             setTimeout(() => loadSystemCheck(retries - 1), 1000)
           } else {
-            setPlaywrightInstalled(null)
+            setBrowserAutomation(null)
           }
         })
     }
+
+    // Surfaced so a user is never told their keys are encrypted when the OS
+    // keystore is unavailable and they are not.
+    void window.torchAPI
+      ?.getCredentialStatus()
+      .then((status) => setSecureStorage(status.encryptionAvailable))
+      .catch(() => setSecureStorage(null))
 
     const loadSettings = (retries = 5): void => {
       torchFetch(`${API_BASE}/api/settings`)
@@ -183,19 +204,27 @@ export function Settings(): JSX.Element {
         allow_email: allowEmail
       }
 
-      if (geminiKey && geminiKey !== '********') {
-        payload.gemini_api_key = geminiKey
-      }
-      if (gmailPassword && gmailPassword !== '********') {
-        payload.gmail_app_password = gmailPassword
-      }
-
       const res = await torchFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
       if (!res.ok) throw new Error('Save failed')
+
+      // Secrets go to the OS keystore through the main process, not into .env.
+      // '********' means the field was left untouched.
+      const secrets: Record<string, string> = {}
+      if (geminiKey && geminiKey !== '********') secrets.gemini_api_key = geminiKey
+      if (gmailPassword && gmailPassword !== '********') {
+        secrets.gmail_app_password = gmailPassword
+      }
+      if (Object.keys(secrets).length > 0) {
+        const stored = await window.torchAPI?.setCredentials(secrets)
+        if (stored && !stored.ok) {
+          alert(stored.reason || 'Could not save your credentials securely.')
+          return
+        }
+      }
 
       if (geminiKey) {
         useTorchStore.getState().setShowSettingsKeyBanner(false)
@@ -243,6 +272,11 @@ export function Settings(): JSX.Element {
                   <Key size={13} className="text-[var(--color-torch-text-tertiary)]" />
                   <span className="t-label">API CONFIGURATION</span>
                 </div>
+                <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
+                  {secureStorage === false
+                    ? "This computer has no secure storage available, so TORCH can't encrypt your keys here. They won't be saved."
+                    : 'Keys are encrypted by your operating system and never stored in plain text.'}
+                </p>
                 <SettingRow
                   label="AI Connection Key"
                   description="Powers all AI reasoning — get your key to start"
@@ -345,22 +379,25 @@ export function Settings(): JSX.Element {
 
                 {/* Playwright status */}
                 <div className="mt-4 p-4 card">
-                  {playwrightInstalled === true ? (
+                  {browserAutomation?.ready ? (
                     <div className="flex items-center gap-2">
                       <span className="topbar-dot topbar-dot--live" />
-                      <p className="t-mono-xs">Playwright installed — browser automation ready</p>
+                      <p className="t-mono-xs">Browser automation ready</p>
                     </div>
-                  ) : playwrightInstalled === false ? (
+                  ) : browserAutomation ? (
                     <>
                       <p className="t-mono-xs" style={{ color: 'var(--color-torch-error)' }}>
-                        Playwright not installed — run in terminal:
+                        {browserAutomation.message}
                       </p>
-                      <p className="t-mono-xs mt-1.5">playwright install chromium</p>
+                      <p className="t-mono-xs mt-1.5">
+                        {browserAutomation.playwrightInstalled
+                          ? 'playwright install chromium'
+                          : 'pip install playwright && playwright install chromium'}
+                      </p>
                     </>
                   ) : (
                     <>
-                      <p className="t-mono-xs">Playwright required — run in terminal:</p>
-                      <p className="t-mono-xs mt-1.5">playwright install chromium</p>
+                      <p className="t-mono-xs">Checking browser automation…</p>
                     </>
                   )}
                 </div>

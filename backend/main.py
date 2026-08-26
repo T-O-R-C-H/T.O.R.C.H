@@ -36,6 +36,7 @@ from agent.planner import validate_plan, create_response_message
 from agent.executor import executor
 from errors.plain_language import translate_error
 from agent.rollback import rollback_manager
+from system_checks import check_playwright_readiness
 
 # Configure logging
 logging.basicConfig(
@@ -94,18 +95,12 @@ async def lifespan(app: FastAPI):
 
 async def _warm_playwright() -> None:
     """Verify Playwright + Chromium are installed without blocking server startup."""
-    try:
-        from playwright.async_api import async_playwright
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                await browser.close()
-            logger.info("Playwright: ready (Chromium found)")
-        except Exception as e:
-            logger.warning(f"Playwright: library found but browser not ready — {e}")
-            logger.warning("Run: playwright install chromium")
-    except ImportError:
-        logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
+    result = await check_playwright_readiness()
+    if result["browser_automation_ready"]:
+        logger.info("Playwright: ready (Chromium found)")
+    else:
+        logger.warning("Playwright: %s", result["message"])
+        logger.warning("Run: playwright install chromium")
 
 
 app = FastAPI(
@@ -149,15 +144,7 @@ async def get_status() -> dict[str, str | bool | int]:
 @app.get("/api/system-check")
 async def system_check():
     """Check if Playwright browser automation is installed and ready."""
-    playwright_installed = False
-    try:
-        from playwright.async_api import async_playwright
-        playwright_installed = True
-    except ImportError:
-        pass
-    return {
-        "playwright_installed": playwright_installed
-    }
+    return await check_playwright_readiness()
 
 
 @app.get("/api/models")
@@ -338,6 +325,66 @@ def _connection_status_block() -> str:
     return "\n".join(lines)
 
 
+# Settings the UI may change, mapped to the .env name each one is stored under.
+# This doubles as the allowlist for POST /api/settings: anything absent here
+# cannot be written, which keeps auth_token, host, db_path and data_dir out of
+# reach of a request body.
+EDITABLE_SETTINGS = {
+    "gemini_api_key": "GEMINI_API_KEY",
+    "gemini_model": "GEMINI_MODEL",
+    "openai_api_key": "OPENAI_API_KEY",
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "deepseek_api_key": "DEEPSEEK_API_KEY",
+    "deepseek_model": "DEEPSEEK_MODEL",
+    "gmail_address": "GMAIL_ADDRESS",
+    "gmail_app_password": "GMAIL_APP_PASSWORD",
+    "gmail_smtp_host": "GMAIL_SMTP_HOST",
+    "gmail_smtp_port": "GMAIL_SMTP_PORT",
+    "gmail_imap_host": "GMAIL_IMAP_HOST",
+    "wake_word": "WAKE_WORD",
+    "wake_word_sensitivity": "WAKE_WORD_SENSITIVITY",
+    "whisper_model_size": "WHISPER_MODEL_SIZE",
+    "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
+    "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
+    "allow_files": "TORCH_ALLOW_FILES",
+    "allow_apps": "TORCH_ALLOW_APPS",
+    "allow_email": "TORCH_ALLOW_EMAIL",
+}
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _env_file_path() -> str:
+    """Where settings are persisted. Indirected so tests can redirect it."""
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+
+def _coerce_setting(key: str, value):
+    """
+    Convert a JSON value to the type the settings field declares.
+
+    JSON gives strings where the model wants bool or int, and assigning them
+    raw is silently wrong: "false" is a truthy string, so a permission switched
+    off would have stayed on.
+    """
+    field = type(settings).model_fields.get(key)
+    if field is None:
+        return value
+
+    annotation = field.annotation
+    if annotation is bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in _TRUTHY
+    if annotation is int:
+        return int(value)
+    if annotation is float:
+        return float(value)
+    if annotation is str:
+        return "" if value is None else str(value)
+    return value
+
+
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
@@ -377,7 +424,7 @@ async def update_settings(data: dict):
     """Update settings and persist to .env in the root directory."""
     import os
     # .env should be in the root (parent of backend)
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    env_path = _env_file_path()
     
     # Update in memory and .env — never wipe secrets with empty strings
     secret_fields = {
@@ -387,22 +434,31 @@ async def update_settings(data: dict):
         "deepseek_api_key",
         "gmail_app_password",
     }
-    # Fields typed as bool must not be assigned raw strings: "false" is a
-    # truthy string, which would quietly leave a disabled permission enabled.
-    boolean_fields = {"allow_files", "allow_apps", "allow_email", "screen_watch_enabled"}
 
     filtered = {}
     for key, value in data.items():
-        if key in secret_fields and (value is None or str(value).strip() == ""):
+        # Only fields this endpoint is designed to manage may be written.
+        # Assigning any attribute that happens to exist on settings would let a
+        # caller reach auth_token, host, db_path and the rest.
+        if key not in EDITABLE_SETTINGS:
+            logger.warning(f"Ignoring attempt to set non-editable setting: {key}")
             continue
-        if key == "gmail_app_password" and isinstance(value, str):
-            value = "".join(value.split())
-        if key in boolean_fields and not isinstance(value, bool):
-            value = str(value).strip().lower() in {"1", "true", "yes", "on"}
+        if key in secret_fields:
+            # Secrets are held in the OS keystore by the desktop app and passed
+            # in as environment variables. Writing them back to .env would undo
+            # that, so this endpoint no longer accepts them.
+            logger.warning(f"Refusing to persist secret through settings API: {key}")
+            continue
+
+        try:
+            value = _coerce_setting(key, value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
+
         filtered[key] = value
-        if hasattr(settings, key):
-            setattr(settings, key, value)
-            
+        setattr(settings, key, value)
+
+
     # Read existing env
     env_vars = {}
     if os.path.exists(env_path):
@@ -415,33 +471,10 @@ async def update_settings(data: dict):
                         k, v = parts
                         env_vars[k] = v
                     
-    # Map pydantic field names to env vars
-    mapping = {
-        "gemini_api_key": "GEMINI_API_KEY",
-        "gemini_model": "GEMINI_MODEL",
-        "openai_api_key": "OPENAI_API_KEY",
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "deepseek_api_key": "DEEPSEEK_API_KEY",
-        "deepseek_model": "DEEPSEEK_MODEL",
-        "gmail_address": "GMAIL_ADDRESS",
-        "gmail_app_password": "GMAIL_APP_PASSWORD",
-        "gmail_smtp_host": "GMAIL_SMTP_HOST",
-        "gmail_smtp_port": "GMAIL_SMTP_PORT",
-        "gmail_imap_host": "GMAIL_IMAP_HOST",
-        "wake_word": "WAKE_WORD",
-        "wake_word_sensitivity": "WAKE_WORD_SENSITIVITY",
-        "whisper_model_size": "WHISPER_MODEL_SIZE",
-        "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
-        "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
-        "allow_files": "TORCH_ALLOW_FILES",
-        "allow_apps": "TORCH_ALLOW_APPS",
-        "allow_email": "TORCH_ALLOW_EMAIL",
-    }
-    
     for key, value in filtered.items():
-        if key in mapping:
-            env_vars[mapping[key]] = str(value)
-            
+        env_vars[EDITABLE_SETTINGS[key]] = str(value)
+
+
     # Write back
     try:
         with open(env_path, "w") as f:
@@ -757,11 +790,20 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
     if msg_type == "command":
         content = message.get("content", "")
         model = message.get("model", "auto")
+        request_id = message.get("requestId")
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 128:
+            request_id = None
         logger.info(f"Command received: {content[:80]}")
         planning_id = str(uuid.uuid4())
         executor.begin_planning(client_id, planning_id, "command")
         asyncio.create_task(
-            process_command(content, client_id, model=model, planning_id=planning_id)
+            process_command(
+                content,
+                client_id,
+                model=model,
+                planning_id=planning_id,
+                request_id=request_id,
+            )
         )
 
     elif msg_type == "hitl_response":
@@ -849,12 +891,20 @@ async def _discard_cancelled_plan(
     client_id: str,
     planning_id: str,
     channel: str,
+    request_id: str | None = None,
 ) -> bool:
     """Discard a late planner result after Stop without resurfacing task state."""
     if not executor.consume_pending_cancellation(client_id, planning_id):
         return False
 
     await ws_manager.send_status("idle", client_id)
+    if channel == "command":
+        await _send_task_outcome(
+            client_id,
+            request_id,
+            "cancelled",
+            "The task was stopped before it finished.",
+        )
     if channel == "overlay":
         await ws_manager.send_overlay_event(
             status="idle",
@@ -864,11 +914,32 @@ async def _discard_cancelled_plan(
     return True
 
 
+async def _send_task_outcome(
+    client_id: str,
+    request_id: str | None,
+    status: str,
+    summary: str,
+) -> None:
+    """Send one correlated terminal result for clients that gate on completion."""
+    if not request_id:
+        return
+    await ws_manager.send_message(
+        {
+            "type": "task_outcome",
+            "requestId": request_id,
+            "status": status,
+            "summary": summary,
+        },
+        client_id,
+    )
+
+
 async def process_command(
     command: str,
     client_id: str,
     model: str = "auto",
     planning_id: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Process a user command through the full agent pipeline."""
     planning_id = planning_id or str(uuid.uuid4())
@@ -876,7 +947,9 @@ async def process_command(
     try:
         # The WebSocket handler registers the planning id before scheduling
         # this coroutine, so an immediately-following Stop can arrive first.
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
 
         # 1. Set status to processing
@@ -897,7 +970,9 @@ async def process_command(
             model=model,
         )
 
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
 
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
@@ -910,6 +985,9 @@ async def process_command(
                 response_msg["needsAnswer"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id, request_id, "completed", natural_response
+            )
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
@@ -929,6 +1007,12 @@ async def process_command(
             response_msg = create_response_message(natural_response, [])
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id,
+                request_id,
+                "failed",
+                "I couldn't turn that request into a task. Try rephrasing it.",
+            )
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
@@ -947,7 +1031,9 @@ async def process_command(
 
         # 5. Execute plan
         message_id = response_msg["id"]
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
         executor.finish_planning(client_id, planning_id)
         executed_steps = await executor.execute_plan(
@@ -970,6 +1056,9 @@ async def process_command(
                 "steps": executed_steps,
             }
             await ws_manager.send_agent_response(recap_msg, client_id)
+            await _send_task_outcome(
+                client_id, request_id, "cancelled", recap_sentence
+            )
             return
 
         # Check if execution failed
@@ -1013,6 +1102,9 @@ async def process_command(
                 "steps": [],
             }, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id, request_id, "failed", recap_sentence
+            )
             return
 
         # Save exchange to context
@@ -1029,6 +1121,7 @@ async def process_command(
         # Failures returned above, so everything from here on succeeded.
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
         recap_emails = None
+        last_result = ""
 
         if completed_steps:
             tools_used = {s["tool"] for s in completed_steps}
@@ -1090,8 +1183,17 @@ async def process_command(
         except Exception as e:
             logger.warning(f"Metrics update failed: {e}")
 
+        await _send_task_outcome(
+            client_id,
+            request_id,
+            "completed",
+            recap_sentence or last_result or "The task completed.",
+        )
+
     except Exception as e:
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
         logger.error(f"Command processing failed: {e}", exc_info=True)
         
@@ -1119,6 +1221,9 @@ async def process_command(
             "steps": [],
         }
         await ws_manager.send_agent_response(error_msg, client_id)
+        await _send_task_outcome(
+            client_id, request_id, "failed", error_msg["content"]
+        )
     finally:
         executor.finish_planning(client_id, planning_id)
 
