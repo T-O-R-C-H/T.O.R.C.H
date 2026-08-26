@@ -52,6 +52,8 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  getBackendPhase: () => Promise<'starting' | 'ready' | 'failed'>
+  onBackendPhase: (callback: (phase: 'starting' | 'ready' | 'failed') => void) => void
   getBackendHealth: () => Promise<BackendHealth>
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void) => void
   onBackendStatus: (callback: (status: 'online' | 'offline') => void) => void

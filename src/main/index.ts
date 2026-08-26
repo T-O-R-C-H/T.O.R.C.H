@@ -92,6 +92,41 @@ function publishBackendHealth(update: Partial<BackendHealth>): void {
   }
 }
 
+/**
+ * Whether the backend is accepting requests yet.
+ *
+ * The renderer loads far faster than Python starts, so without this its first
+ * calls fire into a closed port and fill the console with connection errors.
+ * Renderers ask once on load and then listen for changes.
+ */
+type BackendPhase = 'starting' | 'ready' | 'failed'
+let backendPhase: BackendPhase = 'starting'
+
+function setBackendPhase(phase: BackendPhase): void {
+  if (backendPhase === phase) return
+  backendPhase = phase
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send('backend:phase', phase)
+  }
+}
+
+async function waitForBackendReady(maxWaitMs = 90000): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs
+
+  while (Date.now() < deadline) {
+    if (isQuitting) return false
+    if (await isBackendReachable()) {
+      setBackendPhase('ready')
+      return true
+    }
+    // Still booting. This is the expected path, so it is not logged.
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+
+  setBackendPhase('failed')
+  return false
+}
+
 async function isBackendReachable(): Promise<boolean> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
@@ -107,6 +142,37 @@ async function isBackendReachable(): Promise<boolean> {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+/**
+ * Where the backend lives, and how to start it.
+ *
+ * In development it runs from source through the project's virtualenv. A
+ * packaged build ships a PyInstaller bundle instead, so the installed app
+ * never depends on Python being present — a copied venv would not work, since
+ * pyvenv.cfg points back at the interpreter that created it.
+ */
+function resolveBackendCommand(): { exe: string; args: string[]; cwd: string } {
+  if (!is.dev) {
+    const bundledDir = join(process.resourcesPath, 'backend')
+    return {
+      exe: join(bundledDir, 'torch-backend.exe'),
+      args: [],
+      cwd: bundledDir
+    }
+  }
+
+  const runtimeRoot = join(__dirname, '..', '..')
+  const backendDir = join(runtimeRoot, 'backend')
+  const backendVenvPython = join(backendDir, 'venv', 'Scripts', 'python.exe')
+  const projectVenvPython = join(runtimeRoot, '.venv', 'Scripts', 'python.exe')
+  const pythonExe = existsSync(backendVenvPython)
+    ? backendVenvPython
+    : existsSync(projectVenvPython)
+      ? projectVenvPython
+      : 'python'
+
+  return { exe: pythonExe, args: ['main.py'], cwd: backendDir }
 }
 
 async function startBackend(): Promise<void> {
@@ -140,28 +206,19 @@ async function startBackend(): Promise<void> {
       failureCount: 0,
       error: undefined
     })
+    setBackendPhase('ready')
     startBackendHealthMonitor()
     return
   }
 
   backendExternal = false
 
-  // In production, electron-builder places the backend in resources/backend.
-  const runtimeRoot = is.dev ? join(__dirname, '..', '..') : process.resourcesPath
-  const backendDir = join(runtimeRoot, 'backend')
-  const backendVenvPython = join(backendDir, 'venv', 'Scripts', 'python.exe')
-  const projectVenvPython = join(runtimeRoot, '.venv', 'Scripts', 'python.exe')
-  const pythonExe = existsSync(backendVenvPython)
-    ? backendVenvPython
-    : is.dev && existsSync(projectVenvPython)
-      ? projectVenvPython
-      : 'python'
+  const { exe, args, cwd } = resolveBackendCommand()
+  console.log('[TORCH] Starting backend from:', cwd)
+  console.log('[TORCH] Backend executable:', exe)
 
-  console.log('[TORCH] Starting backend from:', backendDir)
-  console.log('[TORCH] Using Python:', pythonExe)
-
-  backendProcess = spawn(pythonExe, ['main.py'], {
-    cwd: backendDir,
+  backendProcess = spawn(exe, args, {
+    cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
@@ -177,6 +234,10 @@ async function startBackend(): Promise<void> {
     failureCount: 0,
     error: undefined
   })
+  setBackendPhase('starting')
+  // Tell the renderer the moment the port actually answers, so it can hold its
+  // first requests until then instead of failing them.
+  void waitForBackendReady()
 
   backendProcess.stdout?.on('data', (data: Buffer) => {
     console.log('[Backend]', data.toString().trim())
@@ -993,6 +1054,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('backend:getHealth', () => backendHealth)
+  ipcMain.handle('backend:getPhase', () => backendPhase)
   ipcMain.handle('backend:getAuthToken', () => backendAuthToken)
 
   ipcMain.handle('clipboard:list', () => getClipboardEntries())

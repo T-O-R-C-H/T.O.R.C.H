@@ -98,6 +98,13 @@ const torchAPI = {
   // Backend session token — required on every REST call and the WS handshake
   getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
 
+  // Backend readiness — the renderer holds its first requests until 'ready'
+  getBackendPhase: (): Promise<'starting' | 'ready' | 'failed'> =>
+    ipcRenderer.invoke('backend:getPhase'),
+  onBackendPhase: (callback: (phase: 'starting' | 'ready' | 'failed') => void): void => {
+    ipcRenderer.on('backend:phase', (_e, phase) => callback(phase))
+  },
+
   // Backend health
   getBackendHealth: (): Promise<BackendHealth> => ipcRenderer.invoke('backend:getHealth'),
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void): void => {

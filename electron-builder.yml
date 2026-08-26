@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: torch
+appId: com.torch.agent
+productName: TORCH
 directories:
   buildResources: build
 files:
@@ -9,31 +9,25 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # The backend ships as a PyInstaller bundle through extraResources. Without
+  # this exclusion the whole Python tree is also packed into app.asar, which
+  # produced a 1.65GB archive that electron-builder could not read back.
+  - '!backend/**'
+  - '!dist-backend/**'
+  - '!**/*.test.{ts,tsx}'
+  - '!vitest.config.ts'
+# The backend ships as a self-contained PyInstaller bundle, so the installed
+# app never needs Python present on the machine. Build it first:
+#   python backend/build_backend.py
 extraResources:
-  - from: backend
+  - from: dist-backend/torch-backend
     to: backend
     filter:
       - '**/*'
-      - '!venv/**'
-      - '!data/**'
-      - '!**/__pycache__/**'
-      - '!**/.pytest_cache/**'
-      - '!**/*.pyc'
-      - '!**/*.pyo'
-      - '!**/test_*.py'
 asarUnpack:
   - resources/**
 win:
   executableName: torch
-  extraResources:
-    - from: backend/venv
-      to: backend/venv
-      filter:
-        - '**/*'
-        - '!**/__pycache__/**'
-        - '!**/.pytest_cache/**'
-        - '!**/*.pyc'
-        - '!**/*.pyo'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -60,5 +54,6 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: T-O-R-C-H
+  repo: T.O.R.C.H

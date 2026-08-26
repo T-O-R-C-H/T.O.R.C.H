@@ -1214,11 +1214,17 @@ if __name__ == "__main__":
         return start_port
 
     target_port = find_available_port(settings.port, settings.host)
-    reload_enabled = os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
+    frozen = getattr(sys, "frozen", False)
+    reload_enabled = (
+        not frozen and os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
+    )
 
     logger.info(f"Starting server process on port {target_port}")
+    # A packaged build has no main.py on disk, so "main:app" cannot be imported
+    # by name. Hand uvicorn the application object instead. Reload needs the
+    # import string, so it is only available when running from source.
     uvicorn.run(
-        "main:app",
+        app if frozen else "main:app",
         host=settings.host,
         port=target_port,
         reload=reload_enabled,
