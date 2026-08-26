@@ -28,6 +28,7 @@ VALID_TOOLS = {
     "download_file", "open_app", "post_social", "send_message",
     "run_terminal", "move_file", "delete_file", "create_folder",
     "zip_files", "vision_control", "error", "save_skill", "respond",
+    "read_screen", "click_element", "type_into", "describe_screen",
 }
 
 
@@ -85,7 +86,10 @@ CAPABILITY_TOOLS = {
         "find_file", "find_file_fuzzy", "list_directory", "read_pdf", "read_word",
         "read_excel", "move_file", "delete_file", "create_folder", "zip_files",
     },
-    "apps": {"open_app", "run_terminal", "vision_control"},
+    "apps": {
+        "open_app", "run_terminal", "vision_control",
+        "read_screen", "click_element", "type_into", "describe_screen",
+    },
     "email": {"send_email", "read_inbox"},
 }
 

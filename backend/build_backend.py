@@ -31,6 +31,7 @@ TORCH_MODULES = [
     "tools.social",
     "tools.system",
     "tools.vision_control",
+    "tools.uia_control",
     "tools.voice",
     "agent.brain",
     "agent.companion",
@@ -53,6 +54,8 @@ TORCH_MODULES = [
     "memory.predict",
     "auth",
     "websocket",
+    "gpu_check",
+    "system_checks",
 ]
 
 # uvicorn resolves these at runtime, so static analysis never sees them.

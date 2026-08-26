@@ -40,6 +40,10 @@ def get_plain_phrase(tool_name: str, args: Dict[str, Any], status: str = "active
         "search_web": ("Searching the web...", "Searched the web."),
         "download_file": ("Downloading a file...", "Downloaded the file."),
         "open_app": (f"Opening {name_str or 'app'}...", f"Opened {name_str or 'app'}."),
+        "describe_screen": ("Looking at your screen...", "Read your screen."),
+        "read_screen": ("Looking at your screen...", "Read your screen."),
+        "click_element": ("Clicking on screen...", "Clicked it."),
+        "type_into": ("Typing on screen...", "Typed it in."),
         # These tools only open the site — they never publish or send, so the
         # completed phrasing must not claim otherwise.
         "post_social": ("Opening the site to post...", "Opened the site for you to post."),

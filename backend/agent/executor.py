@@ -70,6 +70,10 @@ class Executor:
             "tools.social": ["post_social", "send_message"],
             "tools.system": ["open_app", "run_terminal", "download_file"],
             "tools.vision_control": ["vision_control"],
+            # UI Automation reads the accessibility tree instead of pixels, so
+            # it is ~2,700x faster than the vision loop and targets elements by
+            # name rather than guessing coordinates.
+            "tools.uia_control": ["read_screen", "click_element", "type_into", "describe_screen"],
         }
 
         for module_path, tool_names in tool_modules.items():

@@ -29,6 +29,9 @@ AVAILABLE_TOOLS = [
     {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
     {"name": "vision_control", "description": "Visually control any application by clicking, typing, scrolling, and navigating", "params": ["task"]},
+    {"name": "describe_screen", "description": "List the buttons and text boxes on the focused window by name. Fast and exact - prefer this over vision_control for desktop apps.", "params": ["window_title"]},
+    {"name": "click_element", "description": "Click a button or menu item by its visible name in the focused window.", "params": ["name"]},
+    {"name": "type_into", "description": "Type text into a named text box in the focused window.", "params": ["name", "text"]},
     {"name": "post_social", "description": "Open a social media site with a message ready for the user to post themselves. Does NOT publish anything.", "params": ["platform", "message", "image"], "hitl": True},
     {"name": "send_message", "description": "Open a messaging app with a message ready for the user to send themselves. Does NOT send anything.", "params": ["platform", "contact", "message"], "hitl": True},
     {"name": "run_terminal", "description": "Run a terminal/command-line command", "params": ["command"]},
@@ -105,6 +108,13 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - open_app opens apps by name (e.g. "code" for VS Code, "notepad", "explorer").
 - To open VS Code with a folder: find_file or list_directory first, then run_terminal with: code "FULL_PATH"
 - Do not use respond to ask for a path if you can search for it with find_file or list_directory.
+
+━━━ SCREEN CONTROL: PREFER UI AUTOMATION ━━━
+For desktop applications, use describe_screen first, then click_element / type_into.
+They read the app's accessibility tree, so they target controls by name and take
+milliseconds. vision_control looks at pixels and takes minutes on machines
+without a graphics card, so use it only when the other tools report no readable
+controls (some games, canvas apps and remote desktops).
 
 - Use vision_control for application interactions that require visual clicking, typing, scrolling, or navigation.
 - search_web is background-only. If the user explicitly says Chrome, Google, Edge, Firefox, or
