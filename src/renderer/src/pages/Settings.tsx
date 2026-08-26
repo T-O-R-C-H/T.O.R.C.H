@@ -212,8 +212,6 @@ export function Settings(): JSX.Element {
     }
   }
 
-
-
   return (
     <div className="page-shell page-enter">
       <div className="settings-tabs">
@@ -333,9 +331,7 @@ export function Settings(): JSX.Element {
                   <div key={platform.key} className="setting-row">
                     <div>
                       <div className="setting-row__label">{platform.name}</div>
-                      <div className="setting-row__desc font-mono">
-                        Opens in your browser
-                      </div>
+                      <div className="setting-row__desc font-mono">Opens in your browser</div>
                     </div>
                     <button
                       type="button"
@@ -464,8 +460,8 @@ export function Settings(): JSX.Element {
                   <span className="t-label">WHAT TORCH CAN DO</span>
                 </div>
                 <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
-                  Switching one off stops TORCH using those tools at all — it will say so instead
-                  of trying.
+                  Switching one off stops TORCH using those tools at all — it will say so instead of
+                  trying.
                 </p>
                 <SettingRow label="Find and open your files">
                   <ToggleSwitch checked={allowFiles} onChange={() => setAllowFiles(!allowFiles)} />
