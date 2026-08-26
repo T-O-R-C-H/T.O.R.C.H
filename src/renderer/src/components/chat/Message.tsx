@@ -9,7 +9,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 interface MessageProps {
   message: MessageType
   onApprove?: (stepId: string) => void
-  onEdit?: (stepId: string) => void
+  onEdit?: (stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (stepId: string) => void
 }
 
@@ -70,8 +70,9 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
           <ApprovalCard
             summary={hitlStep.label}
             warning={hitlWarning}
+            args={hitlStep.args}
             onApprove={() => onApprove?.(hitlStep.id)}
-            onEdit={() => onEdit?.(hitlStep.id)}
+            onEdit={(edited) => onEdit?.(hitlStep.id, edited)}
             onCancel={() => onCancel?.(hitlStep.id)}
           />
         )}

@@ -43,6 +43,8 @@ class Executor:
     def __init__(self):
         self._approval_events: Dict[str, asyncio.Event] = {}
         self._approval_results: Dict[str, str] = {}
+        # Arguments the user changed in the approval card, keyed by step id.
+        self._approval_edits: Dict[str, Dict[str, Any]] = {}
         self._approval_clients: Dict[str, str] = {}
         self._active_tasks: Dict[str, Set[str]] = {}
         self._active_task_channels: Dict[Tuple[str, str], str] = {}
@@ -190,7 +192,32 @@ class Executor:
                 )
 
                 # Wait for approval
-                approval = await self._wait_for_approval(step_id, client_id)
+                approval, edited_args = await self._wait_for_approval(step_id, client_id)
+
+                if approval == "edit" and edited_args:
+                    # Only arguments the step already has may be replaced, so an
+                    # edit cannot introduce a parameter the tool never expected.
+                    applied = {
+                        key: value
+                        for key, value in edited_args.items()
+                        if key in step.get("args", {})
+                    }
+                    if applied:
+                        step["args"].update(applied)
+                        # resolved_args was built before the approval pause, so
+                        # it has to be updated too or the tool would run on the
+                        # values the user just changed away from.
+                        resolved_args.update(self._resolve_references(applied, results))
+                        logger.info(
+                            f"Applied user edits to {step.get('tool')}: {sorted(applied)}"
+                        )
+                        await ws_manager.send_step_update(
+                            message_id,
+                            step_id,
+                            "active",
+                            label=step["label"],
+                            client_id=client_id,
+                        )
 
                 if self._task_is_cancelled(client_id, message_id) or approval == "cancel":
                     step["status"] = "failed"
@@ -557,30 +584,48 @@ class Executor:
 
     async def _wait_for_approval(
         self, step_id: str, client_id: str = "main", timeout: float = 300
-    ) -> str:
-        """Wait for HITL approval with timeout (default 5 minutes)."""
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Wait for HITL approval with timeout (default 5 minutes).
+
+        Returns the action and, for an edited approval, the arguments the user
+        changed. Timing out returns "cancel": an unanswered prompt must never
+        act on its own.
+        """
         event = asyncio.Event()
         self._approval_events[step_id] = event
         self._approval_clients[step_id] = client_id
 
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
-            return self._approval_results.pop(step_id, "cancel")
+            action = self._approval_results.pop(step_id, "cancel")
+            return action, self._approval_edits.pop(step_id, None)
         except asyncio.TimeoutError:
             logger.warning(f"Approval timeout for step {step_id}")
-            return "cancel"
+            return "cancel", None
         finally:
             self._approval_events.pop(step_id, None)
             self._approval_clients.pop(step_id, None)
+            self._approval_edits.pop(step_id, None)
 
-    def submit_approval(self, step_id: str, action: str) -> bool:
-        """Submit an approval response from the frontend."""
+    def submit_approval(
+        self, step_id: str, action: str, edited_args: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Submit an approval response from the frontend.
+
+        `edited_args` carries the values the user changed in the approval card.
+        They are applied to the step before it runs, so an edited approval acts
+        on what the user actually saw and confirmed.
+        """
         if action not in {"approve", "edit", "cancel"}:
             return False
         event = self._approval_events.get(step_id)
         if not event or event.is_set():
             return False
         self._approval_results[step_id] = action
+        if action == "edit" and isinstance(edited_args, dict):
+            self._approval_edits[step_id] = edited_args
         event.set()
         return True
 

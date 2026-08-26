@@ -38,7 +38,7 @@ const promptSuggestions = [
 
 interface ChatAreaProps {
   onApprove?: (messageId: string, stepId: string) => void
-  onEdit?: (messageId: string, stepId: string) => void
+  onEdit?: (messageId: string, stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (messageId: string, stepId: string) => void
   onSend?: (command: string) => void
 }
@@ -146,8 +146,8 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header">
-<TorchLogo size={72} />
-          <p className="cmd-idle__title">Starting TORCH…</p>
+            <TorchLogo size={72} />
+            <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
             </p>
@@ -210,7 +210,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
               activityStartedAt={turn.user?.timestamp}
               onActivityTimeout={isPendingTurn ? handleActivityTimeout : undefined}
               onApprove={(stepId) => onApprove?.(agentId, stepId)}
-              onEdit={(stepId) => onEdit?.(agentId, stepId)}
+              onEdit={(stepId, edited) => onEdit?.(agentId, stepId, edited)}
               onCancel={(stepId) => onCancel?.(agentId, stepId)}
               onSend={(command) => onSend?.(command)}
             />

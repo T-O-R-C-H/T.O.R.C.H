@@ -46,9 +46,14 @@ def listen(duration: int = 5) -> str:
             logger.info("Listening for speech...")
             audio = recognizer.listen(source, timeout=duration, phrase_time_limit=15)
 
-        # Use Whisper for transcription (local, free)
+        # Use Whisper for transcription (local, free). The model size is the
+        # one chosen in Settings — it was previously saved but ignored here.
         try:
-            text = recognizer.recognize_whisper(audio, model="base", language="english")
+            from config.settings import settings
+
+            text = recognizer.recognize_whisper(
+                audio, model=settings.whisper_model_size or "base", language="english"
+            )
             logger.info(f"Transcribed: {text}")
             return text
         except sr.UnknownValueError:

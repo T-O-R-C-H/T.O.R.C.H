@@ -27,7 +27,7 @@ interface ConversationTurnProps {
   activityStartedAt?: number
   onActivityTimeout?: () => void
   onApprove?: (stepId: string) => void
-  onEdit?: (stepId: string) => void
+  onEdit?: (stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (stepId: string) => void
   onSend?: (command: string) => void
 }
@@ -136,8 +136,9 @@ export function ConversationTurn({
             <ApprovalCard
               summary={hitlStep.label}
               warning={hitlWarning}
+              args={hitlStep.args}
               onApprove={() => onApprove?.(hitlStep.id)}
-              onEdit={() => onEdit?.(hitlStep.id)}
+              onEdit={(edited) => onEdit?.(hitlStep.id, edited)}
               onCancel={() => onCancel?.(hitlStep.id)}
             />
           )}

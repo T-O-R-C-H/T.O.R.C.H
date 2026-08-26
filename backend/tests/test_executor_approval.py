@@ -27,7 +27,7 @@ async def test_approval_resolves_with_the_submitted_action(executor):
     await asyncio.sleep(0)  # let the waiter register its event
 
     assert executor.submit_approval("step-1", "approve") is True
-    assert await waiter == "approve"
+    assert (await waiter)[0] == "approve"
 
 
 async def test_cancel_action_is_returned(executor):
@@ -35,12 +35,12 @@ async def test_cancel_action_is_returned(executor):
     await asyncio.sleep(0)
 
     executor.submit_approval("step-2", "cancel")
-    assert await waiter == "cancel"
+    assert (await waiter)[0] == "cancel"
 
 
 async def test_approval_times_out_to_cancel(executor):
     """Defaulting to 'cancel' keeps an unanswered prompt from acting on its own."""
-    assert await executor._wait_for_approval("step-3", "client-a", timeout=0.05) == "cancel"
+    assert (await executor._wait_for_approval("step-3", "client-a", timeout=0.05))[0] == "cancel"
 
 
 async def test_approval_state_is_cleaned_up(executor):
@@ -77,7 +77,7 @@ async def test_second_approval_for_same_step_is_ignored(executor):
 
     assert executor.submit_approval("step-6", "approve") is True
     assert executor.submit_approval("step-6", "cancel") is False
-    assert await waiter == "approve"
+    assert (await waiter)[0] == "approve"
 
 
 # ─── Stop releases waiting approvals ───
@@ -93,7 +93,7 @@ async def test_stop_task_releases_a_pending_approval(executor):
 
     executor.stop_task("client-a")
 
-    assert await asyncio.wait_for(waiter, timeout=1) == "cancel"
+    assert (await asyncio.wait_for(waiter, timeout=1))[0] == "cancel"
 
 
 async def test_stop_task_only_releases_the_requesting_client(executor):
@@ -106,7 +106,7 @@ async def test_stop_task_only_releases_the_requesting_client(executor):
     assert not other.done(), "another client's approval should be untouched"
 
     executor.submit_approval("step-8", "approve")
-    assert await other == "approve"
+    assert (await other)[0] == "approve"
 
 
 # ─── Tool registry ───

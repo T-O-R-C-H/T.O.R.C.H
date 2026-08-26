@@ -34,7 +34,8 @@ export function Command(): JSX.Element {
         currentStatus === 'executing' ||
         currentStatus === 'awaiting_input' ||
         currentStatus === 'awaiting_approval'
-      ) return
+      )
+        return
       addMessage({
         id: crypto.randomUUID(),
         role: 'user',
@@ -77,8 +78,25 @@ export function Command(): JSX.Element {
     }
   }
 
-  const handleEdit = (messageId: string, stepId: string): void => {
-    console.log('Edit step:', messageId, stepId)
+  const handleEdit = (
+    messageId: string,
+    stepId: string,
+    editedArgs: Record<string, string>
+  ): void => {
+    // Approve, but with the values the user corrected. The executor replaces
+    // the step's arguments before running it.
+    if (!wsConnected || !sendApproval(messageId, stepId, 'edit', editedArgs)) {
+      useTorchStore.getState().updateStep(messageId, stepId, {
+        status: 'failed',
+        error: "TORCH isn't connected right now, so that action wasn't run."
+      })
+      useTorchStore.getState().setAgentStatus('idle')
+      return
+    }
+    useTorchStore.getState().updateStep(messageId, stepId, {
+      args: editedArgs,
+      status: 'active'
+    })
   }
 
   const handleCancel = (messageId: string, stepId: string): void => {

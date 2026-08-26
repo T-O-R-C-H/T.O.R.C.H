@@ -98,6 +98,14 @@ const torchAPI = {
   // Backend session token — required on every REST call and the WS handshake
   getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
 
+  // Desktop preferences only Electron can act on
+  getPreferences: (): Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }> =>
+    ipcRenderer.invoke('prefs:get'),
+  setPreferences: (
+    prefs: Partial<{ launchOnLogin: boolean; minimizeToTray: boolean }>
+  ): Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }> =>
+    ipcRenderer.invoke('prefs:set', prefs),
+
   // Updates — downloaded in the background, installed only when the user asks
   onUpdateReady: (callback: (info: { version: string }) => void): void => {
     ipcRenderer.on('update:ready', (_e, info) => callback(info))

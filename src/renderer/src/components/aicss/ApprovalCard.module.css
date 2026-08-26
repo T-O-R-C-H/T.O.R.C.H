@@ -199,3 +199,40 @@
     background: #d4d4d4;
   }
 }
+/* Inline editing of the arguments before approving */
+.editFields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 4px;
+}
+
+.editField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editLabel {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-torch-text-tertiary);
+}
+
+.editInput {
+  width: 100%;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-torch-text);
+  background: var(--color-torch-surface);
+  border: 1px solid var(--color-torch-border);
+  resize: vertical;
+}
+
+.editInput:focus {
+  outline: none;
+  border-color: var(--color-torch-text-tertiary);
+}

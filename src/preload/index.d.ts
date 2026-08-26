@@ -52,6 +52,10 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  getPreferences: () => Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }>
+  setPreferences: (
+    prefs: Partial<{ launchOnLogin: boolean; minimizeToTray: boolean }>
+  ) => Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }>
   onUpdateReady: (callback: (info: { version: string }) => void) => void
   installUpdate: () => void
   getCredentialStatus: () => Promise<{

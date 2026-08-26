@@ -535,6 +535,26 @@ async def delete_history():
     return {"ok": True}
 
 
+@app.delete("/api/memory")
+async def clear_memory():
+    """Forget learned habits, contacts and file patterns. Keeps task history."""
+    from memory.storage import db
+
+    removed = db.clear_memory()
+    logger.info(f"Cleared learned memory: {removed} record(s)")
+    return {"ok": True, "removed": removed}
+
+
+@app.delete("/api/habits")
+async def reset_habits():
+    """Drop the learned command frequencies only."""
+    from memory.storage import db
+
+    removed = db.reset_habits()
+    logger.info(f"Reset habits: {removed} record(s)")
+    return {"ok": True, "removed": removed}
+
+
 @app.get("/api/memory")
 async def get_memory():
     """Get aggregated frequent commands, contacts, files, and habits."""
@@ -810,8 +830,11 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         message_id = message.get("messageId")
         step_id = message.get("stepId")
         action = message.get("action", "cancel")
+        edited = message.get("editedData")
         logger.info(f"HITL response: {step_id} → {action}")
-        accepted = bool(step_id) and executor.submit_approval(step_id, action)
+        accepted = bool(step_id) and executor.submit_approval(
+            step_id, action, edited if isinstance(edited, dict) else None
+        )
         await ws_manager.send_message({
             "type": "approval_result",
             "messageId": message_id,

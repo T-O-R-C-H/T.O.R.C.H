@@ -18,7 +18,7 @@ import { randomBytes } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { spawn, ChildProcess } from 'child_process'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
 import {
   startClipboardMonitor,
   stopClipboardMonitor,
@@ -526,6 +526,35 @@ function completeVisionControl(): void {
   }
 }
 
+/**
+ * Whether minimising hides to the tray companion or minimises normally.
+ * Persisted beside the overlay position so it survives a restart.
+ */
+let minimizeToTrayEnabled = true
+
+function trayPreferencePath(): string {
+  return join(app.getPath('userData'), 'preferences.json')
+}
+
+function loadTrayPreference(): void {
+  try {
+    const path = trayPreferencePath()
+    if (!existsSync(path)) return
+    const saved = JSON.parse(readFileSync(path, 'utf-8')) as { minimizeToTray?: boolean }
+    if (typeof saved.minimizeToTray === 'boolean') minimizeToTrayEnabled = saved.minimizeToTray
+  } catch {
+    // A corrupt preferences file should not stop the app starting.
+  }
+}
+
+function saveTrayPreference(value: boolean): void {
+  try {
+    writeFileSync(trayPreferencePath(), JSON.stringify({ minimizeToTray: value }, null, 2), 'utf-8')
+  } catch (error) {
+    console.error('[TORCH] Could not save preference:', error)
+  }
+}
+
 function minimizeToOverlay(): void {
   if (!mainWindow || mainWindow.isDestroyed() || isQuitting) return
   hideGuidanceOverlay()
@@ -941,6 +970,7 @@ app.whenReady().then(() => {
 
   electronApp.setAppUserModelId('com.torch.agent')
   Menu.setApplicationMenu(null)
+  loadTrayPreference()
 
   // Move any plaintext keys out of .env into the OS keystore. Runs before the
   // backend starts so the migrated values are the ones it receives.
@@ -994,7 +1024,32 @@ app.whenReady().then(() => {
   // ─── IPC HANDLERS ───
 
   // Window controls
-  ipcMain.on('window:minimize', minimizeToOverlay)
+  ipcMain.on('window:minimize', () => {
+    if (minimizeToTrayEnabled) {
+      minimizeToOverlay()
+    } else {
+      mainWindow?.minimize()
+    }
+  })
+
+  // Preferences that only Electron can act on.
+  ipcMain.handle('prefs:get', () => ({
+    launchOnLogin: app.getLoginItemSettings().openAtLogin,
+    minimizeToTray: minimizeToTrayEnabled
+  }))
+  ipcMain.handle('prefs:set', (_event, prefs: Record<string, boolean>) => {
+    if (typeof prefs?.launchOnLogin === 'boolean') {
+      app.setLoginItemSettings({ openAtLogin: prefs.launchOnLogin, openAsHidden: true })
+    }
+    if (typeof prefs?.minimizeToTray === 'boolean') {
+      minimizeToTrayEnabled = prefs.minimizeToTray
+      saveTrayPreference(minimizeToTrayEnabled)
+    }
+    return {
+      launchOnLogin: app.getLoginItemSettings().openAtLogin,
+      minimizeToTray: minimizeToTrayEnabled
+    }
+  })
   ipcMain.on('window:maximize', () => {
     if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()

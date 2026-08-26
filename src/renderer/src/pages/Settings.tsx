@@ -7,8 +7,6 @@ import {
   IconKey as Key,
   IconMail as Mail,
   IconMic as Mic,
-  IconMonitor as Monitor,
-  IconPalette as Palette,
   IconPower as Power,
   IconDatabase as Database,
   IconExternalLink as ExternalLink,
@@ -88,8 +86,6 @@ export function Settings(): JSX.Element {
   const [gmailPassword, setGmailPassword] = useState('')
   const [emailTest, setEmailTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [emailTestMsg, setEmailTestMsg] = useState('')
-  const [wakeWordSensitivity, setWakeWordSensitivity] = useState(50)
-  const [screenWatchInterval, setScreenWatchInterval] = useState('30')
   const [voiceModel, setVoiceModel] = useState('base')
 
   const [secureStorage, setSecureStorage] = useState<boolean | null>(null)
@@ -98,7 +94,6 @@ export function Settings(): JSX.Element {
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
   const [allowEmail, setAllowEmail] = useState(true)
-  const [theme, setTheme] = useState('light')
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
   const [browserAutomation, setBrowserAutomation] = useState<{
@@ -134,6 +129,11 @@ export function Settings(): JSX.Element {
 
     // Surfaced so a user is never told their keys are encrypted when the OS
     // keystore is unavailable and they are not.
+    void window.torchAPI?.getPreferences().then((prefs) => {
+      setLaunchOnLogin(prefs.launchOnLogin)
+      setMinimizeToTray(prefs.minimizeToTray)
+    })
+
     void window.torchAPI
       ?.getCredentialStatus()
       .then((status) => setSecureStorage(status.encryptionAvailable))
@@ -149,8 +149,6 @@ export function Settings(): JSX.Element {
           if (data.gemini_configured) setGeminiKey('********')
           setGmailAddress(data.gmail_address || '')
           if (data.gmail_password_set) setGmailPassword('********')
-          setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
-          setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
           setVoiceModel(data.whisper_model_size || 'base')
           setAllowFiles(data.allow_files !== false)
           setAllowApps(data.allow_apps !== false)
@@ -192,12 +190,58 @@ export function Settings(): JSX.Element {
     }
   }
 
+  const [dataMessage, setDataMessage] = useState<string | null>(null)
+
+  /** Forget learned patterns. Task history is kept — that is a separate action. */
+  const handleClearMemory = async (): Promise<void> => {
+    if (!confirm('Forget the habits, contacts and file patterns TORCH has learned?')) return
+    try {
+      const res = await torchFetch(`${API_BASE}/api/memory`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      setDataMessage(
+        `Cleared ${data.removed ?? 0} learned record(s). Your task history is untouched.`
+      )
+    } catch {
+      setDataMessage("Couldn't clear that just now. Check that TORCH is running.")
+    }
+  }
+
+  /** Save the task history to a file the user chooses. */
+  const handleExportHistory = async (): Promise<void> => {
+    try {
+      const res = await torchFetch(`${API_BASE}/api/history`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `torch-history-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      setDataMessage('History downloaded.')
+    } catch {
+      setDataMessage("Couldn't export your history just now.")
+    }
+  }
+
+  const handleResetHabits = async (): Promise<void> => {
+    if (!confirm('Reset everything TORCH has learned about which commands you use most?')) return
+    try {
+      const res = await torchFetch(`${API_BASE}/api/habits`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      setDataMessage(`Reset ${data.removed ?? 0} habit record(s).`)
+    } catch {
+      setDataMessage("Couldn't reset habits just now.")
+    }
+  }
+
   const handleSave = async (): Promise<void> => {
     try {
       const payload: Record<string, unknown> = {
         gmail_address: gmailAddress,
-        wake_word_sensitivity: wakeWordSensitivity / 100,
-        screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
         whisper_model_size: voiceModel,
         allow_files: allowFiles,
         allow_apps: allowApps,
@@ -423,19 +467,6 @@ export function Settings(): JSX.Element {
                   <Mic size={13} className="text-[var(--color-torch-text-tertiary)]" />
                   <span className="t-label">VOICE SETTINGS</span>
                 </div>
-                <SettingRow label="Wake Word Sensitivity">
-                  <span className="t-mono-xs text-[#555] w-10 text-right">
-                    {wakeWordSensitivity}%
-                  </span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={wakeWordSensitivity}
-                    onChange={(e) => setWakeWordSensitivity(Number(e.target.value))}
-                    className="w-[200px] accent-white"
-                  />
-                </SettingRow>
                 <SettingRow
                   label="Voice Model Size"
                   description="Larger = more accurate but slower"
@@ -448,44 +479,6 @@ export function Settings(): JSX.Element {
                     ]}
                     value={voiceModel}
                     onChange={setVoiceModel}
-                  />
-                </SettingRow>
-              </div>
-
-              {/* Screen Watch */}
-              <div>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <Monitor size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">SCREEN WATCH</span>
-                </div>
-                <SettingRow label="Capture Interval">
-                  <SegmentButton
-                    options={[
-                      { value: '15', label: '15S' },
-                      { value: '30', label: '30S' },
-                      { value: '60', label: '60S' },
-                      { value: 'off', label: 'OFF' }
-                    ]}
-                    value={screenWatchInterval}
-                    onChange={setScreenWatchInterval}
-                  />
-                </SettingRow>
-              </div>
-
-              {/* Appearance */}
-              <div>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <Palette size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">APPEARANCE</span>
-                </div>
-                <SettingRow label="Theme">
-                  <SegmentButton
-                    options={[
-                      { value: 'dark', label: 'DARK' },
-                      { value: 'light', label: 'LIGHT' }
-                    ]}
-                    value={theme}
-                    onChange={setTheme}
                   />
                 </SettingRow>
               </div>
@@ -520,13 +513,24 @@ export function Settings(): JSX.Element {
                 <SettingRow label="Launch on login">
                   <ToggleSwitch
                     checked={launchOnLogin}
-                    onChange={() => setLaunchOnLogin(!launchOnLogin)}
+                    onChange={() => {
+                      const next = !launchOnLogin
+                      setLaunchOnLogin(next)
+                      void window.torchAPI?.setPreferences({ launchOnLogin: next })
+                    }}
                   />
                 </SettingRow>
-                <SettingRow label="Minimize to tray">
+                <SettingRow
+                  label="Minimize to tray"
+                  description="Off minimizes to the taskbar instead"
+                >
                   <ToggleSwitch
                     checked={minimizeToTray}
-                    onChange={() => setMinimizeToTray(!minimizeToTray)}
+                    onChange={() => {
+                      const next = !minimizeToTray
+                      setMinimizeToTray(next)
+                      void window.torchAPI?.setPreferences({ minimizeToTray: next })
+                    }}
                   />
                 </SettingRow>
               </div>
@@ -538,10 +542,33 @@ export function Settings(): JSX.Element {
                   <span className="t-label">DATA MANAGEMENT</span>
                 </div>
                 <div className="flex gap-3 font-mono">
-                  <button className="btn-secondary text-[10px]">Clear memory</button>
-                  <button className="btn-secondary text-[10px]">Export history</button>
-                  <button className="btn-danger text-[10px]">Reset all habits</button>
+                  <button
+                    type="button"
+                    className="btn-secondary text-[10px]"
+                    onClick={() => void handleClearMemory()}
+                  >
+                    Clear memory
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary text-[10px]"
+                    onClick={() => void handleExportHistory()}
+                  >
+                    Export history
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger text-[10px]"
+                    onClick={() => void handleResetHabits()}
+                  >
+                    Reset all habits
+                  </button>
                 </div>
+                {dataMessage && (
+                  <p className="text-[11px] text-[var(--color-torch-text-secondary)] mt-3">
+                    {dataMessage}
+                  </p>
+                )}
               </div>
 
               {/* Developer Tools */}

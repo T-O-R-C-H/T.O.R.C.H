@@ -303,6 +303,32 @@ class TorchDatabase:
                 except Exception:
                     pass
 
+    def _clear_tables(self, tables: List[str]) -> int:
+        """Empty the named tables, returning how many rows went."""
+        removed = 0
+        with self._connect() as conn:
+            for table in tables:
+                try:
+                    count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    conn.execute(f"DELETE FROM {table}")
+                    removed += count
+                except Exception as exc:
+                    logger.warning(f"Could not clear {table}: {exc}")
+        return removed
+
+    def clear_memory(self) -> int:
+        """
+        Forget what TORCH has learned about the user.
+
+        Task history is deliberately left alone: this clears the patterns, not
+        the record of what was done.
+        """
+        return self._clear_tables(["habits", "contacts", "files_accessed"])
+
+    def reset_habits(self) -> int:
+        """Drop only the learned command frequencies."""
+        return self._clear_tables(["habits"])
+
 
 # Singleton
 db = TorchDatabase()
