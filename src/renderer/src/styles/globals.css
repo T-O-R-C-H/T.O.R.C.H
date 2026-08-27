@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @import 'tailwindcss';
+@import './tokens.css';
 
 /* ═══════════════════════════════════════════════════
    TORCH v3 — Cursor Agent–inspired LIGHT theme
@@ -373,13 +374,15 @@
 
 /* ─── Topbar ─── */
 .topbar {
-  height: 48px;
+  height: var(--titlebar-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px 0 20px;
-  background: var(--color-torch-surface);
-  border-bottom: 1px solid var(--color-torch-border);
+  /* No right padding: the window controls run to the window edge, as they do
+     in every native title bar. */
+  padding: 0 0 0 var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
@@ -519,30 +522,33 @@
   min-height: 0;
 }
 
+/* Window controls follow the OS convention: full-height, square, no radius,
+   and the close button turns red. Users reach for that corner by muscle
+   memory, so it should behave the way every other window does. */
 .win-btn {
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: var(--titlebar-height);
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   background: transparent;
-  color: var(--color-torch-text-tertiary);
-  border-radius: var(--radius-torch-sm);
+  color: var(--text-tertiary);
+  border-radius: 0;
   cursor: pointer;
   transition:
-    background 120ms ease,
-    color 120ms ease;
+    background var(--dur-instant) ease,
+    color var(--dur-instant) ease;
 }
 
 .win-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--color-torch-text);
+  background: var(--surface-hover);
+  color: var(--text-primary);
 }
 
 .win-btn--danger:hover {
-  background: #fef2f2;
-  color: var(--color-torch-error);
+  background: var(--window-close-bg);
+  color: var(--window-close-fg);
 }
 
 /* ─── Buttons ─── */
@@ -3484,4 +3490,13 @@ button:not(:disabled):active,
 
 .update-notice__dismiss {
   border-color: transparent;
+}
+
+/* ─── Title bar wordmark ─── */
+.topbar-wordmark {
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  user-select: none;
 }
