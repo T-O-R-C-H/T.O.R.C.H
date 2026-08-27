@@ -1219,6 +1219,9 @@ async def process_command(
         ):
             return
         logger.error(f"Command processing failed: {e}", exc_info=True)
+        # An exception must not leave the screen-control border covering the
+        # user's display for the rest of the session.
+        await executor.clear_screen_control(client_id)
         
         # Record failure in database for accurate success rate metrics
         try:

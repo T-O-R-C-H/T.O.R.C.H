@@ -102,3 +102,37 @@ def test_disabled_capability_is_not_merely_an_approval_prompt(permissions):
     step = _plan("send_email")
     assert step["tool"] == "error"
     assert step["requires_approval"] is False
+
+
+# ─── Errors written for the user survive translation ───
+
+
+def test_user_facing_errors_are_not_replaced_by_the_generic_fallback():
+    """
+    A tool that knows exactly what went wrong says so. Running that through
+    translate_error swapped a specific message for "Something didn't go as
+    planned", which is strictly less useful.
+    """
+    from errors.plain_language import UserFacingError, translate_error
+
+    specific = "I couldn't find anything called 'Pencil' on your screen."
+
+    # The translator itself has no way to know, and still falls back.
+    assert translate_error(specific)["what_happened"] != specific
+
+    # Which is why the exception type carries the intent instead.
+    assert issubclass(UserFacingError, Exception)
+    assert str(UserFacingError(specific)) == specific
+
+
+def test_uia_tools_raise_user_facing_errors():
+    """Every failure a user can cause on screen should read as plain English."""
+    import inspect
+
+    from errors.plain_language import UserFacingError
+    from tools import uia_control
+
+    source = inspect.getsource(uia_control)
+    assert "raise ValueError" not in source
+    assert "raise RuntimeError" not in source
+    assert UserFacingError.__name__ in source

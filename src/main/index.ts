@@ -1132,6 +1132,8 @@ app.whenReady().then(() => {
       'status',
       'vision_control_start',
       'vision_control_end',
+      'uia_control_start',
+      'uia_control_end',
       'vision_capture_start',
       'vision_capture_end',
       'hitl_request',

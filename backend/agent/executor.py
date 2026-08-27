@@ -15,6 +15,12 @@ from config.settings import settings
 logger = logging.getLogger("torch.executor")
 
 NON_BLOCKING_FAILURE_TOOLS = {"screenshot"}
+
+# Tools that drive the user's mouse and keyboard. Reading the screen is not
+# included: looking is not taking control, and the border is a claim about
+# control. The border spans a run of these steps rather than flashing per
+# action, which would be noise at UIA speed.
+SCREEN_CONTROL_TOOLS = {"click_element", "type_into"}
 NON_RETRYABLE_ERROR_MARKERS = (
     "authentication failed",
     "unauthorized",
@@ -52,8 +58,30 @@ class Executor:
         self._completed_cancelled_tasks: Set[Tuple[str, str]] = set()
         self._planning_requests: Dict[str, Dict[str, str]] = {}
         self._pending_planning_cancellations: Set[Tuple[str, str]] = set()
+        # Clients currently showing the screen-control border.
+        self._screen_control_clients: Set[str] = set()
         self._tool_registry: Dict[str, Callable] = {}
         self._load_tools()
+
+    async def show_screen_control(self, client_id: str) -> None:
+        """Raise the border, if it is not already up for this client."""
+        if client_id in self._screen_control_clients:
+            return
+        self._screen_control_clients.add(client_id)
+        await ws_manager.send_message({"type": "uia_control_start"}, client_id)
+
+    async def clear_screen_control(self, client_id: str) -> None:
+        """
+        Take the border down.
+
+        Safe to call when it was never raised, so every path out of a task can
+        call it unconditionally. A border left up covers the user's screen for
+        the rest of the session.
+        """
+        if client_id not in self._screen_control_clients:
+            return
+        self._screen_control_clients.discard(client_id)
+        await ws_manager.send_message({"type": "uia_control_end"}, client_id)
 
     def _load_tools(self) -> None:
         """Dynamically load all tool functions."""
@@ -124,7 +152,7 @@ class Executor:
         await ws_manager.send_status("executing", client_id)
 
         from agent.step_phrasing import get_plain_phrase
-        from errors.plain_language import translate_error
+        from errors.plain_language import translate_error, UserFacingError
         from agent.rollback import rollback_manager
 
         for i, step in enumerate(steps):
@@ -172,6 +200,11 @@ class Executor:
                 )
                 results.append("")
                 break
+
+            # Raise the border before the first step that drives input, and
+            # leave it up for the rest of the run.
+            if tool_name in SCREEN_CONTROL_TOOLS:
+                await self.show_screen_control(client_id)
 
             # Mark step as active
             step["status"] = "active"
@@ -343,7 +376,11 @@ class Executor:
                             )
                             break
                     except Exception as e:
-                        translated = translate_error(str(e))
+                        translated = (
+                            {"what_happened": str(e), "what_to_do": ""}
+                            if isinstance(e, UserFacingError)
+                            else translate_error(str(e))
+                        )
                         plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
                         step["status"] = "failed"
                         step["error"] = plain_err
@@ -394,6 +431,10 @@ class Executor:
                 stopped = self._task_is_cancelled(client_id, message_id)
                 if stopped:
                     plain_err = "Task stopped by user"
+                elif isinstance(e, UserFacingError):
+                    # Already written for the user; translating would replace a
+                    # specific message with the generic fallback.
+                    plain_err = str(e)
                 else:
                     translated = translate_error(str(e))
                     plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
@@ -432,6 +473,11 @@ class Executor:
                     continue
 
                 break
+
+        # Every exit from the loop lands here — success, failure, cancellation
+        # and stop alike. process_command clears it again if this is skipped by
+        # an exception, and stop_task clears it immediately.
+        await self.clear_screen_control(client_id)
 
         await ws_manager.send_status("idle", client_id)
         active_for_client = self._active_tasks.get(client_id)
@@ -506,6 +552,14 @@ class Executor:
         for step_id, event in self._approval_events.items():
             if self._approval_clients.get(step_id) == client_id:
                 event.set()
+
+        # Stop means the user wants their screen back now, not when the
+        # current step finishes unwinding.
+        if client_id in self._screen_control_clients:
+            self._screen_control_clients.discard(client_id)
+            asyncio.create_task(
+                ws_manager.send_message({"type": "uia_control_end"}, client_id)
+            )
 
         try:
             from tools.vision_control import cancel_vision_control

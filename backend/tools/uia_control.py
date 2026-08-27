@@ -21,7 +21,10 @@ browser tools or a vision fallback instead.
 
 import logging
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
+
+from errors.plain_language import UserFacingError
 
 logger = logging.getLogger("torch.tools.uia")
 
@@ -54,9 +57,26 @@ MAX_DEPTH = 6
 MAX_ELEMENTS = 80
 
 
+@contextmanager
+def _com_apartment():
+    """
+    Give the calling thread a COM apartment.
+
+    The executor runs synchronous tools on a thread-pool thread, and COM is
+    per-thread: without this every call fails with "CoInitialize has not been
+    called". It is a no-op where an apartment already exists.
+    """
+    initializer = getattr(auto, "UIAutomationInitializerInThread", None)
+    if initializer is None:
+        yield
+        return
+    with initializer():
+        yield
+
+
 def _require_uia() -> None:
     if not UIA_AVAILABLE:
-        raise RuntimeError(
+        raise UserFacingError(
             "Screen control is not available on this computer. "
             "It needs the Windows accessibility support that ships with TORCH."
         )
@@ -101,10 +121,14 @@ def read_screen(window_title: Optional[str] = None) -> Dict[str, Any]:
     """
     _require_uia()
 
-    window = _find_window(window_title) if window_title else auto.GetForegroundControl()
-    if not window:
-        raise RuntimeError("I couldn't find that window on your screen.")
+    with _com_apartment():
+        window = _find_window(window_title) if window_title else auto.GetForegroundControl()
+        if not window:
+            raise UserFacingError("I couldn't find that window on your screen.")
+        return _read_window(window)
 
+
+def _read_window(window: Any) -> Dict[str, Any]:
     elements: List[Dict[str, Any]] = []
 
     def walk(control: Any, depth: int = 0) -> None:
@@ -144,14 +168,17 @@ def _find_window(title: str) -> Optional[Any]:
 
 
 def _find_element(
-    name: str, want_editable: bool = False, exact: bool = False
+    name: str,
+    want_editable: bool = False,
+    exact: bool = False,
+    window: Optional[Any] = None,
 ) -> Optional[Any]:
     """
-    Locate an element by its accessible name inside the focused window.
+    Locate an element by its accessible name inside a window.
 
     Prefers an exact match so "Save" does not select "Save As" when both exist.
     """
-    window = auto.GetForegroundControl()
+    window = window or auto.GetForegroundControl()
     if not window:
         return None
 
@@ -193,40 +220,94 @@ def _find_element(
     return exact_match or partial_match
 
 
-def click_element(name: str, exact: bool = False) -> str:
-    """Click a named element in the focused window."""
+def _resolve_target_window(window_title: Optional[str]) -> Optional[Any]:
+    """
+    The window to act on, brought to the front when named explicitly.
+
+    Returns None to mean "whatever is focused", which _find_element resolves.
+    """
+    if not window_title:
+        return None
+    window = _find_window(window_title)
+    if not window:
+        raise UserFacingError(f"I couldn't find a window called '{window_title}'.")
+    try:
+        window.SetActive()
+        time.sleep(0.3)
+    except Exception:
+        # Some windows refuse activation; the click can still land.
+        pass
+    return window
+
+
+def click_element(name: str, exact: bool = False, window_title: Optional[str] = None) -> str:
+    """
+    Click a named element.
+
+    Pass window_title whenever the target is known. Resolving "the focused
+    window" at execution time is unreliable: planning takes seconds, and
+    whatever the user clicks in the meantime becomes the target instead.
+    """
     _require_uia()
 
-    target = _find_element(name, want_editable=False, exact=exact)
-    if not target:
-        raise ValueError(f"I couldn't find anything called '{name}' on your screen.")
+    with _com_apartment():
+        window = _resolve_target_window(window_title)
+        target = _find_element(name, want_editable=False, exact=exact, window=window)
+        if not target:
+            raise UserFacingError(f"I couldn't find anything called '{name}' on your screen.")
+        return _invoke_or_click(target, name)
 
+
+def _invoke_or_click(target: Any, name: str) -> str:
+    """
+    Activate a control using the pattern it actually supports.
+
+    Order matters. A radio button or tab exposes SelectionItem, a checkbox
+    exposes Toggle, and a plain button exposes Invoke. Calling Invoke on a
+    radio button appears to succeed while changing nothing, which would report
+    a click that never happened.
+    """
     label = (target.Name or name).strip()
-    try:
-        # Invoke is more reliable than a synthetic click: it does not depend on
-        # the element being unobscured or the pointer landing precisely.
-        pattern = target.GetInvokePattern()
-        if pattern:
-            pattern.Invoke()
+
+    for pattern_name, action in (
+        ("GetSelectionItemPattern", "Select"),
+        ("GetTogglePattern", "Toggle"),
+        ("GetInvokePattern", "Invoke"),
+    ):
+        try:
+            getter = getattr(target, pattern_name, None)
+            if not getter:
+                continue
+            pattern = getter()
+            if not pattern:
+                continue
+            getattr(pattern, action)()
             return f"Clicked '{label}'."
-    except Exception:
-        pass
+        except Exception:
+            continue
 
     try:
+        # Last resort: a real click, which needs the control to be visible and
+        # unobscured.
         target.Click(simulateMove=False)
         return f"Clicked '{label}'."
     except Exception as exc:
-        raise RuntimeError(f"I found '{label}' but couldn't click it.") from exc
+        raise UserFacingError(f"I found '{label}' but couldn't click it.") from exc
 
 
-def type_into(name: str, text: str) -> str:
-    """Type into a named text field in the focused window."""
+def type_into(name: str, text: str, window_title: Optional[str] = None) -> str:
+    """Type into a named text field. Pass window_title when the target is known."""
     _require_uia()
 
-    target = _find_element(name, want_editable=True, exact=False)
-    if not target:
-        raise ValueError(f"I couldn't find a text box called '{name}' on your screen.")
+    with _com_apartment():
+        window = _resolve_target_window(window_title)
+        target = _find_element(name, want_editable=True, exact=False, window=window)
+        if not target:
+            raise UserFacingError(f"I couldn't find a text box called '{name}' on your screen.")
+        return _set_value_or_type(target, name, text)
 
+
+def _set_value_or_type(target: Any, name: str, text: str) -> str:
     label = (target.Name or name).strip()
     try:
         pattern = target.GetValuePattern()
@@ -242,7 +323,7 @@ def type_into(name: str, text: str) -> str:
         auto.SendKeys(text, waitTime=0.01)
         return f"Typed into '{label}'."
     except Exception as exc:
-        raise RuntimeError(f"I found '{label}' but couldn't type into it.") from exc
+        raise UserFacingError(f"I found '{label}' but couldn't type into it.") from exc
 
 
 def describe_screen(window_title: Optional[str] = None) -> str:

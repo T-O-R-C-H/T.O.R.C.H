@@ -11,6 +11,7 @@ be on screen, which is not something a test can rely on.
 
 import pytest
 
+from errors.plain_language import UserFacingError
 from tools import uia_control
 
 
@@ -31,6 +32,8 @@ class FakeControl:
         rect=None,
         invoke_pattern=None,
         value_pattern=None,
+        selection_pattern=None,
+        toggle_pattern=None,
     ):
         self.Name = name
         self.ControlTypeName = control_type
@@ -39,6 +42,8 @@ class FakeControl:
         self._children = children or []
         self._invoke = invoke_pattern
         self._value = value_pattern
+        self._selection = selection_pattern
+        self._toggle = toggle_pattern
         self.clicked = False
 
     def GetChildren(self):
@@ -50,6 +55,12 @@ class FakeControl:
     def GetValuePattern(self):
         return self._value
 
+    def GetSelectionItemPattern(self):
+        return self._selection
+
+    def GetTogglePattern(self):
+        return self._toggle
+
     def Click(self, simulateMove=False):
         self.clicked = True
 
@@ -57,10 +68,18 @@ class FakeControl:
 class RecordingPattern:
     def __init__(self):
         self.invoked = False
+        self.selected = False
+        self.toggled = False
         self.value = None
 
     def Invoke(self):
         self.invoked = True
+
+    def Select(self):
+        self.selected = True
+
+    def Toggle(self):
+        self.toggled = True
 
     def SetValue(self, value):
         self.value = value
@@ -165,14 +184,14 @@ def test_disabled_elements_are_not_clicked(monkeypatch):
     disabled = FakeControl("Send", enabled=False, invoke_pattern=RecordingPattern())
     monkeypatch.setattr(uia_control.auto, "GetForegroundControl", lambda: _window(disabled))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(UserFacingError):
         uia_control.click_element("Send")
 
 
 def test_missing_element_reports_plainly(monkeypatch):
     monkeypatch.setattr(uia_control.auto, "GetForegroundControl", lambda: _window())
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(UserFacingError) as excinfo:
         uia_control.click_element("Nowhere")
 
     message = str(excinfo.value)
@@ -197,7 +216,7 @@ def test_type_into_will_not_target_a_button(monkeypatch):
         uia_control.auto, "GetForegroundControl", lambda: _window(FakeControl("Send"))
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(UserFacingError):
         uia_control.type_into("Send", "text")
 
 
@@ -207,7 +226,76 @@ def test_type_into_will_not_target_a_button(monkeypatch):
 def test_tools_report_plainly_when_uia_is_missing(monkeypatch):
     monkeypatch.setattr(uia_control, "UIA_AVAILABLE", False)
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(UserFacingError) as excinfo:
         uia_control.read_screen()
 
     assert "not available" in str(excinfo.value).lower()
+
+
+# ─── COM apartment ───
+
+
+def test_entry_points_run_inside_a_com_apartment():
+    """
+    uiautomation needs a COM apartment on the calling thread, and the executor
+    runs synchronous tools on a thread-pool thread. Without this every call
+    fails with "CoInitialize has not been called" — which unit tests using fake
+    controls cannot catch, because they never touch the real library.
+    """
+    import inspect
+
+    for func in (uia_control.read_screen, uia_control.click_element, uia_control.type_into):
+        assert "_com_apartment()" in inspect.getsource(func), func.__name__
+
+
+def test_com_apartment_is_a_noop_without_the_initializer(monkeypatch):
+    """Older builds of the library lack the helper; that must not break calls."""
+
+    class Bare:
+        pass
+
+    monkeypatch.setattr(uia_control, "auto", Bare())
+    with uia_control._com_apartment():
+        pass
+
+
+# ─── The right pattern for the control ───
+
+
+def test_radio_button_is_selected_not_invoked(monkeypatch):
+    """
+    Invoke on a radio button appears to succeed while changing nothing, so the
+    tool would report a click that never happened.
+    """
+    selection = RecordingPattern()
+    invoke = RecordingPattern()
+    radio = FakeControl(
+        "Select",
+        "RadioButtonControl",
+        selection_pattern=selection,
+        invoke_pattern=invoke,
+    )
+    monkeypatch.setattr(uia_control.auto, "GetForegroundControl", lambda: _window(radio))
+
+    uia_control.click_element("Select")
+
+    assert selection.selected is True
+    assert invoke.invoked is False
+
+
+def test_checkbox_is_toggled(monkeypatch):
+    toggle = RecordingPattern()
+    checkbox = FakeControl("Word wrap", "CheckBoxControl", toggle_pattern=toggle)
+    monkeypatch.setattr(uia_control.auto, "GetForegroundControl", lambda: _window(checkbox))
+
+    uia_control.click_element("Word wrap")
+    assert toggle.toggled is True
+
+
+def test_plain_button_still_uses_invoke(monkeypatch):
+    invoke = RecordingPattern()
+    button = FakeControl("Save", "ButtonControl", invoke_pattern=invoke)
+    monkeypatch.setattr(uia_control.auto, "GetForegroundControl", lambda: _window(button))
+
+    uia_control.click_element("Save")
+    assert invoke.invoked is True

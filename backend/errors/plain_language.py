@@ -5,6 +5,16 @@ Converts technical exceptions/errors into calm, plain-English explanations with 
 
 import re
 
+class UserFacingError(Exception):
+    """
+    An error whose message is already written for the user.
+
+    Tools that know exactly what went wrong should raise this rather than a
+    bare Exception, so the wording survives instead of being replaced by the
+    generic fallback below.
+    """
+
+
 def translate_error(error_str: str) -> dict:
     """
     Translates a raw exception or error message into user-friendly terms.

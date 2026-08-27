@@ -205,11 +205,15 @@ export function useWebSocket(): {
           }
           break
         }
-        case 'vision_control_start': {
+        case 'vision_control_start':
+        // UI Automation drives the same mouse and keyboard, so it raises the
+        // same border. The user should not have to know which engine is used.
+        case 'uia_control_start': {
           window.torchAPI?.showControlBorder()
           break
         }
-        case 'vision_control_end': {
+        case 'vision_control_end':
+        case 'uia_control_end': {
           window.torchAPI?.completeVisionControl()
           break
         }
