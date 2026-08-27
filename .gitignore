@@ -54,3 +54,6 @@ data/
 # PyInstaller backend bundle output (rebuilt by backend/build_backend.py)
 dist-backend/
 build-backend/
+
+# uiautomation writes this next to the process
+@AutomationLog.txt
