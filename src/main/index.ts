@@ -38,6 +38,8 @@ import {
 let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let guidanceWindow: BrowserWindow | null = null
+let pillWindow: BrowserWindow | null = null
+let taskPanelWindow: BrowserWindow | null = null
 let controlBorderWindow: BrowserWindow | null = null
 let controlBorderDisplayListenersRegistered = false
 let tray: Tray | null = null
@@ -480,7 +482,14 @@ function hideFloatingOverlay(): void {
   overlayWindow?.hide()
 }
 
+let pillWasVisibleBeforeCapture = false
+
 function suspendOverlayForVisionCapture(): void {
+  // The pill is always on top, so it would appear in the screenshot the agent
+  // is about to reason about.
+  pillWasVisibleBeforeCapture = pillWindow?.isVisible() ?? false
+  if (pillWasVisibleBeforeCapture) pillWindow?.hide()
+
   if (overlayCaptureSuspended || !overlayWindow || overlayWindow.isDestroyed()) return
   overlayCaptureSuspended = true
   overlayWasVisibleBeforeCapture = overlayWindow.isVisible()
@@ -491,6 +500,11 @@ function suspendOverlayForVisionCapture(): void {
 }
 
 function restoreOverlayAfterVisionCapture(): void {
+  if (pillWasVisibleBeforeCapture && pillWindow && !pillWindow.isDestroyed() && !isQuitting) {
+    pillWindow.showInactive()
+  }
+  pillWasVisibleBeforeCapture = false
+
   if (overlayCaptureRestoreTimer) {
     clearTimeout(overlayCaptureRestoreTimer)
     overlayCaptureRestoreTimer = null
@@ -561,7 +575,7 @@ function minimizeToOverlay(): void {
   mainWindow.hide()
   // Show on the next event-loop turn, after Windows has finished processing
   // the native minimize transition.
-  setTimeout(showFloatingOverlay, 0)
+  setTimeout(showPill, 0)
 }
 
 const OVERLAY_DEFAULT_WIDTH = 360
@@ -701,6 +715,8 @@ function quitTorch(): void {
   hideGuidanceOverlay()
   hideControlBorder()
   overlayWindow?.hide()
+  pillWindow?.hide()
+  taskPanelWindow?.hide()
   app.quit()
 }
 
@@ -775,6 +791,132 @@ function createMainWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+// The command pill is the minimized experience: a small always-available input
+// at the bottom of the screen. The task panel appears beside it only while a
+// task is running, and carries the live step list.
+const PILL_WIDTH = 240
+const PILL_FOCUSED_WIDTH = 420
+const PILL_HEIGHT = 44
+const PILL_BOTTOM_GAP = 12
+
+const TASK_PANEL_WIDTH = 300
+const TASK_PANEL_HEIGHT = 420
+
+function positionPill(width = PILL_WIDTH): void {
+  if (!pillWindow || pillWindow.isDestroyed()) return
+  const area = screen.getPrimaryDisplay().workArea
+  pillWindow.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + area.height - PILL_HEIGHT - PILL_BOTTOM_GAP),
+    width,
+    height: PILL_HEIGHT
+  })
+}
+
+function createPillWindow(): void {
+  pillWindow = new BrowserWindow({
+    width: PILL_WIDTH,
+    height: PILL_HEIGHT,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    // It takes typed input, so it has to be focusable.
+    focusable: true,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      zoomFactor: 1.0
+    }
+  })
+
+  positionPill()
+  pillWindow.setAlwaysOnTop(true, 'screen-saver')
+  pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // Follow the taskbar and resolution changes rather than stranding the pill.
+  screen.on('display-metrics-changed', () => positionPill())
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    pillWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/pill')
+  } else {
+    pillWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/pill' })
+  }
+}
+
+function createTaskPanelWindow(): void {
+  const area = screen.getPrimaryDisplay().workArea
+  taskPanelWindow = new BrowserWindow({
+    width: TASK_PANEL_WIDTH,
+    height: TASK_PANEL_HEIGHT,
+    x: Math.round(area.x + area.width - TASK_PANEL_WIDTH - 16),
+    y: Math.round(area.y + (area.height - TASK_PANEL_HEIGHT) / 2),
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    // Carries a Stop button, so it must accept clicks.
+    focusable: true,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      zoomFactor: 1.0
+    }
+  })
+
+  taskPanelWindow.setAlwaysOnTop(true, 'screen-saver')
+  taskPanelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    taskPanelWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/task-panel')
+  } else {
+    taskPanelWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/task-panel' })
+  }
+}
+
+function showPill(): void {
+  if (!pillWindow || pillWindow.isDestroyed() || isQuitting) return
+  positionPill()
+  // Chromium can demote an always-on-top window when another app takes the
+  // foreground, so the z-order is reasserted every time the pill is shown.
+  pillWindow.setAlwaysOnTop(true, 'screen-saver')
+  pillWindow.show()
+  pillWindow.moveTop()
+  pillWindow.focus()
+  pillWindow.webContents.send('pill:activate')
+}
+
+function hidePill(): void {
+  pillWindow?.hide()
+}
+
+function showTaskPanel(): void {
+  if (!taskPanelWindow || taskPanelWindow.isDestroyed() || isQuitting) return
+  if (taskPanelWindow.isVisible()) return
+  taskPanelWindow.setAlwaysOnTop(true, 'screen-saver')
+  // showInactive: the panel narrates, it does not take the user's focus.
+  taskPanelWindow.showInactive()
+  taskPanelWindow.moveTop()
+}
+
+function hideTaskPanel(): void {
+  taskPanelWindow?.hide()
 }
 
 function createOverlayWindow(): void {
@@ -877,7 +1019,9 @@ function createGuidanceWindow(): void {
 
 async function captureDesktopScreens(): Promise<unknown[]> {
   const overlayWasVisible = overlayWindow?.isVisible() ?? false
+  const pillWasVisible = pillWindow?.isVisible() ?? false
   overlayWindow?.hide()
+  pillWindow?.hide()
   await new Promise((resolve) => setTimeout(resolve, 90))
 
   try {
@@ -904,6 +1048,7 @@ async function captureDesktopScreens(): Promise<unknown[]> {
     })
   } finally {
     if (overlayWasVisible) overlayWindow?.showInactive()
+    if (pillWasVisible) pillWindow?.showInactive()
   }
 }
 
@@ -928,7 +1073,7 @@ function createTray(): void {
     {
       label: 'Hey TORCH',
       click: (): void => {
-        showFloatingOverlay()
+        showPill()
       }
     },
     { type: 'separator' },
@@ -1010,11 +1155,10 @@ app.whenReady().then(() => {
   // ─── GLOBAL SHORTCUTS ───
   try {
     globalShortcut.register('CommandOrControl+Shift+Space', () => {
-      if (overlayWindow?.isVisible()) {
-        hideFloatingOverlay()
+      if (pillWindow?.isVisible()) {
+        hidePill()
       } else {
-        showFloatingOverlay()
-        overlayWindow?.webContents.send('overlay:activate')
+        showPill()
       }
     })
   } catch (e) {
@@ -1082,6 +1226,7 @@ app.whenReady().then(() => {
     mainWindow?.show()
     mainWindow?.focus()
     hideFloatingOverlay()
+    hidePill()
   })
   ipcMain.on('overlay:setSize', (_, size: { width: number; height: number }) => {
     if (!overlayWindow) return
@@ -1180,6 +1325,21 @@ app.whenReady().then(() => {
     shell.openExternal(url)
   })
 
+  // The pill widens while the user is typing in it.
+  ipcMain.on('pill:setFocused', (_event, focused: boolean) => {
+    positionPill(focused ? PILL_FOCUSED_WIDTH : PILL_WIDTH)
+  })
+  ipcMain.on('pill:hide', () => hidePill())
+
+  // The task panel is shown by whichever window is running the task, and only
+  // while the main window is out of the way - it would be noise on top of the
+  // Command Center, which already shows the same steps.
+  ipcMain.on('task-panel:show', () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return
+    showTaskPanel()
+  })
+  ipcMain.on('task-panel:hide', () => hideTaskPanel())
+
   ipcMain.handle('backend:getHealth', () => backendHealth)
   ipcMain.handle('backend:getPhase', () => backendPhase)
 
@@ -1215,6 +1375,8 @@ app.whenReady().then(() => {
 
   createMainWindow()
   createOverlayWindow()
+  createPillWindow()
+  createTaskPanelWindow()
   createGuidanceWindow()
   createControlBorderWindow()
   createTray()

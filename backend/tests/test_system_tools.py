@@ -34,6 +34,9 @@ def test_open_app_primary_path_avoids_shell(monkeypatch):
     recorder = _RecordingPopen()
     monkeypatch.setattr(system_tools.platform, "system", lambda: "Windows")
     monkeypatch.setattr(system_tools.subprocess, "Popen", recorder)
+    # Verification is covered separately; stub it so this test is only about
+    # how the launcher is invoked.
+    monkeypatch.setattr(system_tools, "_await_new_window", lambda before, name: "Opened")
 
     system_tools.open_app("notepad")
 
@@ -55,6 +58,9 @@ def test_open_app_fallback_avoids_shell(monkeypatch):
     monkeypatch.setattr(system_tools.platform, "system", lambda: "Windows")
     monkeypatch.setattr(system_tools.subprocess, "Popen", exploding_popen)
     monkeypatch.setattr(system_tools.os, "startfile", started.append, raising=False)
+    # Verification is covered separately; stub it so this test is only about
+    # how the launcher is invoked.
+    monkeypatch.setattr(system_tools, "_await_new_window", lambda before, name: "Opened")
 
     result = system_tools.open_app("notepad")
 

@@ -3514,3 +3514,198 @@ button:not(:disabled):active,
   color: var(--text-primary);
   user-select: none;
 }
+
+/* ═══════════════════════════════════════════════════
+   Command pill — the minimized experience
+   ═══════════════════════════════════════════════════ */
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 44px;
+  padding: 0 var(--space-3);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-pill, 999px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  /* The whole pill is a drag handle except the controls inside it. */
+  -webkit-app-region: drag;
+  overflow: hidden;
+}
+
+.pill__mark {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.pill__mark:hover {
+  opacity: 1;
+}
+
+.pill__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.pill__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.pill__input:disabled {
+  color: var(--text-tertiary);
+}
+
+.pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-ghost);
+  flex-shrink: 0;
+}
+
+.pill__dot--ready {
+  background: var(--color-torch-success);
+}
+
+.pill__dot--busy {
+  background: var(--color-torch-warning);
+  animation: torch-pulse-soft 1.2s var(--ease-in-out) infinite;
+}
+
+/* ═══════════════════════════════════════════════════
+   Task panel — live narration, only while a task runs
+   ═══════════════════════════════════════════════════ */
+
+.task-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 420px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+  animation: torch-slide-in-right var(--dur-slow) var(--ease-out) both;
+}
+
+.task-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.task-panel__title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.task-panel__elapsed {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.task-panel__command {
+  padding: var(--space-3) var(--space-4) 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.task-panel__steps {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.task-step {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.task-step__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-ghost);
+}
+
+.task-step--active .task-step__dot {
+  background: var(--text-primary);
+  animation: torch-pulse-soft 1.2s var(--ease-in-out) infinite;
+}
+
+.task-step--done .task-step__dot {
+  background: var(--text-tertiary);
+}
+
+.task-step--failed .task-step__dot {
+  background: var(--color-torch-error);
+}
+
+.task-step__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.task-step__label {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.task-step--done .task-step__label {
+  color: var(--text-tertiary);
+}
+
+.task-step__error {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.task-panel__stop {
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.task-panel__stop:hover {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}

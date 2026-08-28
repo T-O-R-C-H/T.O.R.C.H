@@ -98,6 +98,15 @@ const torchAPI = {
   // Backend session token — required on every REST call and the WS handshake
   getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
 
+  // Command pill and task panel
+  setPillFocused: (focused: boolean): void => ipcRenderer.send('pill:setFocused', focused),
+  hidePill: (): void => ipcRenderer.send('pill:hide'),
+  showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
+  hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
+  onPillActivate: (callback: () => void): void => {
+    ipcRenderer.on('pill:activate', callback)
+  },
+
   // Desktop preferences only Electron can act on
   getPreferences: (): Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }> =>
     ipcRenderer.invoke('prefs:get'),

@@ -10,6 +10,9 @@ import { UpdateNotice } from './components/layout/UpdateNotice'
 import { FloatingOverlay } from './components/overlay/FloatingOverlay'
 import { GuidanceOverlay } from './components/overlay/GuidanceOverlay'
 
+import { CommandPill } from './components/pill/CommandPill'
+import { TaskPanel } from './components/pill/TaskPanel'
+
 import { useTorchStore } from './store/torchStore'
 
 import { Command } from './pages/Command'
@@ -64,6 +67,19 @@ function OverlayRoute(): JSX.Element {
       <FloatingOverlay />
     </div>
   )
+}
+
+/** These windows are transparent: the page must not paint its own background. */
+function TransparentRoute({ children }: { children: React.ReactNode }): JSX.Element {
+  useEffect(() => {
+    document.body.style.background = 'transparent'
+    document.documentElement.style.background = 'transparent'
+    return (): void => {
+      document.body.style.background = ''
+      document.documentElement.style.background = ''
+    }
+  }, [])
+  return <>{children}</>
 }
 
 function GuidanceRoute(): JSX.Element {
@@ -144,6 +160,22 @@ function App(): JSX.Element {
       <Routes>
         <Route path="/overlay" element={<OverlayRoute />} />
         <Route path="/guide" element={<GuidanceRoute />} />
+        <Route
+          path="/pill"
+          element={
+            <TransparentRoute>
+              <CommandPill />
+            </TransparentRoute>
+          }
+        />
+        <Route
+          path="/task-panel"
+          element={
+            <TransparentRoute>
+              <TaskPanel />
+            </TransparentRoute>
+          }
+        />
         <Route path="/control-border" element={<ControlBorder />} />
 
         <Route path="/*" element={onboardingComplete ? <AppLayout /> : <Onboarding />} />

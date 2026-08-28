@@ -52,6 +52,11 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  setPillFocused: (focused: boolean) => void
+  hidePill: () => void
+  showTaskPanel: () => void
+  hideTaskPanel: () => void
+  onPillActivate: (callback: () => void) => void
   getPreferences: () => Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }>
   setPreferences: (
     prefs: Partial<{ launchOnLogin: boolean; minimizeToTray: boolean }>
