@@ -12,6 +12,7 @@ import sys
 import pytest
 
 from agent.planner import HITL_TOOLS, validate_plan
+from errors.plain_language import UserFacingError
 from tools import system as system_tools
 
 
@@ -72,6 +73,10 @@ def test_open_app_fallback_does_not_interpret_shell_metacharacters(monkeypatch):
     monkeypatch.setattr(system_tools.platform, "system", lambda: "Windows")
     monkeypatch.setattr(system_tools.subprocess, "Popen", exploding_popen)
     monkeypatch.setattr(system_tools.os, "startfile", started.append, raising=False)
+    # Verification is not what this test is about; skip it so the assertion
+    # below is about the launcher argument only.
+    monkeypatch.setattr(system_tools, "_await_new_window", lambda before, name: "Opened")
+    monkeypatch.setattr(system_tools, "LAUNCH_TIMEOUT_SECONDS", 0.3)
 
     system_tools.open_app(hostile)
 
@@ -86,7 +91,7 @@ def test_open_app_raises_plainly_when_both_paths_fail(monkeypatch):
     monkeypatch.setattr(system_tools.subprocess, "Popen", exploding)
     monkeypatch.setattr(system_tools.os, "startfile", exploding, raising=False)
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(UserFacingError) as excinfo:
         system_tools.open_app("nonexistent-app")
 
     message = str(excinfo.value)
@@ -116,3 +121,86 @@ def test_run_terminal_still_executes():
 def test_run_terminal_reports_failure_without_raising():
     result = system_tools.run_terminal(f'"{sys.executable}" -c "import sys; sys.exit(3)"')
     assert "failed" in result.lower()
+
+
+# ─── Launch verification ───
+
+
+class _WindowSnapshots:
+    """Returns a scripted sequence of window snapshots."""
+
+    def __init__(self, *snapshots):
+        self._snapshots = list(snapshots)
+
+    def __call__(self):
+        return self._snapshots.pop(0) if len(self._snapshots) > 1 else self._snapshots[0]
+
+
+def test_common_app_names_are_normalised():
+    """
+    Spoken names are not executables. Without this, "calculator" becomes
+    `start "" calculator`, which Windows cannot resolve.
+    """
+    table = system_tools.WINDOWS_APP_COMMANDS
+    assert table["calculator"] == "ms-calculator:"
+    assert table["paint"] == "mspaint"
+    assert table["task manager"] == "taskmgr"
+    assert table["word"] == "winword"
+    for spoken in ("calculator", "settings", "notepad", "terminal"):
+        assert spoken in table
+
+
+def test_launch_reports_failure_when_no_window_appears(monkeypatch):
+    """`cmd /c start` succeeds if cmd ran, so the window is the real evidence."""
+    monkeypatch.setattr(system_tools.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(system_tools.subprocess, "Popen", lambda *a, **k: None)
+    monkeypatch.setattr(system_tools, "_visible_windows", lambda: {})
+    monkeypatch.setattr(system_tools, "LAUNCH_TIMEOUT_SECONDS", 0.3)
+
+    with pytest.raises(UserFacingError) as excinfo:
+        system_tools.open_app("nonexistent-app")
+
+    message = str(excinfo.value)
+    assert "nonexistent-app" in message
+    assert "Traceback" not in message
+
+
+def test_error_dialog_does_not_count_as_a_launch(monkeypatch):
+    """
+    Windows names its "cannot find" dialog after the app you asked for, so a
+    naive window check reads the failure as a success.
+    """
+    monkeypatch.setattr(system_tools, "LAUNCH_TIMEOUT_SECONDS", 0.3)
+    before = {}
+    after = {1: ("definitely-not-an-app", "#32770")}
+    monkeypatch.setattr(system_tools, "_visible_windows", lambda: after)
+
+    assert system_tools._await_new_window(before, "definitely-not-an-app") is None
+
+
+def test_a_real_window_counts_as_a_launch(monkeypatch):
+    monkeypatch.setattr(system_tools, "LAUNCH_TIMEOUT_SECONDS", 0.5)
+    before = {}
+    after = {2: ("Calculator", "ApplicationFrameWindow")}
+    monkeypatch.setattr(system_tools, "_visible_windows", lambda: after)
+
+    assert system_tools._await_new_window(before, "calculator") == "Calculator"
+
+
+def test_an_already_running_app_counts(monkeypatch):
+    """Launching a running app focuses it rather than opening a new window."""
+    monkeypatch.setattr(system_tools, "LAUNCH_TIMEOUT_SECONDS", 0.5)
+    existing = {3: ("Untitled - Notepad", "Notepad")}
+    monkeypatch.setattr(system_tools, "_visible_windows", lambda: existing)
+
+    assert system_tools._await_new_window(existing, "notepad") == "Untitled - Notepad"
+
+
+def test_launched_apps_do_not_inherit_torch_stdio():
+    """
+    A child holding TORCH's pipes keeps them open for its whole lifetime, which
+    blocks anything reading the backend's output.
+    """
+    assert system_tools._DETACHED["stdout"] is subprocess.DEVNULL
+    assert system_tools._DETACHED["stderr"] is subprocess.DEVNULL
+    assert system_tools._DETACHED["stdin"] is subprocess.DEVNULL
