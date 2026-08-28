@@ -5,8 +5,8 @@
  * thing giving the window a drag handle and its controls. The bar itself is
  * draggable; the buttons opt out, or they could not be clicked.
  *
- * The page name is not repeated here — the sidebar already marks which page is
- * active, and a 32px bar is for window chrome, not content.
+ * It carries no title: the sidebar already shows the brand and marks the
+ * active page, and repeating either here would just be noise.
  */
 function IconMinus(): JSX.Element {
   return (
@@ -57,8 +57,6 @@ function IconX(): JSX.Element {
 export function Topbar(): JSX.Element {
   return (
     <div className="topbar drag-region">
-      <span className="topbar-wordmark">TORCH</span>
-
       <div className="no-drag topbar-controls">
         <button
           type="button"

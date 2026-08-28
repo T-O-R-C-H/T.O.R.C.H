@@ -80,52 +80,56 @@ function GuidanceRoute(): JSX.Element {
 
 function AppLayout(): JSX.Element {
   return (
-    <div className="app-shell">
-      <Sidebar />
+    /* The title bar spans the whole window, above the sidebar. A frameless
+       window has no other drag handle, so it cannot sit in one column. */
+    <div className="app-root">
+      <Topbar />
 
-      <div className="app-main">
-        <Topbar />
+      <div className="app-shell">
+        <Sidebar />
 
-        <UpdateNotice />
+        <div className="app-main">
+          <UpdateNotice />
 
-        <div className="app-routes">
-          <Routes>
-            <Route path="/" element={<Command />} />
+          <div className="app-routes">
+            <Routes>
+              <Route path="/" element={<Command />} />
 
-            <Route path="/chat" element={<Command />} />
+              <Route path="/chat" element={<Command />} />
 
-            <Route path="/today" element={<Today />} />
+              <Route path="/today" element={<Today />} />
 
-            <Route path="/terminal" element={<Terminal />} />
+              <Route path="/terminal" element={<Terminal />} />
 
-            <Route path="/screenwatch" element={<ScreenWatch />} />
+              <Route path="/screenwatch" element={<ScreenWatch />} />
 
-            <Route path="/history" element={<History />} />
+              <Route path="/history" element={<History />} />
 
-            <Route path="/memory" element={<Memory />} />
+              <Route path="/memory" element={<Memory />} />
 
-            <Route path="/inbox" element={<Inbox />} />
+              <Route path="/inbox" element={<Inbox />} />
 
-            <Route path="/follow-ups" element={<FollowUps />} />
+              <Route path="/follow-ups" element={<FollowUps />} />
 
-            <Route path="/insights" element={<Insights />} />
+              <Route path="/insights" element={<Insights />} />
 
-            <Route path="/tasks" element={<Tasks />} />
+              <Route path="/tasks" element={<Tasks />} />
 
-            <Route path="/settings" element={<Settings />} />
+              <Route path="/settings" element={<Settings />} />
 
-            <Route path="/skills" element={<Skills />} />
+              <Route path="/skills" element={<Skills />} />
 
-            <Route path="/tools/clipboard" element={<Clipboard />} />
+              <Route path="/tools/clipboard" element={<Clipboard />} />
 
-            <Route path="/tools/search" element={<WebSearch />} />
+              <Route path="/tools/search" element={<WebSearch />} />
 
-            <Route path="/tools/files" element={<Files />} />
+              <Route path="/tools/files" element={<Files />} />
 
-            <Route path="/tools/messaging" element={<Messaging />} />
+              <Route path="/tools/messaging" element={<Messaging />} />
 
-            <Route path="/tools/browser" element={<Browser />} />
-          </Routes>
+              <Route path="/tools/browser" element={<Browser />} />
+            </Routes>
+          </div>
         </div>
       </div>
     </div>

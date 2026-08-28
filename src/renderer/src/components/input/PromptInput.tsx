@@ -371,19 +371,15 @@ export function PromptInput({
         </div>
 
         <div className={styles.meta}>
-          <span className={styles.metaItem}>
-            {enhanceError
-              ? enhanceError
-              : demoMode
-                ? 'Demo mode'
-                : wsConnected
-                  ? 'Ready'
-                  : 'Reconnecting'}
-          </span>
-          <span className={styles.metaItem}>
-            {/* Show the speed/depth label, never the underlying model id. */}
-            {models.find((m) => m.id === selectedModel)?.label ?? 'Automatic'}
-          </span>
+          {/* Only states worth interrupting for. "Ready" and the model tier are
+              the normal case and say nothing the user needs. */}
+          {enhanceError ? (
+            <span className={styles.metaItem}>{enhanceError}</span>
+          ) : demoMode ? (
+            <span className={styles.metaItem}>Demo mode</span>
+          ) : !wsConnected ? (
+            <span className={styles.metaItem}>Reconnecting</span>
+          ) : null}
           <span className={styles.metaItem}>Enter to send</span>
         </div>
       </div>
