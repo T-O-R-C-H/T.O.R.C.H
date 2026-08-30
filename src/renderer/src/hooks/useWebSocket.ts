@@ -280,6 +280,9 @@ export function useWebSocket(): {
             store.addMessage({ ...msg, content: '', isStreaming: true, isNew: true })
             void streamMessageContent(msg.id, fullText)
           }
+          // Speaking is driven from the store by useSpokenRecap: this
+          // handler runs inside ws.onmessage, whose catch swallows
+          // everything, so a side effect here fails silently.
           break
         }
         case 'content_delta': {

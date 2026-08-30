@@ -130,6 +130,11 @@ export interface TorchState {
   wsLatencyMs: number | null
   setWsLatencyMs: (ms: number | null) => void
 
+  // Voice output. Off unless the user turns it on: an assistant that starts
+  // talking on its own is startling, and can be so in a room full of people.
+  speakResponses: boolean
+  setSpeakResponses: (enabled: boolean) => void
+
   // Onboarding
   onboardingComplete: boolean
   setOnboardingComplete: (complete: boolean) => void
@@ -245,6 +250,14 @@ export const useTorchStore = create<TorchState>((set) => ({
   setHasConnectedOnce: (val): void => set({ hasConnectedOnce: val }),
   wsLatencyMs: null,
   setWsLatencyMs: (ms): void => set({ wsLatencyMs: ms }),
+
+  // Defaults to off: the absence of the key means "not opted in", so a fresh
+  // install is silent.
+  speakResponses: localStorage.getItem('torch_speak_responses') === 'true',
+  setSpeakResponses: (enabled): void => {
+    localStorage.setItem('torch_speak_responses', String(enabled))
+    set({ speakResponses: enabled })
+  },
 
   // Onboarding
   onboardingComplete: localStorage.getItem('torch_onboarding_complete') === 'true',

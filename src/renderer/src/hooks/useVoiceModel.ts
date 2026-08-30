@@ -30,6 +30,8 @@ export interface VoiceModel {
   error: string | null
   accept: () => Promise<void>
   decline: () => void
+  /** Undo a decline, so Settings can give the microphone back. */
+  reset: () => void
 }
 
 export function formatBytes(bytes: number): string {
@@ -122,6 +124,15 @@ export function useVoiceModel(): VoiceModel {
     setDeclined(true)
   }, [])
 
+  /*
+   * Saying no hides the microphone permanently, which would be a trap
+   * without a way back. Settings calls this.
+   */
+  const reset = useCallback((): void => {
+    localStorage.removeItem(DECLINED_KEY)
+    setDeclined(false)
+  }, [])
+
   return {
     // Hidden entirely when the user has said no, or when the engine is not
     // in this build at all.
@@ -133,6 +144,7 @@ export function useVoiceModel(): VoiceModel {
     sizeLabel: formatBytes(sizeBytes),
     error,
     accept,
-    decline
+    decline,
+    reset
   }
 }

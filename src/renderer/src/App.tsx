@@ -14,6 +14,7 @@ import { CommandPill } from './components/pill/CommandPill'
 import { TaskPanel } from './components/pill/TaskPanel'
 
 import { useTorchStore } from './store/torchStore'
+import { useSpokenRecap } from './hooks/useSpokenRecap'
 
 import { Command } from './pages/Command'
 
@@ -95,6 +96,9 @@ function GuidanceRoute(): JSX.Element {
 }
 
 function AppLayout(): JSX.Element {
+  // Reads the final recap aloud when the user has opted in.
+  useSpokenRecap()
+
   return (
     /* The title bar spans the whole window, above the sidebar. A frameless
        window has no other drag handle, so it cannot sit in one column. */

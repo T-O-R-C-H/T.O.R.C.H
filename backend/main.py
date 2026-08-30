@@ -776,20 +776,67 @@ async def listen_for_companion_voice():
     return {"transcript": transcript}
 
 
+@app.get("/api/voice/tts")
+async def tts_status():
+    """Which rung of the speech ladder is available, and the voice download state."""
+    from tools import tts
+
+    return tts.status()
+
+
+@app.post("/api/voice/tts/model")
+async def download_tts_voice():
+    """Fetch the Piper voice, because the user asked for it in Settings."""
+    from tools import tts
+
+    if not tts.piper_installed():
+        raise HTTPException(status_code=503, detail="The natural voice isn't available in this build.")
+    return await asyncio.to_thread(tts.piper_model.start)
+
+
 @app.post("/api/voice/synthesize")
 async def synthesize_companion_voice(data: dict):
-    """Generate a neural companion voice, leaving the renderer free to fall back locally."""
-    from agent.voice_synthesis import synthesize_voice
+    """
+    Render speech with Piper — rung one of the ladder, and entirely local.
+
+    This used to POST the text to Google's Gemini TTS endpoint, so the recap
+    of what TORCH had just done on the user's computer left the machine before
+    it was spoken. A 503 here is normal and expected: it means no Piper voice
+    is downloaded, and the renderer drops to speechSynthesis.
+    """
+    from tools import tts
 
     text = str(data.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
     try:
-        wav = await asyncio.wait_for(asyncio.to_thread(synthesize_voice, text), timeout=20)
+        wav = await asyncio.wait_for(asyncio.to_thread(tts.synthesize, text), timeout=20)
+    except UserFacingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
-        logger.warning(f"Neural voice unavailable: {error}")
-        raise HTTPException(status_code=503, detail="Neural voice unavailable") from error
+        logger.warning(f"Natural voice unavailable: {error}")
+        raise HTTPException(status_code=503, detail="The natural voice is unavailable.") from error
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.post("/api/voice/speak")
+async def speak_with_system_voice(data: dict):
+    """
+    The last rung: the operating system's own voice.
+
+    Reached only when Piper has no voice and the renderer's speechSynthesis
+    is unavailable too.
+    """
+    from tools import tts
+
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    try:
+        await asyncio.wait_for(asyncio.to_thread(tts.speak_with_system_voice, text), timeout=30)
+    except UserFacingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return {"spoken": True}
 
 
 @app.post("/api/prompt/enhance")
@@ -1097,6 +1144,7 @@ async def process_command(
             executor.finish_planning(client_id, planning_id)
             natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
             response_msg = create_response_message(natural_response, [])
+            response_msg["speak"] = True
             if _is_clarifying_question(natural_response):
                 response_msg["needsAnswer"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
@@ -1121,6 +1169,7 @@ async def process_command(
             executor.finish_planning(client_id, planning_id)
             natural_response = "I am not sure how to help with that. Try rephrasing."
             response_msg = create_response_message(natural_response, [])
+            response_msg["speak"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
             await _send_task_outcome(
@@ -1170,6 +1219,7 @@ async def process_command(
                 "content": recap_sentence,
                 "timestamp": __import__("time").time() * 1000,
                 "steps": executed_steps,
+                "speak": True,
             }
             await ws_manager.send_agent_response(recap_msg, client_id)
             await _send_task_outcome(
@@ -1216,6 +1266,7 @@ async def process_command(
                 "content": recap_sentence,
                 "timestamp": __import__("time").time() * 1000,
                 "steps": [],
+                "speak": True,
             }, client_id)
             await ws_manager.send_status("idle", client_id)
             await _send_task_outcome(
@@ -1269,13 +1320,26 @@ async def process_command(
         else:
             recap_sentence = None
 
-        if recap_sentence:
+        # Every finished task ends with a sentence in the chat. Tools with no
+        # branch above - list_directory among them - used to end the task with
+        # no closing line at all, which reads as TORCH having given up.
+        #
+        # This is deliberately not `recap_sentence`: that feeds the task
+        # outcome, where the tool's own result is the more useful summary and
+        # onboarding renders it verbatim.
+        bubble_sentence = recap_sentence or "That's done."
+
+        if bubble_sentence:
+            # `speak` marks the final sentence for the voice ladder. Plan
+            # messages never carry it: reading a step list aloud is exactly
+            # what E.3 rules out.
             recap_msg = {
                 "id": str(uuid.uuid4()),
                 "role": "torch",
-                "content": recap_sentence,
+                "content": bubble_sentence,
                 "timestamp": __import__("time").time() * 1000,
                 "steps": [],
+                "speak": True,
             }
             if recap_emails is not None:
                 recap_msg["emails"] = recap_emails

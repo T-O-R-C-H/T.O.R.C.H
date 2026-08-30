@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { VoiceSection } from '../components/settings/VoiceSection'
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
@@ -6,7 +7,6 @@ import { API_BASE, torchFetch } from '../config/api'
 import {
   IconKey as Key,
   IconMail as Mail,
-  IconMic as Mic,
   IconPower as Power,
   IconDatabase as Database,
   IconExternalLink as ExternalLink,
@@ -53,29 +53,6 @@ const SOCIAL_PLATFORMS = [
   { name: 'Instagram', url: 'https://instagram.com', key: 'instagram' }
 ]
 
-interface SegmentButtonProps {
-  options: { value: string; label: string }[]
-  value: string
-  onChange: (v: string) => void
-}
-
-function SegmentButton({ options, value, onChange }: SegmentButtonProps): JSX.Element {
-  return (
-    <div className="segment-control">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`segment-control__btn ${value === opt.value ? 'active' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function Settings(): JSX.Element {
   const [activeTab, setActiveTab] = useState('connections')
   const navigate = useNavigate()
@@ -86,7 +63,6 @@ export function Settings(): JSX.Element {
   const [gmailPassword, setGmailPassword] = useState('')
   const [emailTest, setEmailTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [emailTestMsg, setEmailTestMsg] = useState('')
-  const [voiceModel, setVoiceModel] = useState('base')
 
   const [secureStorage, setSecureStorage] = useState<boolean | null>(null)
 
@@ -149,7 +125,6 @@ export function Settings(): JSX.Element {
           if (data.gemini_configured) setGeminiKey('********')
           setGmailAddress(data.gmail_address || '')
           if (data.gmail_password_set) setGmailPassword('********')
-          setVoiceModel(data.whisper_model_size || 'base')
           setAllowFiles(data.allow_files !== false)
           setAllowApps(data.allow_apps !== false)
           setAllowEmail(data.allow_email !== false)
@@ -242,7 +217,6 @@ export function Settings(): JSX.Element {
     try {
       const payload: Record<string, unknown> = {
         gmail_address: gmailAddress,
-        whisper_model_size: voiceModel,
         allow_files: allowFiles,
         allow_apps: allowApps,
         allow_email: allowEmail
@@ -462,27 +436,6 @@ export function Settings(): JSX.Element {
           {activeTab === 'preferences' && (
             <>
               {/* Voice */}
-              <div>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <Mic size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">VOICE SETTINGS</span>
-                </div>
-                <SettingRow
-                  label="Voice Model Size"
-                  description="Larger = more accurate but slower"
-                >
-                  <SegmentButton
-                    options={[
-                      { value: 'tiny', label: 'TINY' },
-                      { value: 'base', label: 'BASE' },
-                      { value: 'small', label: 'SMALL' }
-                    ]}
-                    value={voiceModel}
-                    onChange={setVoiceModel}
-                  />
-                </SettingRow>
-              </div>
-
               {/* Permissions — enforced by the planner, not cosmetic */}
               <div>
                 <div className="flex items-center gap-2.5 mb-4">
@@ -503,6 +456,8 @@ export function Settings(): JSX.Element {
                   <ToggleSwitch checked={allowEmail} onChange={() => setAllowEmail(!allowEmail)} />
                 </SettingRow>
               </div>
+
+              <VoiceSection />
 
               {/* Startup */}
               <div>
