@@ -301,6 +301,16 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
 7. **Credentials are plaintext** — `/api/settings` persists API keys and the
    Gmail app password directly to the root `.env`; Electron `safeStorage` is
    not implemented.
+8. **`npm run lint` does not pass clean** — `pages/Onboarding.tsx` has one
+   `react-hooks/set-state-in-effect` error, in the effect that reacts to
+   `lastTaskOutcome` to end the first task and advance the screen. The effect
+   is doing state-machine work that belongs in the WS message handler or a
+   reducer, not in a render effect. Fix it there rather than suppressing the
+   rule. Until then `lint` is not a usable gate, so **`npm run lint` is not
+   wired into CI** — do not assume a green build means lint passed.
+
+   Note also that a full `npm run lint` takes well over 8 minutes on this
+   repo; lint the files you touched (`npx eslint <path>`) while working.
 
 **Fixed (Aug 2026) — do not "re-fix" these:**
 

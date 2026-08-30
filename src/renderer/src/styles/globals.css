@@ -742,12 +742,50 @@
   margin-top: 0;
 }
 
+/* In the idle state this is the only line under the mark, so it carries the
+   whole prompt and sits a step up from the usual caption grey. */
 .cmd-idle__subtitle {
-  font-size: 12px;
-  color: var(--color-torch-text-tertiary);
+  font-size: 13px;
+  color: var(--color-torch-text-secondary);
   max-width: 340px;
   line-height: 1.5;
-  margin-top: 6px;
+  margin-top: 14px;
+}
+
+/* ─── The five-node cycle mark ─── */
+
+.torch-mark__ring {
+  stroke: var(--color-torch-border);
+  fill: none;
+}
+
+.torch-mark__node {
+  fill: var(--color-torch-text-tertiary);
+}
+
+/* Idle holds one steady state. Only the active mark cycles, so movement in
+   the empty state always means work is actually happening. */
+.torch-mark--active .torch-mark__node {
+  animation: torch-node-cycle 1600ms ease-in-out infinite both;
+}
+
+@keyframes torch-node-cycle {
+  0%,
+  70%,
+  100% {
+    fill: var(--color-torch-text-tertiary);
+    transform: scale(1);
+  }
+  20% {
+    fill: var(--color-torch-text);
+    transform: scale(1.25);
+  }
+}
+
+/* Scale from each node's own centre rather than the SVG origin. */
+.torch-mark__node {
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .cmd-suggestions {
@@ -758,6 +796,8 @@
   max-width: 560px;
 }
 
+/* Square corners on purpose: the suggestion grid reads as a set of panels
+   rather than four floating pills, which keeps the empty state calm. */
 .cmd-suggestion {
   display: flex;
   align-items: flex-start;
@@ -765,17 +805,18 @@
   padding: 12px 14px;
   background: var(--color-torch-surface);
   border: 1px solid var(--color-torch-border);
-  border-radius: var(--radius-torch);
+  border-radius: 0;
   cursor: pointer;
   text-align: left;
   transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease;
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 
+/* Hover moves the surface, not a shadow - the cards sit flat on the page. */
 .cmd-suggestion:hover {
+  background: var(--color-torch-bg);
   border-color: var(--color-torch-border-hover);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .cmd-suggestion__icon {
@@ -2688,18 +2729,15 @@ button:not(:disabled):active,
 .cmd-idle__header > *:nth-child(2) { animation-delay: 70ms; }
 .cmd-idle__header > *:nth-child(3) { animation-delay: 120ms; }
 
+/* Cards enter one after another, 60ms apart, so the grid assembles instead
+   of appearing all at once. */
 .cmd-suggestion {
-  animation: content-rise 480ms var(--motion-spring) both;
+  animation: torch-fade-up 480ms var(--motion-spring) both;
 }
 
-.cmd-suggestion:nth-child(2) { animation-delay: 45ms; }
-.cmd-suggestion:nth-child(3) { animation-delay: 90ms; }
-.cmd-suggestion:nth-child(4) { animation-delay: 135ms; }
-
-.cmd-suggestion:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.07);
-}
+.cmd-suggestion:nth-child(2) { animation-delay: 60ms; }
+.cmd-suggestion:nth-child(3) { animation-delay: 120ms; }
+.cmd-suggestion:nth-child(4) { animation-delay: 180ms; }
 
 .cmd-feed {
   scroll-behavior: smooth;

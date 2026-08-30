@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { ConversationTurn } from './ConversationTurn'
 import { useAgentWatchdog } from '../../hooks/useAgentWatchdog'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchLogo } from '../ui/TorchLogo'
+import { TorchMark } from '../ui/TorchMark'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -146,7 +146,8 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header">
-            <TorchLogo size={72} />
+            {/* Cycling here is literal: the backend really is starting. */}
+            <TorchMark size={72} active />
             <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
@@ -159,11 +160,8 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchLogo size={72} />
-          <p className="cmd-idle__title">Command Center</p>
-          <p className="cmd-idle__subtitle">
-            Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.
-          </p>
+          <TorchMark size={72} active={agentStatus !== 'idle'} />
+          <p className="cmd-idle__subtitle">What do you need done?</p>
         </div>
 
         <div className="cmd-suggestions">
