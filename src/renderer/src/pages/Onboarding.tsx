@@ -156,6 +156,8 @@ export function Onboarding(): JSX.Element {
   const [allowApps, setAllowApps] = useState(true)
   const [allowEmail, setAllowEmail] = useState(true)
   const [permissionsLoaded, setPermissionsLoaded] = useState(false)
+  // Read from the main process so the keys shown are the keys registered.
+  const [voiceShortcut, setVoiceShortcut] = useState('')
   const [permissionSaving, setPermissionSaving] = useState(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
   const [firstTaskRequestId, setFirstTaskRequestId] = useState<string | null>(null)
@@ -285,6 +287,19 @@ export function Onboarding(): JSX.Element {
         // never read - writing guesses is how the setting got clobbered.
         if (!cancelled) setPermissionsLoaded(false)
       })
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.torchAPI
+      ?.getVoiceShortcut?.()
+      .then((label) => {
+        if (!cancelled) setVoiceShortcut(label)
+      })
+      .catch(() => undefined)
     return (): void => {
       cancelled = true
     }
@@ -449,6 +464,15 @@ export function Onboarding(): JSX.Element {
                   )
                 })}
               </div>
+
+              {voiceShortcut && (
+                /* TORCH has no wake word and never listens on its own, so the
+                   shortcut is the only way to start voice without opening the
+                   window. Said once here so it is not a hidden feature. */
+                <p className="ob-footnote ob-footnote--above-actions">
+                  Press <kbd className="voice-shortcut">{voiceShortcut}</kbd> anytime to use voice.
+                </p>
+              )}
 
               <div className="ob-actions">
                 <button type="button" onClick={handleBack} className="ob-btn-ghost">

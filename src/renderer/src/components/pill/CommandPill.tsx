@@ -2,6 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useTorchStore } from '../../store/torchStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { TorchLogo } from '../ui/TorchLogo'
+import { IconMic } from '../icons'
+import { Waveform } from '../input/Waveform'
+import { useAudioCapture } from '../../hooks/useAudioCapture'
+import { useVoiceModel } from '../../hooks/useVoiceModel'
+import { API_BASE, torchFetch } from '../../config/api'
 
 /**
  * The always-available command input, shown when the main window is away.
@@ -19,13 +24,52 @@ export function CommandPill(): JSX.Element {
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const { sendCommand } = useWebSocket()
 
-  const busy = agentStatus !== 'idle'
+  const audio = useAudioCapture()
+  const voiceModel = useVoiceModel()
+  const [transcribing, setTranscribing] = useState(false)
 
+  const busy = agentStatus !== 'idle'
+  const recording = audio.state === 'recording'
+
+  /** Stop recording, transcribe, and put the words in the box. */
+  const finishRecording = async (): Promise<void> => {
+    const wav = await audio.stop()
+    if (!wav) return
+    setTranscribing(true)
+    try {
+      const response = await torchFetch(`${API_BASE}/api/voice/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'audio/wav' },
+        body: wav
+      })
+      const data = await response.json()
+      if (!response.ok) return
+      const transcript = (data.transcript || '').trim()
+      if (transcript) {
+        setText((current) => (current ? `${current} ${transcript}` : transcript))
+        inputRef.current?.focus()
+      }
+    } catch {
+      // The pill has no room for an error; the command box reports properly.
+    } finally {
+      setTranscribing(false)
+    }
+  }
+
+  /*
+   * The global shortcut stands in for a wake word, so when the pill is raised
+   * by it TORCH starts listening straight away. Raised any other way - the
+   * main window being minimised, for instance - it just takes focus, because
+   * opening a window is not a request to be recorded.
+   */
   useEffect(() => {
-    // Focus whenever the main process brings the pill up, so the user can type
-    // immediately after the shortcut.
-    window.torchAPI?.onPillActivate?.(() => inputRef.current?.focus())
-  }, [])
+    window.torchAPI?.onPillActivate?.((payload) => {
+      inputRef.current?.focus()
+      if (payload?.voice && voiceModel.ready && audio.state === 'idle') {
+        void audio.start()
+      }
+    })
+  }, [voiceModel.ready, audio])
 
   useEffect(() => {
     window.torchAPI?.setPillFocused?.(focused)
@@ -67,18 +111,46 @@ export function CommandPill(): JSX.Element {
         <TorchLogo width={20} />
       </button>
 
-      <input
-        ref={inputRef}
-        className="pill__input no-drag"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        placeholder={busy ? 'Working…' : wsConnected ? 'What do you need?' : 'Reconnecting…'}
-        disabled={busy}
-        spellCheck={false}
-      />
+      {recording ? (
+        /* While listening, the level meter replaces the text box: it is the
+           only thing worth showing, and it proves TORCH is really hearing. */
+        <Waveform levels={audio.levels} />
+      ) : (
+        <input
+          ref={inputRef}
+          className="pill__input no-drag"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={
+            transcribing
+              ? 'Writing that down…'
+              : busy
+                ? 'Working…'
+                : wsConnected
+                  ? 'What do you need?'
+                  : 'Reconnecting…'
+          }
+          disabled={busy}
+          spellCheck={false}
+        />
+      )}
+
+      {voiceModel.micVisible && (
+        <button
+          type="button"
+          className={`pill__mic no-drag ${recording ? 'pill__mic--live' : ''}`}
+          onClick={() => (recording ? void finishRecording() : void audio.start())}
+          disabled={busy || transcribing || !voiceModel.ready}
+          aria-label={recording ? 'Stop listening' : 'Speak a command'}
+          aria-pressed={recording}
+          title={recording ? 'Stop listening' : 'Speak a command'}
+        >
+          <IconMic size={13} />
+        </button>
+      )}
 
       <span
         className={`pill__dot ${busy ? 'pill__dot--busy' : wsConnected ? 'pill__dot--ready' : ''}`}

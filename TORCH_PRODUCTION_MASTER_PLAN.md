@@ -1654,15 +1654,44 @@ Do not deviate from this order. Each phase unblocks the next.
 
 **Deliverable:** the app looks and moves like a finished product.
 
-## Week 6 — Voice and polish
+## Week 6 — Voice and polish — **COMPLETE**
 
-24. Renderer-side audio capture with real level metering.
-25. Waveform reacting to real audio.
-26. TTS ladder (Piper → speechSynthesis → pyttsx3).
-27. Wake word: local engine or hide the feature.
-28. Close test coverage gaps to 200+ tests.
+24. ~~Renderer-side audio capture with real level metering.~~ **Done.**
+    `hooks/useAudioCapture.ts` — Web Audio `AnalyserNode`, RMS per frame,
+    16 kHz mono WAV encoded in the renderer so no ffmpeg is needed.
+25. ~~Waveform reacting to real audio.~~ **Done.** `components/input/Waveform.tsx`.
+    One bar per measured frame, no idle animation: silence draws silent.
+    Measured across a swept signal — RMS 0.000 / 0.015 / 0.069 / 0.279 / 0.626
+    for silence / whisper / speech / loud / shout, back to 0.000 at silence.
+26. ~~TTS ladder (Piper → speechSynthesis → pyttsx3).~~ **Done.** Every rung
+    local; the previous Gemini TTS call is gone. Speaks only the final recap,
+    never a step list, and is off until turned on in Settings.
+27. ~~Wake word: local engine or hide the feature.~~ **Hidden, by decision.**
+    `WakeWordDetector` held the microphone open and sent every phrase to
+    Google to test for the wake word; it is deleted, and a test asserts
+    `recognize_google` appears nowhere in the voice module. The global
+    shortcut stands in for it and is now surfaced in Settings and onboarding
+    so it is not a hidden feature.
+28. ~~Close test coverage gaps to 200+ tests.~~ **Done** — 280 backend plus
+    28 subtests, 100 frontend.
 
-**Deliverable:** voice feels instant and real.
+**Deliverable:** voice feels instant and real. **Met**, with one caveat worth
+carrying forward: speech-to-text and the natural voice are each a separate
+download, offered on first use and never fetched without a yes. Out of the
+box TORCH types silently and speaks with the system voice.
+
+### Decided during Week 6
+
+- **STT engine: faster-whisper, base model.** Chosen over `openai-whisper`,
+  which drags in PyTorch at roughly 2.5 GB and would have made the packaging
+  problem in 1.2 materially worse. faster-whisper runs on CTranslate2 with no
+  torch; engine about 48 MB, model 148 MB.
+- **No wake word, and no plan to add one** until an engine that matches the
+  phrase entirely on-device (openWakeWord, Porcupine, Vosk) is chosen and
+  packaged. Hotkey only.
+- **Nothing on the voice path may reach the network.** Both the old
+  `listen()` Google fallback and the Gemini TTS call were removed. This is now
+  a rule in CLAUDE.md with a test behind it.
 
 ## Week 7 — Launch prep
 

@@ -575,7 +575,7 @@ function minimizeToOverlay(): void {
   mainWindow.hide()
   // Show on the next event-loop turn, after Windows has finished processing
   // the native minimize transition.
-  setTimeout(showPill, 0)
+  setTimeout(() => showPill(), 0)
 }
 
 const OVERLAY_DEFAULT_WIDTH = 360
@@ -890,7 +890,20 @@ function createTaskPanelWindow(): void {
   }
 }
 
-function showPill(): void {
+/**
+ * Bring the pill up.
+ *
+ * `voice` says the user asked for voice specifically — the global shortcut
+ * stands in for a wake word, so it should start listening rather than just
+ * present a text box.
+ */
+/** The one place the voice shortcut is defined. */
+const VOICE_SHORTCUT = 'CommandOrControl+Shift+Space'
+
+/** How that shortcut is written for people to read. */
+const VOICE_SHORTCUT_LABEL = process.platform === 'darwin' ? '⌘⇧Space' : 'Ctrl+Shift+Space'
+
+function showPill(options: { voice?: boolean } = {}): void {
   if (!pillWindow || pillWindow.isDestroyed() || isQuitting) return
   positionPill()
   // Chromium can demote an always-on-top window when another app takes the
@@ -899,7 +912,7 @@ function showPill(): void {
   pillWindow.show()
   pillWindow.moveTop()
   pillWindow.focus()
-  pillWindow.webContents.send('pill:activate')
+  pillWindow.webContents.send('pill:activate', { voice: options.voice === true })
 }
 
 function hidePill(): void {
@@ -1153,12 +1166,15 @@ app.whenReady().then(() => {
   })
 
   // ─── GLOBAL SHORTCUTS ───
+  // Shown to the user in Settings and onboarding; keep the two in step.
   try {
-    globalShortcut.register('CommandOrControl+Shift+Space', () => {
+    // Stands in for a wake word: TORCH does not listen until asked, and this
+    // is how the user asks from anywhere.
+    globalShortcut.register(VOICE_SHORTCUT, () => {
       if (pillWindow?.isVisible()) {
         hidePill()
       } else {
-        showPill()
+        showPill({ voice: true })
       }
     })
   } catch (e) {
@@ -1177,6 +1193,10 @@ app.whenReady().then(() => {
   })
 
   // Preferences that only Electron can act on.
+  // The renderer shows this in Settings and onboarding rather than hardcoding
+  // its own copy, so the label always matches what is registered.
+  ipcMain.handle('shortcuts:voice', () => VOICE_SHORTCUT_LABEL)
+
   ipcMain.handle('prefs:get', () => ({
     launchOnLogin: app.getLoginItemSettings().openAtLogin,
     minimizeToTray: minimizeToTrayEnabled

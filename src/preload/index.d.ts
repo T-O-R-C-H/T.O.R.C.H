@@ -56,7 +56,8 @@ interface TorchAPI {
   hidePill: () => void
   showTaskPanel: () => void
   hideTaskPanel: () => void
-  onPillActivate: (callback: () => void) => void
+  getVoiceShortcut: () => Promise<string>
+  onPillActivate: (callback: (payload: { voice: boolean }) => void) => void
   getPreferences: () => Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }>
   setPreferences: (
     prefs: Partial<{ launchOnLogin: boolean; minimizeToTray: boolean }>

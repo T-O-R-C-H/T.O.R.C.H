@@ -77,6 +77,26 @@ export function VoiceSection(): JSX.Element {
 
   const [tts, setTts] = useState<TtsStatus>({})
   const [ttsBusy, setTtsBusy] = useState(false)
+  /*
+   * Read from the main process rather than written here, so the keys a user is
+   * told to press are the keys actually registered. TORCH has no wake word —
+   * it does not listen until asked — which makes this shortcut the only way to
+   * start voice without opening the window, and worth stating plainly.
+   */
+  const [shortcut, setShortcut] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    void window.torchAPI
+      ?.getVoiceShortcut?.()
+      .then((label) => {
+        if (!cancelled) setShortcut(label)
+      })
+      .catch(() => undefined)
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
 
   const loadTts = (): void => {
     void torchFetch(`${API_BASE}/api/voice/tts`)
@@ -119,6 +139,15 @@ export function VoiceSection(): JSX.Element {
       <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
         Speech is processed on your computer. Nothing you say and nothing TORCH says is uploaded.
       </p>
+
+      {voiceTyping.ready && shortcut && (
+        <Row
+          label="Start voice from anywhere"
+          description="TORCH never listens on its own. Press this and it starts listening, wherever you are."
+        >
+          <kbd className="voice-shortcut">{shortcut}</kbd>
+        </Row>
+      )}
 
       <Row
         label="Speak responses aloud"

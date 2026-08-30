@@ -3938,3 +3938,48 @@ button:not(:disabled):active,
   /* Just enough to smooth the frame-to-frame step without lagging speech. */
   transition: transform 80ms linear;
 }
+
+/* Pill microphone. Lit red while listening, like the command box. */
+.pill__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-torch-text-secondary);
+  cursor: pointer;
+  border-radius: 999px;
+}
+.pill__mic:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+.pill__mic:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pill__mic--live {
+  color: var(--color-torch-error);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.voice-shortcut {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-torch-border);
+  background: var(--color-torch-surface);
+  color: var(--color-torch-text);
+  white-space: nowrap;
+}
+
+/* A footnote that sits directly above the Back/Continue row needs its own
+   breathing room, or it reads as a label for the buttons. */
+.ob-footnote--above-actions {
+  margin-bottom: var(--space-5, 20px);
+}
+.ob-footnote--above-actions .voice-shortcut {
+  margin: 0 2px;
+}

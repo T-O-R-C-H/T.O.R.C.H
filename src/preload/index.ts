@@ -103,8 +103,9 @@ const torchAPI = {
   hidePill: (): void => ipcRenderer.send('pill:hide'),
   showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
   hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
-  onPillActivate: (callback: () => void): void => {
-    ipcRenderer.on('pill:activate', callback)
+  getVoiceShortcut: (): Promise<string> => ipcRenderer.invoke('shortcuts:voice'),
+  onPillActivate: (callback: (payload: { voice: boolean }) => void): void => {
+    ipcRenderer.on('pill:activate', (_event, payload) => callback(payload ?? { voice: false }))
   },
 
   // Desktop preferences only Electron can act on
