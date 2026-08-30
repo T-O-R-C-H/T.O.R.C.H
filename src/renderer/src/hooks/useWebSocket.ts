@@ -10,6 +10,75 @@ let sharedPingInterval: ReturnType<typeof setInterval> | undefined
 let sharedConsumerCount = 0
 let sharedTaskOwnerSocket: WebSocket | null = null
 
+/*
+ * Opening a socket needs an await (the session token), which leaves a window
+ * where two callers both see no socket and both open one. This marks that
+ * window so the second caller stands down instead.
+ */
+let sharedConnecting = false
+
+/*
+ * Consecutive failed attempts, for backoff. Reset the moment a socket opens,
+ * so a blip costs one short wait rather than putting the app into a long
+ * retry interval it never climbs out of.
+ */
+let sharedReconnectAttempts = 0
+
+/*
+ * When the last pong came back. A slept laptop or a dropped route leaves the
+ * socket reporting OPEN with nothing flowing in either direction, so
+ * readyState alone cannot tell a live connection from a dead one — only the
+ * absence of replies can.
+ */
+let sharedLastPongAt = 0
+
+export const RECONNECT_BASE_MS = 1000
+export const RECONNECT_MAX_MS = 30000
+export const PING_INTERVAL_MS = 10000
+/** Three missed pings. Long enough to ride out a slow reply, short enough to notice a sleep. */
+export const PONG_TIMEOUT_MS = 35000
+
+/** True when pings have gone unanswered long enough to call the socket dead. */
+export function isSocketStale(lastPongAt: number, now: number): boolean {
+  return lastPongAt > 0 && now - lastPongAt > PONG_TIMEOUT_MS
+}
+
+export function recordPong(at: number = Date.now()): void {
+  sharedLastPongAt = at
+}
+
+/** Exponential backoff, capped, so a backend that is down is not hammered. */
+export function reconnectDelayMs(attempt: number): number {
+  return Math.min(RECONNECT_BASE_MS * 2 ** Math.max(0, attempt), RECONNECT_MAX_MS)
+}
+
+/**
+ * Whether this socket is still the one the app is using.
+ *
+ * A closing socket fires `onclose` asynchronously, so by the time it runs a
+ * replacement may already be open. Without this guard the dead socket's
+ * handler set wsConnected to false, cleared the live socket's ping interval
+ * and failed the running task's steps — leaving a healthy connection
+ * permanently reported as offline, because `onopen` had already fired and
+ * nothing set it true again.
+ */
+function isCurrent(ws: WebSocket): boolean {
+  return sharedSocket === ws
+}
+
+/** Reset all shared connection state. Exported for tests. */
+export function __resetSocketStateForTests(): void {
+  clearTimeout(sharedReconnectTimer)
+  clearInterval(sharedPingInterval)
+  sharedSocket = null
+  sharedTaskOwnerSocket = null
+  sharedReconnectTimer = undefined
+  sharedPingInterval = undefined
+  sharedConsumerCount = 0
+  sharedConnecting = false
+  sharedReconnectAttempts = 0
+}
+
 /**
  * The live socket, or null if there isn't one right now.
  *
@@ -85,9 +154,28 @@ export function useWebSocket(): {
         wsRef.current = sharedSocket
         return
       }
+      // A connection attempt is already in flight and awaiting its token.
+      if (sharedConnecting) return
       void openConnection()
 
+      /**
+       * Queue another attempt.
+       *
+       * Always clears the pending timer first: the old code assigned over
+       * `sharedReconnectTimer` without clearing it, so two closes in quick
+       * succession left an orphaned timer that opened a second socket
+       * nobody was tracking.
+       */
+      function scheduleReconnect(): void {
+        if (useTorchStore.getState().demoMode || sharedConsumerCount === 0) return
+        clearTimeout(sharedReconnectTimer)
+        const delay = reconnectDelayMs(sharedReconnectAttempts)
+        sharedReconnectAttempts += 1
+        sharedReconnectTimer = setTimeout(connectSocket, delay)
+      }
+
       async function openConnection(): Promise<void> {
+        sharedConnecting = true
         try {
           setWsPhase('connecting')
           // The backend rejects the handshake without a session token.
@@ -102,6 +190,9 @@ export function useWebSocket(): {
           wsRef.current = ws
 
           ws.onopen = (): void => {
+            if (!isCurrent(ws)) return
+            sharedReconnectAttempts = 0
+            clearTimeout(sharedReconnectTimer)
             setWsConnected(true)
             setWsPhase('connected')
             setHasConnectedOnce(true)
@@ -111,34 +202,46 @@ export function useWebSocket(): {
               content: 'WebSocket connected to backend',
               type: 'success'
             })
-            // Start periodic latency ping
+            // Ping for latency, and use the replies as a liveness check.
+            sharedLastPongAt = Date.now()
             clearInterval(sharedPingInterval)
             sharedPingInterval = setInterval(() => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
+              if (ws.readyState !== WebSocket.OPEN) return
+              if (isSocketStale(sharedLastPongAt, Date.now())) {
+                // Nothing has come back for several pings. The socket still
+                // claims to be open, which it will keep doing after a sleep
+                // or a dropped route, so close it and let the normal
+                // reconnect path run.
+                ws.close()
+                return
               }
-            }, 10_000)
+              ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
+            }, PING_INTERVAL_MS)
           }
 
           ws.onclose = (): void => {
-            if (sharedSocket === ws) sharedSocket = null
             if (sharedTaskOwnerSocket === ws) sharedTaskOwnerSocket = null
+            // A socket that has already been replaced must not touch shared
+            // state: the connection the app is actually using is not this one.
+            if (!isCurrent(ws)) return
+            sharedSocket = null
             clearInterval(sharedPingInterval)
             useTorchStore.getState().setWsLatencyMs(null)
             resetInterruptedTaskUi()
             setWsConnected(false)
             setWsPhase('disconnected')
             window.torchAPI?.completeVisionControl()
-            if (!useTorchStore.getState().demoMode && sharedConsumerCount > 0) {
-              sharedReconnectTimer = setTimeout(connectSocket, 3000)
-            }
+            scheduleReconnect()
           }
 
           ws.onerror = (): void => {
+            if (!isCurrent(ws)) return
             resetInterruptedTaskUi()
             setWsConnected(false)
             setWsPhase('disconnected')
             window.torchAPI?.completeVisionControl()
+            // No reconnect here: an error on a live socket is followed by
+            // close, and scheduling from both would double the attempts.
           }
 
           ws.onmessage = (event): void => {
@@ -154,9 +257,9 @@ export function useWebSocket(): {
           resetInterruptedTaskUi()
           setWsPhase('disconnected')
           window.torchAPI?.completeVisionControl()
-          if (!useTorchStore.getState().demoMode) {
-            sharedReconnectTimer = setTimeout(connectSocket, 3000)
-          }
+          scheduleReconnect()
+        } finally {
+          sharedConnecting = false
         }
       }
     },
@@ -205,9 +308,9 @@ export function useWebSocket(): {
           }
           break
         }
-        case 'vision_control_start':
         // UI Automation drives the same mouse and keyboard, so it raises the
         // same border. The user should not have to know which engine is used.
+        case 'vision_control_start':
         case 'uia_control_start': {
           window.torchAPI?.showControlBorder()
           break
@@ -335,6 +438,9 @@ export function useWebSocket(): {
           break
         }
         case 'pong': {
+          // Any reply proves the socket is alive, whether or not it carried a
+          // usable timestamp.
+          recordPong()
           const sent = data.ts as number
           if (sent) {
             useTorchStore.getState().setWsLatencyMs(Date.now() - sent)
@@ -368,56 +474,93 @@ export function useWebSocket(): {
       })
     }
     connect()
+
+    /*
+     * Come back promptly after the machine wakes or the network returns.
+     *
+     * Waiting out the backoff is the wrong behaviour here: the user is
+     * looking at the window, and the reason for the delay (do not hammer a
+     * backend that is down) does not apply when the environment just told us
+     * conditions changed. A stale socket is closed first so the reconnect
+     * path runs rather than trusting a readyState that survived the sleep.
+     */
+    const wakeUp = (): void => {
+      if (useTorchStore.getState().demoMode) return
+      if (sharedSocket && isSocketStale(sharedLastPongAt, Date.now())) {
+        sharedSocket.close()
+        return
+      }
+      if (sharedSocket && sharedSocket.readyState <= WebSocket.OPEN) return
+      sharedReconnectAttempts = 0
+      clearTimeout(sharedReconnectTimer)
+      connect()
+    }
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') wakeUp()
+    }
+    window.addEventListener('online', wakeUp)
+    window.addEventListener('focus', wakeUp)
+    document.addEventListener('visibilitychange', onVisible)
+
     return (): void => {
+      window.removeEventListener('online', wakeUp)
+      window.removeEventListener('focus', wakeUp)
+      document.removeEventListener('visibilitychange', onVisible)
       sharedConsumerCount = Math.max(0, sharedConsumerCount - 1)
       if (sharedConsumerCount === 0) {
         window.torchAPI?.removeTaskEvent()
         window.torchAPI?.removeTaskCommand()
         clearTimeout(sharedReconnectTimer)
-        sharedSocket?.close()
+        const closing = sharedSocket
+        // Drop our claim before closing: the close fires later, and by then
+        // this socket must already read as stale so its handler stands down.
         sharedSocket = null
+        closing?.close()
       }
     }
   }, [connect])
 
-  const sendCommand = useCallback((command: string, requestId: string = crypto.randomUUID()): void => {
-    const model = useTorchStore.getState().selectedModel
-    const payload = JSON.stringify({ type: 'command', content: command, model, requestId })
+  const sendCommand = useCallback(
+    (command: string, requestId: string = crypto.randomUUID()): void => {
+      const model = useTorchStore.getState().selectedModel
+      const payload = JSON.stringify({ type: 'command', content: command, model, requestId })
 
-    const socket = openSocket()
-    if (socket) {
-      socket.send(payload)
-      sharedTaskOwnerSocket = socket
-      return
-    }
-
-    // The caller has already shown the command and set the agent to work, so
-    // dropping it here would leave the UI spinning until the watchdog fires.
-    // Wait for the connection instead, and say something if it never arrives.
-    void (async () => {
-      const reconnected = await awaitOpenSocket()
-      if (reconnected) {
-        reconnected.send(payload)
-        sharedTaskOwnerSocket = reconnected
+      const socket = openSocket()
+      if (socket) {
+        socket.send(payload)
+        sharedTaskOwnerSocket = socket
         return
       }
-      const store = useTorchStore.getState()
-      store.addMessage({
-        id: crypto.randomUUID(),
-        role: 'torch',
-        content:
-          "I couldn't reach TORCH just then. It may still be starting up — try that again in a moment.",
-        timestamp: Date.now(),
-        steps: []
-      })
-      store.setLastTaskOutcome({
-        requestId,
-        status: 'failed',
-        summary: "I couldn't reach TORCH. Check the connection and try again."
-      })
-      store.setAgentStatus('idle')
-    })()
-  }, [])
+
+      // The caller has already shown the command and set the agent to work, so
+      // dropping it here would leave the UI spinning until the watchdog fires.
+      // Wait for the connection instead, and say something if it never arrives.
+      void (async () => {
+        const reconnected = await awaitOpenSocket()
+        if (reconnected) {
+          reconnected.send(payload)
+          sharedTaskOwnerSocket = reconnected
+          return
+        }
+        const store = useTorchStore.getState()
+        store.addMessage({
+          id: crypto.randomUUID(),
+          role: 'torch',
+          content:
+            "I couldn't reach TORCH just then. It may still be starting up — try that again in a moment.",
+          timestamp: Date.now(),
+          steps: []
+        })
+        store.setLastTaskOutcome({
+          requestId,
+          status: 'failed',
+          summary: "I couldn't reach TORCH. Check the connection and try again."
+        })
+        store.setAgentStatus('idle')
+      })()
+    },
+    []
+  )
 
   useEffect(() => {
     handleMessageRef.current = handleMessage

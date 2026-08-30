@@ -283,9 +283,18 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
    own generated token) is not reusable, and Electron's health check hardcodes
    port 8000, so the fallback spawn lands on a different port and reports
    unhealthy. Only affects the run-the-backend-in-a-terminal dev workflow.
-3. **`useWebSocket.ts` is untested** — its module-level socket singletons
-   (`sharedSocket`, `sharedReconnectTimer`, …) are not hook-instance scoped, so
-   tests need manual resets plus a `WebSocket` stub. Worth doing.
+3. **`useWebSocket.ts` still keeps its socket in module-level singletons**
+   (`sharedSocket`, `sharedReconnectTimer`, …), shared by every consumer
+   rather than scoped per hook instance. That design is deliberate — one
+   socket for the whole renderer — but it is sharp, and it is now covered:
+   `useWebSocket.test.tsx` drives the real hook against a fake `WebSocket`
+   using `react-dom/client` + `act` (no testing-library in the stack).
+   `__resetSocketStateForTests()` clears the singletons between tests.
+
+   **Anything added here must guard on `isCurrent(ws)` before touching shared
+   state.** `close()` is asynchronous, so a replaced socket's `onclose` runs
+   after its successor is already open; unguarded, it cleared `wsConnected`,
+   killed the live ping timer, and failed the running task's steps.
 4. **Windows packaging is not production-ready** — `build:win` copies the full
    development virtual environment twice (about 2.6 GB unpacked on the Aug 26 audit),
    and the normal local build is blocked when electron-builder cannot create
