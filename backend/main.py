@@ -705,13 +705,40 @@ async def voice_capabilities():
     """
     What voice features this machine can actually do.
 
-    The renderer hides the microphone entirely when speech cannot be
-    transcribed locally, rather than offering a button that either fails or
-    quietly uploads the recording somewhere.
+    `speech_to_text` means ready right now — engine installed and weights on
+    disk. The renderer needs the two apart so it can tell "no voice on this
+    build" from "one download away", and never offers a microphone that would
+    either fail or upload the recording somewhere.
     """
-    from tools.voice import local_stt_available
+    from tools import stt
 
-    return {"speech_to_text": local_stt_available()}
+    return {"speech_to_text": stt.local_stt_available(), **stt.status()}
+
+
+@app.get("/api/voice/model")
+async def voice_model_status():
+    """Progress of the voice model download, polled while it runs."""
+    from tools import stt
+
+    return stt.status()
+
+
+@app.post("/api/voice/model")
+async def download_voice_model():
+    """
+    Fetch the voice model, because the user asked for it.
+
+    This is the only place in TORCH that downloads a model, and it is reached
+    only from an explicit yes. Nothing on the voice path may download
+    implicitly — faster-whisper would do exactly that on first use, so every
+    other load passes local_files_only.
+    """
+    from tools import stt
+
+    try:
+        return await asyncio.to_thread(stt.start_download)
+    except UserFacingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.post("/api/voice/transcribe")

@@ -39,58 +39,28 @@ def speak(text: str) -> str:
 
 def local_stt_available() -> bool:
     """
-    Whether speech can be transcribed on this machine.
+    Whether speech can be transcribed on this machine right now.
 
     Callers use this to decide whether to offer voice at all. Offering a
     microphone that cannot transcribe locally is how audio ends up somewhere
     the user did not agree to send it.
     """
-    try:
-        import whisper  # noqa: F401
+    from tools import stt
 
-        return True
-    except ImportError:
-        return False
+    return stt.local_stt_available()
 
 
 def transcribe_audio(wav_bytes: bytes) -> str:
     """
     Transcribe a 16-bit PCM WAV entirely on this machine.
 
-    There is deliberately no cloud fallback. `listen()` used to drop to
-    Google's Web Speech API whenever the local model was unavailable — which
-    was always, because the whisper package is not installed — so every voice
-    command was quietly uploaded to a third party while the app described
-    itself as local-first. Failing here is the honest outcome: it is reported
-    plainly and the user can choose to install the local model.
+    There is deliberately no cloud fallback. Failing here is the honest
+    outcome: it is reported plainly and the user can choose to download the
+    local model.
     """
-    import io
+    from tools import stt
 
-    import speech_recognition as sr
-
-    from config.settings import settings
-
-    if not local_stt_available():
-        raise UserFacingError(
-            "Voice typing needs the offline speech model, which isn't installed yet. "
-            "Everything stays on your computer once it is."
-        )
-
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
-        audio = recognizer.record(source)
-
-    try:
-        text = recognizer.recognize_whisper(
-            audio, model=settings.whisper_model_size or "base", language="english"
-        )
-    except sr.UnknownValueError:
-        return ""
-    except Exception as exc:
-        logger.error(f"Local transcription failed: {exc}")
-        raise UserFacingError("TORCH couldn't make out any speech in that recording.") from exc
-
-    return (text or "").strip()
+    return stt.transcribe(wav_bytes)
 
 
 def listen(duration: int = 5) -> str:

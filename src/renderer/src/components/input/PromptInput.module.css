@@ -546,3 +546,51 @@
   gap: 12px;
   padding: 6px 4px 2px;
 }
+
+.voicePrompt {
+  padding: 10px 12px;
+  margin: 6px 0 2px;
+  border: 1px solid var(--color-torch-border, #e4e4e7);
+  background: var(--color-torch-muted, #fafafa);
+}
+.voicePromptText {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-torch-text, #2b2b2b);
+}
+.voicePromptNote {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-torch-text-tertiary, #a1a1aa);
+}
+.voicePromptActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.voiceYes,
+.voiceNo {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-torch-border, #e4e4e7);
+  background: #ffffff;
+  cursor: pointer;
+}
+.voiceYes {
+  background: var(--color-torch-text, #2b2b2b);
+  color: #ffffff;
+  border-color: var(--color-torch-text, #2b2b2b);
+}
+
+.voiceProgress {
+  flex: 1;
+  height: 3px;
+  background: var(--color-torch-border, #e4e4e7);
+  min-width: 0;
+}
+.voiceProgressFill {
+  height: 100%;
+  background: var(--color-torch-text, #2b2b2b);
+  transition: width 200ms linear;
+}

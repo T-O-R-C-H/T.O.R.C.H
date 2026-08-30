@@ -5,6 +5,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { API_BASE, torchFetch } from '../../config/api'
 import { FALLBACK_MODELS } from '../../config/models'
 import { useAudioCapture } from '../../hooks/useAudioCapture'
+import { useVoiceModel } from '../../hooks/useVoiceModel'
 import { Waveform } from './Waveform'
 import { IconMic } from '../icons'
 
@@ -176,33 +177,24 @@ export function PromptInput({
   const [justSent, setJustSent] = useState(false)
 
   const audio = useAudioCapture()
+  const voiceModel = useVoiceModel()
   const [transcribing, setTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
   /*
-   * The microphone is offered only when the backend can actually transcribe
-   * on this machine. Voice used to fall back to a cloud recogniser whenever
-   * the local model was missing, so a button that is always visible is a
-   * button that quietly uploads your audio. Undefined until we have asked.
+   * Shown when the user reaches for the microphone before the speech model
+   * has been downloaded. Asking here rather than at startup means nobody is
+   * interrupted about a feature they never tried to use.
    */
-  const [sttAvailable, setSttAvailable] = useState<boolean | undefined>(undefined)
-
-  useEffect(() => {
-    let cancelled = false
-    torchFetch(`${API_BASE}/api/voice/capabilities`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) setSttAvailable(Boolean(data.speech_to_text))
-      })
-      .catch(() => {
-        if (!cancelled) setSttAvailable(false)
-      })
-    return (): void => {
-      cancelled = true
-    }
-  }, [])
+  const [askingToDownload, setAskingToDownload] = useState(false)
 
   const handleMicClick = async (): Promise<void> => {
     setVoiceError(null)
+    // Never start a download without asking, and never record audio we have
+    // no way to transcribe.
+    if (voiceModel.needsConsent) {
+      setAskingToDownload(true)
+      return
+    }
     if (audio.state === 'recording') {
       const wav = await audio.stop()
       if (!wav) return
@@ -403,6 +395,53 @@ export function PromptInput({
           </div>
         </div>
 
+        {askingToDownload && voiceModel.downloadState !== 'downloading' && !voiceModel.ready && (
+          <div className={styles.voicePrompt}>
+            <p className={styles.voicePromptText}>
+              TORCH needs a small voice model ({voiceModel.sizeLabel}) to transcribe your speech.
+              Download now?
+            </p>
+            <p className={styles.voicePromptNote}>
+              It runs on your computer — your voice is never uploaded.
+            </p>
+            {voiceModel.error && <p className={styles.voicePromptNote}>{voiceModel.error}</p>}
+            <div className={styles.voicePromptActions}>
+              <button
+                type="button"
+                className={styles.voiceYes}
+                onClick={() => void voiceModel.accept()}
+              >
+                Yes, download
+              </button>
+              <button
+                type="button"
+                className={styles.voiceNo}
+                onClick={() => {
+                  // Hides the microphone rather than re-asking on every click.
+                  voiceModel.decline()
+                  setAskingToDownload(false)
+                }}
+              >
+                No thanks
+              </button>
+            </div>
+          </div>
+        )}
+
+        {voiceModel.downloadState === 'downloading' && (
+          <div className={styles.voiceRow}>
+            <div className={styles.voiceProgress}>
+              <div
+                className={styles.voiceProgressFill}
+                style={{ width: `${Math.round(voiceModel.progress * 100)}%` }}
+              />
+            </div>
+            <span className={styles.metaItem}>
+              Downloading the voice model… {Math.round(voiceModel.progress * 100)}%
+            </span>
+          </div>
+        )}
+
         {audio.state === 'recording' && (
           <div className={styles.voiceRow}>
             <Waveform levels={audio.levels} />
@@ -424,7 +463,7 @@ export function PromptInput({
                 <span>{pillText}</span>
               </span>
             )}
-            {sttAvailable && (
+            {voiceModel.micVisible && (
               <button
                 type="button"
                 onClick={() => void handleMicClick()}
