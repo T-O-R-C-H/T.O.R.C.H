@@ -294,10 +294,14 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
 5. **Cold-start REST calls are not gated** — Electron creates all renderer
    windows before starting the backend, and `torchFetch` does not wait for the
    published backend-health state.
-6. **Visible honesty gaps remain** — Screen Watch and Insights show fabricated
-   data, Follow-ups and several tool pages are shells, and multiple Settings
-   controls are not wired. See `PRODUCTION_READINESS_AUDIT.md` for the verified
-   inventory.
+6. **Visible honesty gaps remain** — Screen Watch still falls back to
+   `INITIAL_DEMO_ACTIVITY` when it has no real activity, and several tool
+   pages are shells (`pages/tools/Files.tsx` has a Find button with no
+   handler and is still styled for the old dark theme; `pages/FollowUps.tsx`
+   describes a feature that does not exist). Both were removed from the
+   sidebar rather than left advertised. Multiple Settings controls are still
+   not wired. See `PRODUCTION_READINESS_AUDIT.md` for the verified inventory.
+   Insights is **no longer** in this list — see below.
 7. **Credentials are plaintext** — `/api/settings` persists API keys and the
    Gmail app password directly to the root `.env`; Electron `safeStorage` is
    not implemented.
@@ -323,6 +327,28 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
 - Stop button — `executor.stop_task()` exists and releases pending approvals.
 - Session token — implemented; see the auth bullet in Safety Rules.
 - Onboarding gating — `onboardingComplete` is checked before routing.
+- Insights fabricated data — the page read from a hardcoded array (a literal
+  `87%` "accuracy", an invented weekly chart, "4.2 hours saved"). It now
+  renders `GET /api/insights`, backed by `storage.get_insights()`, which
+  derives everything from rows in `tasks`. **Accuracy and time-saved are
+  deliberately absent** — nothing in TORCH measures either, and
+  `test_insights.py` asserts those keys never come back. `success_rate` and
+  `avg_duration_ms` are `None` rather than `0` when there is nothing to
+  divide, so the page shows an empty state instead of a confident 0%.
+- Task durations were never recorded — `save_task` accepted `duration_ms` but
+  all three call sites in `process_command` omitted it, so every row held 0.
+  Now timed from command arrival via `_elapsed_ms`.
+- Onboarding clobbering capability settings — the permissions screen writes
+  all three capabilities on Continue, and its toggles were seeded from
+  constants, so re-running onboarding silently switched off whatever the user
+  had enabled (it turned `TORCH_ALLOW_EMAIL` off twice during development).
+  It now seeds from `GET /api/settings` via `utils/permissions.ts` and
+  refuses to save if that read has not landed.
+
+  Note that the backend does **not** re-read `.env` while running: editing
+  that file by hand does nothing until restart, and the next settings write
+  will overwrite your edit from memory. Change capabilities through
+  `/api/settings`, not the file.
 
 ---
 

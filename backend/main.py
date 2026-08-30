@@ -5,6 +5,7 @@ Handles WebSocket communication and REST API endpoints.
 
 import sys
 import os
+import time
 import asyncio
 import json
 import uuid
@@ -680,6 +681,21 @@ async def get_metrics():
     return await get_current_metrics()
 
 
+@app.get("/api/insights")
+async def get_insights(days: int = 7):
+    """
+    Aggregates of the real task history.
+
+    Only figures the database can support. There is no accuracy or
+    time-saved number here because nothing in TORCH measures either, and an
+    invented one would be indistinguishable from a real one to the user.
+    """
+    from memory.storage import db
+
+    days = max(1, min(days, 30))
+    return await asyncio.to_thread(db.get_insights, days)
+
+
 @app.post("/api/voice/listen")
 async def listen_for_companion_voice():
     """Capture one voice turn without blocking the FastAPI event loop."""
@@ -957,6 +973,11 @@ async def _send_task_outcome(
     )
 
 
+def _elapsed_ms(started_at: float) -> int:
+    """Milliseconds since a time.monotonic() reading, floored at zero."""
+    return max(0, round((time.monotonic() - started_at) * 1000))
+
+
 async def process_command(
     command: str,
     client_id: str,
@@ -966,6 +987,9 @@ async def process_command(
 ) -> None:
     """Process a user command through the full agent pipeline."""
     planning_id = planning_id or str(uuid.uuid4())
+    # Wall-clock from the moment the command arrives, so the recorded duration
+    # is what the user actually waited - planning included, not just execution.
+    started_at = time.monotonic()
     executor.begin_planning(client_id, planning_id, "command")
     try:
         # The WebSocket handler registers the planning id before scheduling
@@ -1111,7 +1135,7 @@ async def process_command(
             # Log failure in database for accurate metrics
             try:
                 from memory.storage import db
-                db.save_task(command, validated_steps, "failed")
+                db.save_task(command, validated_steps, "failed", _elapsed_ms(started_at))
                 metrics_data = await get_current_metrics()
                 await ws_manager.send_metrics(metrics_data, client_id)
             except Exception as db_err:
@@ -1199,7 +1223,7 @@ async def process_command(
         # Update metrics after task completion
         try:
             from memory.storage import db
-            db.save_task(command, validated_steps, "completed")
+            db.save_task(command, validated_steps, "completed", _elapsed_ms(started_at))
             db.log_command(command)
             metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
@@ -1226,7 +1250,7 @@ async def process_command(
         # Record failure in database for accurate success rate metrics
         try:
             from memory.storage import db
-            db.save_task(command, [], "failed")
+            db.save_task(command, [], "failed", _elapsed_ms(started_at))
             metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as db_err:

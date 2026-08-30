@@ -3821,3 +3821,96 @@ button:not(:disabled):active,
   color: var(--text-primary);
   border-color: var(--text-tertiary);
 }
+
+/* ─── Insights ─── */
+
+.insight-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 120px;
+}
+
+.insight-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.insight-bar__track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  background: var(--color-torch-muted);
+}
+
+.insight-bar__fill {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  background: var(--color-torch-text);
+  transition: height 700ms ease-out;
+}
+
+/* Failed runs are shaded inside their own column so a tall bar is never
+   read as a good day. */
+.insight-bar__failed {
+  width: 100%;
+  background: var(--color-torch-error);
+  opacity: 0.55;
+}
+
+.insight-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.insight-stat__value {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  color: var(--color-torch-text);
+}
+
+.insight-stat__value--large {
+  font-size: 32px;
+  letter-spacing: -1px;
+}
+
+.insight-category__fill {
+  height: 100%;
+  background: var(--color-torch-text);
+  transition: width 700ms ease-out;
+}
+
+.insight-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 64px 24px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.insight-empty__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-torch-text);
+}
+
+.insight-empty__desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-torch-text-tertiary);
+}

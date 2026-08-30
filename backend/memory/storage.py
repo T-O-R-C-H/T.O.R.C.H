@@ -8,13 +8,48 @@ import sqlite3
 import json
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from config.settings import settings
 
 logger = logging.getLogger("torch.memory.storage")
+
+# Tool families for the insights breakdown. Grouped by what the user was
+# trying to do rather than by which module implements the tool, so the chart
+# answers "what do I use TORCH for". Tools with no meaningful family
+# (`respond`, `error`) are absent on purpose and are not counted.
+TOOL_CATEGORIES = {
+    "find_file": "Files",
+    "find_file_fuzzy": "Files",
+    "list_directory": "Files",
+    "read_pdf": "Files",
+    "read_word": "Files",
+    "read_excel": "Files",
+    "move_file": "Files",
+    "delete_file": "Files",
+    "create_folder": "Files",
+    "zip_files": "Files",
+    "download_file": "Files",
+    "send_email": "Email",
+    "read_inbox": "Email",
+    "open_browser": "Web",
+    "search_web": "Web",
+    "post_social": "Messaging",
+    "send_message": "Messaging",
+    "open_app": "Apps",
+    "run_terminal": "Apps",
+    "screenshot": "Screen",
+    "analyse_screen": "Screen",
+    "read_screen": "Screen",
+    "describe_screen": "Screen",
+    "click": "Screen",
+    "click_element": "Screen",
+    "type_text": "Screen",
+    "type_into": "Screen",
+    "vision_control": "Screen",
+}
 
 
 class TorchDatabase:
@@ -291,6 +326,81 @@ class TorchDatabase:
         return {
             "today_task_count": recent,
             "by_tool_status": [dict(r) for r in actions],
+        }
+
+    def get_insights(self, days: int = 7) -> Dict[str, Any]:
+        """
+        Aggregate what the task history actually records, and nothing else.
+
+        Everything here is derived from rows in `tasks`: how many ran on each
+        of the last `days` days, how many finished, which tool families they
+        used, and how long they took. Figures the database cannot support -
+        accuracy, time saved - are deliberately absent rather than estimated,
+        because a plausible invented number is worse than a missing one.
+
+        `success_rate` and `avg_duration_ms` are None when there is nothing to
+        divide, so the caller shows an empty state instead of a confident 0%.
+        """
+        today = datetime.now().date()
+        day_keys = [
+            (today - timedelta(days=offset)).isoformat() for offset in range(days - 1, -1, -1)
+        ]
+
+        daily = {key: {"date": key, "total": 0, "completed": 0} for key in day_keys}
+        categories: Dict[str, int] = {}
+        total = 0
+        completed = 0
+        total_steps = 0
+        durations: List[int] = []
+
+        oldest = day_keys[0]
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT status, steps_json, duration_ms, created_at "
+                "FROM tasks WHERE created_at >= ?",
+                (oldest,),
+            ).fetchall()
+
+        for row in rows:
+            created = (row["created_at"] or "")[:10]
+            if created not in daily:
+                continue
+
+            total += 1
+            daily[created]["total"] += 1
+            is_done = row["status"] == "completed"
+            if is_done:
+                completed += 1
+                daily[created]["completed"] += 1
+
+            duration = row["duration_ms"] or 0
+            if duration > 0:
+                durations.append(duration)
+
+            try:
+                steps = json.loads(row["steps_json"]) if row["steps_json"] else []
+            except (ValueError, TypeError):
+                steps = []
+            total_steps += len(steps)
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                family = TOOL_CATEGORIES.get(step.get("tool", ""))
+                if family:
+                    categories[family] = categories.get(family, 0) + 1
+
+        return {
+            "days": days,
+            "daily": [daily[key] for key in day_keys],
+            "total_tasks": total,
+            "completed_tasks": completed,
+            "total_steps": total_steps,
+            "success_rate": round(completed / total * 100) if total else None,
+            "avg_duration_ms": round(sum(durations) / len(durations)) if durations else None,
+            "categories": [
+                {"label": label, "count": count}
+                for label, count in sorted(categories.items(), key=lambda kv: -kv[1])
+            ],
         }
 
     # ─── Clear ───

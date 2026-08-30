@@ -11,6 +11,7 @@ import { TorchLogo } from '../components/ui/TorchLogo'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { permissionsFromSettings } from '../utils/permissions'
 
 const ONBOARDING_STEPS = ['welcome', 'name', 'permissions', 'first_task', 'done'] as const
 type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
@@ -141,9 +142,20 @@ export function Onboarding(): JSX.Element {
   const [userName, setUserName] = useState(() => localStorage.getItem('torch_user_name') || '')
   const [nameError, setNameError] = useState<string | null>(null)
 
+  /*
+   * Seeded from the backend on mount rather than from constants.
+   *
+   * These start as whatever is already configured, because the permissions
+   * screen writes all three on Continue: hardcoded defaults meant that
+   * walking through onboarding silently switched off a capability the user
+   * had already turned on. The literals below are only what shows for the
+   * fraction of a second before the real values land, and they match the
+   * backend's own defaults so a fresh install sees no flicker.
+   */
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
-  const [allowEmail, setAllowEmail] = useState(false)
+  const [allowEmail, setAllowEmail] = useState(true)
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false)
   const [permissionSaving, setPermissionSaving] = useState(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
   const [firstTaskRequestId, setFirstTaskRequestId] = useState<string | null>(null)
@@ -218,6 +230,12 @@ export function Onboarding(): JSX.Element {
    * whose capability is switched off, so the toggles decide real behaviour.
    */
   const savePermissions = async (): Promise<boolean> => {
+    /* Never write values that were never read - that is exactly how an
+       already-configured capability got switched off. */
+    if (!permissionsLoaded) {
+      setPermissionError("TORCH couldn't read your current settings yet. Try again in a moment.")
+      return false
+    }
     try {
       const response = await torchFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
@@ -237,6 +255,40 @@ export function Onboarding(): JSX.Element {
       return false
     }
   }
+
+  /*
+   * Seed the toggles from what is actually configured.
+   *
+   * Onboarding writes all three capabilities when the user presses Continue,
+   * so starting from constants meant re-running it quietly turned settings
+   * off. Reading first makes the screen show the current state and makes
+   * Continue a no-op unless the user actually changed something.
+   */
+  useEffect(() => {
+    let cancelled = false
+    torchFetch(`${API_BASE}/api/settings`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        const seeded = permissionsFromSettings(data, {
+          files: allowFiles,
+          apps: allowApps,
+          email: allowEmail
+        })
+        setAllowFiles(seeded.files)
+        setAllowApps(seeded.apps)
+        setAllowEmail(seeded.email)
+        setPermissionsLoaded(true)
+      })
+      .catch(() => {
+        // The permissions screen blocks on this rather than saving values it
+        // never read - writing guesses is how the setting got clobbered.
+        if (!cancelled) setPermissionsLoaded(false)
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
 
   const handleBack = (): void => {
     if (currentStep === 'name') {
