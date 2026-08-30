@@ -122,7 +122,7 @@ function FirstTaskResult({ result }: { result: string }): JSX.Element {
     <div className="ob-command-block ob-result text-left">
       <p className="ob-name-field__label mb-2">Result</p>
       <p className="ob-row-desc ob-result__body">{text}</p>
-      {hidden > 0 && <p className="ob-footnote ob-result__more">and {hidden} more lines</p>}
+      {hidden > 0 && <p className="ob-result__more">and {hidden} more lines</p>}
     </div>
   )
 }

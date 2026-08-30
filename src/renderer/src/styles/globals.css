@@ -1028,6 +1028,19 @@
   gap: 4px;
 }
 
+/* The cycling mark sits beside the status line while a task is running. */
+.chat-turn__activity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-turn__activity-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.015em;
+}
+
 .chat-turn__activity-label {
   font-variant-numeric: tabular-nums;
 }
@@ -2439,20 +2452,36 @@
 }
 
 /* The result is evidence the task ran, not output to read. It is capped in
-   JS to a few lines; this bounds the height a single very long line can
-   reach, so the finish button can never be pushed off the screen. */
+   JS to a few lines; the max-height bounds what a single very long line can
+   do, so the finish button can never be pushed off the screen.
+
+   It carries the same card treatment as the command block on the previous
+   screen - the two screens show the same kind of thing, so they should not
+   look like different kinds of element. */
 .ob-result {
-  max-height: 150px;
+  max-height: 180px;
   overflow: hidden;
+  border: 1px solid var(--color-torch-border);
+  border-radius: var(--radius-torch-sm);
+  background: var(--color-torch-muted);
+  padding-bottom: 10px;
 }
 
 .ob-result__body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  padding: 0 12px;
 }
 
+/* Centred to sit under the finish button, and the same size and colour as
+   the result text above it rather than a lighter mono footnote. */
 .ob-result__more {
-  margin-top: 6px;
+  margin-top: 8px;
+  padding: 0 12px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-torch-text-tertiary);
 }
 
 .ob-pointer-row {
@@ -2609,26 +2638,21 @@
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
-.typing-square {
-  width: 4px;
-  height: 4px;
-  background: var(--color-torch-blue-muted);
-  border-radius: 1px;
-  animation: bounce-square 0.6s infinite ease-in-out;
-}
-.typing-square:nth-child(2) {
-  animation-delay: 0.12s;
-}
-.typing-square:nth-child(3) {
-  animation-delay: 0.24s;
+/* A task in trouble recolours the mark, so the row reads as wrong at a
+   glance and not only from its wording. The keyframes set fill on every
+   node, so this has to win against the animation. */
+.chat-turn__activity--warn .torch-mark__node {
+  fill: var(--color-torch-error) !important;
 }
 
-.chat-turn__activity--warn .typing-square {
-  background: var(--color-torch-error) !important;
+.chat-turn__activity--slow .torch-mark__node {
+  fill: var(--color-torch-warning) !important;
 }
 
-.chat-turn__activity--slow .typing-square {
-  background: var(--color-torch-warning) !important;
+.chat-turn__activity--warn .torch-mark__ring,
+.chat-turn__activity--slow .torch-mark__ring {
+  stroke: currentColor;
+  opacity: 0.25;
 }
 
 .chat-turn__activity--warn {
@@ -2637,16 +2661,6 @@
 
 .chat-turn__activity--slow {
   color: var(--color-torch-warning) !important;
-}
-
-@keyframes bounce-square {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
 }
 
 .spinner {
@@ -2801,10 +2815,6 @@ button:not(:disabled):active,
   color: var(--color-torch-text-tertiary);
 }
 
-.typing-square {
-  animation: typing-wave 900ms var(--motion-spring) infinite;
-}
-
 .spinner {
   animation: spin 900ms linear infinite;
 }
@@ -2869,11 +2879,6 @@ button:not(:disabled):active,
   0% { transform: scale(1); }
   42% { transform: translateY(-5px) scale(0.86); }
   100% { transform: translateY(0) scale(1); }
-}
-
-@keyframes typing-wave {
-  0%, 70%, 100% { transform: translateY(0) scale(0.85); opacity: 0.45; }
-  35% { transform: translateY(-4px) scale(1.15); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

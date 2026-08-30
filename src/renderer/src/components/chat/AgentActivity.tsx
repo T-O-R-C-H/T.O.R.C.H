@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
-import { Orb, type OrbVariant } from '../aicss/Orb'
+import { TorchMark } from '../ui/TorchMark'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
@@ -42,25 +42,6 @@ function statusLabel(
       return 'Speaking…'
     default:
       return 'Working…'
-  }
-}
-
-function orbVariant(status: AgentStatus, slow: boolean): OrbVariant {
-  if (slow) return 'S5'
-  switch (status) {
-    case 'processing':
-      return 'S1'
-    case 'executing':
-      return 'S3'
-    case 'listening':
-      return 'C2'
-    case 'speaking':
-      return 'C3'
-    case 'awaiting_input':
-    case 'awaiting_approval':
-      return 'C4'
-    default:
-      return 'S2'
   }
 }
 
@@ -206,7 +187,11 @@ export function AgentActivity({
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
             >
               <span className="chat-turn__activity-pill">
-                <Orb variant={orbVariant(status, slow)} size={18} pill label={label} />
+                {/* The cycling mark is the app's "work is happening" signal.
+                    The label carries which kind of work, so the mark does not
+                    need a per-status variant of its own. */}
+                <TorchMark size={18} active />
+                <span className="chat-turn__activity-text">{label}</span>
               </span>
             </motion.span>
           </AnimatePresence>
