@@ -2178,27 +2178,59 @@
   padding: 0 24px;
 }
 
+/* Segments rather than dots: the current step widens, so progress reads at a
+   glance without counting. */
 .ob-progress {
   display: flex;
   gap: 6px;
   justify-content: center;
-  margin-bottom: 32px;
+  margin-bottom: var(--space-10);
 }
 
 .progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-torch-border);
-  transition: background 200ms ease;
+  width: 24px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--border-default);
+  transition:
+    width var(--dur-base) var(--ease-out),
+    background var(--dur-base) var(--ease-out);
 }
 
 .progress-dot.active {
-  background: var(--color-torch-text);
+  width: 32px;
+  background: var(--text-primary);
 }
+
 .progress-dot.completed {
-  background: var(--color-torch-text-tertiary);
+  background: var(--text-tertiary);
 }
+
+/* The mark breathes on the first and last screens - the two moments the user
+   is reading rather than doing. */
+.ob-mark-breathe {
+  display: inline-flex;
+  animation: torch-breathe 3s var(--ease-in-out) infinite;
+}
+
+.ob-footnote {
+  margin-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+/* Entrance stagger: each child arrives just after the one above it, so the
+   screen assembles rather than appearing all at once. */
+.ob-stagger > * {
+  animation: torch-fade-up var(--dur-base) var(--ease-out) both;
+}
+
+.ob-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.ob-stagger > *:nth-child(2) { animation-delay: 80ms; }
+.ob-stagger > *:nth-child(3) { animation-delay: 160ms; }
+.ob-stagger > *:nth-child(4) { animation-delay: 240ms; }
+.ob-stagger > *:nth-child(5) { animation-delay: 320ms; }
 
 .ob-title {
   font-size: 18px;
@@ -2363,6 +2395,23 @@
 .ob-command-block {
   width: 100%;
   margin-bottom: 8px;
+}
+
+/* The result is evidence the task ran, not output to read. It is capped in
+   JS to a few lines; this bounds the height a single very long line can
+   reach, so the finish button can never be pushed off the screen. */
+.ob-result {
+  max-height: 150px;
+  overflow: hidden;
+}
+
+.ob-result__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ob-result__more {
+  margin-top: 6px;
 }
 
 .ob-pointer-row {

@@ -100,6 +100,33 @@ function StepPanel({
   )
 }
 
+/**
+ * The final screen shows the first task's result as proof it really ran, not
+ * as output to read - a listing of a home folder is hundreds of lines, and
+ * printing it whole pushes the title and the finish button off the screen.
+ */
+const RESULT_PREVIEW_LINES = 6
+
+function previewResult(result: string): { text: string; hidden: number } {
+  const lines = result.trimEnd().split('\n')
+  if (lines.length <= RESULT_PREVIEW_LINES) return { text: lines.join('\n'), hidden: 0 }
+  return {
+    text: lines.slice(0, RESULT_PREVIEW_LINES).join('\n'),
+    hidden: lines.length - RESULT_PREVIEW_LINES
+  }
+}
+
+function FirstTaskResult({ result }: { result: string }): JSX.Element {
+  const { text, hidden } = previewResult(result)
+  return (
+    <div className="ob-command-block ob-result text-left">
+      <p className="ob-name-field__label mb-2">Result</p>
+      <p className="ob-row-desc ob-result__body">{text}</p>
+      {hidden > 0 && <p className="ob-footnote ob-result__more">and {hidden} more lines</p>}
+    </div>
+  )
+}
+
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }): JSX.Element {
   return (
     <button type="button" onClick={onChange} aria-pressed={checked} className="toggle-track">
@@ -132,6 +159,9 @@ export function Onboarding(): JSX.Element {
   const { sendCommand } = useWebSocket()
 
   const firstTaskCommand = allowFiles ? LOCAL_FIRST_TASK : RESTRICTED_FIRST_TASK
+
+  // Screens 4 and 5 greet the user by the name they gave on screen 2.
+  const firstName = userName.trim().split(/\s+/)[0] || ''
 
   const permissionState = {
     files: { value: allowFiles, set: setAllowFiles },
@@ -270,43 +300,42 @@ export function Onboarding(): JSX.Element {
         <AnimatePresence mode="wait" custom={direction}>
           {currentStep === 'welcome' && (
             <StepPanel stepKey="welcome" direction={direction}>
-              <TorchLogo size={48} />
-              <p className="ob-acronym">Thinking · Observing · Reasoning · Creating · Handling</p>
-              <p className="ob-lead">
-                A desktop AI agent that automates everyday work — files, apps, and email — from one
-                command line.
-              </p>
+              <div className="ob-stagger">
+                <div className="ob-mark-breathe">
+                  <TorchLogo size={64} />
+                </div>
+                <h2 className="ob-title">Meet TORCH</h2>
+                <p className="ob-lead">
+                  TORCH does things on your computer so you don&rsquo;t have to. Just tell it what
+                  you need, in plain words.
+                </p>
 
-              <div className="ob-features">
-                {WELCOME_FEATURES.map((item, i) => (
-                  <div key={item.title} className="ob-feature">
-                    <span className="ob-feature-num">{String(i + 1).padStart(2, '0')}</span>
-                    <div className="ob-feature-body">
-                      <div className="ob-feature-title">{item.title}</div>
-                      <div className="ob-feature-desc">{item.desc}</div>
+                <div className="ob-features">
+                  {WELCOME_FEATURES.map((item, i) => (
+                    <div key={item.title} className="ob-feature">
+                      <span className="ob-feature-num">{String(i + 1).padStart(2, '0')}</span>
+                      <div className="ob-feature-body">
+                        <div className="ob-feature-title">{item.title}</div>
+                        <div className="ob-feature-desc">{item.desc}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              <button
-                type="button"
-                onClick={() => void handleNext()}
-                className="ob-btn-primary"
-              >
-                Get Started
-                <ArrowRight size={14} />
-              </button>
+                <button type="button" onClick={() => void handleNext()} className="ob-btn-primary">
+                  Get started
+                  <ArrowRight size={14} />
+                </button>
+
+                <p className="ob-footnote">No coding. No setup steps.</p>
+              </div>
             </StepPanel>
           )}
 
           {currentStep === 'name' && (
             <StepPanel stepKey="name" direction={direction}>
-              <TorchLogo size={36} />
-              <h2 className="ob-title">What should we call you?</h2>
-              <p className="ob-lead">
-                Used in replies and status updates. Stored locally on this device only.
-              </p>
+              <h2 className="ob-title">What should TORCH call you?</h2>
+              <p className="ob-lead">So it can talk to you like a person.</p>
 
               <div className="ob-name-wrap">
                 <div className="ob-name-field">
@@ -348,10 +377,8 @@ export function Onboarding(): JSX.Element {
 
           {currentStep === 'permissions' && (
             <StepPanel stepKey="permissions" direction={direction}>
-              <h2 className="ob-title">Set your permissions</h2>
-              <p className="ob-lead">
-                Control what TORCH can access. Change any of these later in Settings.
-              </p>
+              <h2 className="ob-title">Here&rsquo;s what TORCH needs</h2>
+              <p className="ob-lead">You can change any of this later in Settings.</p>
 
               <div className="ob-card">
                 {PERMISSION_ITEMS.map(({ id, icon: Icon, label, desc }) => {
@@ -391,10 +418,9 @@ export function Onboarding(): JSX.Element {
 
           {currentStep === 'first_task' && (
             <StepPanel stepKey="first_task" direction={direction}>
-              <h2 className="ob-title">Run your first task</h2>
+              <h2 className="ob-title">Try it out{firstName ? `, ${firstName}` : ''}.</h2>
               <p className="ob-lead">
-                This read-only task runs through the real TORCH backend. Setup only finishes after
-                TORCH returns a successful result.
+                Tap run and watch TORCH work. This only reads — nothing on your computer changes.
               </p>
 
               <div className="ob-command-block">
@@ -435,16 +461,16 @@ export function Onboarding(): JSX.Element {
 
           {currentStep === 'done' && (
             <StepPanel stepKey="done" direction={direction}>
-              <TorchLogo size={40} />
-              <h2 className="ob-title">Your first task is complete</h2>
+              <div className="ob-mark-breathe">
+                <TorchLogo size={64} />
+              </div>
+              <h2 className="ob-title">You&rsquo;re set{firstName ? `, ${firstName}` : ''}.</h2>
               <p className="ob-lead">
-                TORCH ran the request on this computer and returned a real result.
+                Just say what you need. TORCH asks before anything important, and you can always
+                undo.
               </p>
 
-              <div className="ob-command-block text-left">
-                <p className="ob-name-field__label mb-2">Result</p>
-                <p className="ob-row-desc whitespace-pre-wrap">{firstTaskResult}</p>
-              </div>
+              {firstTaskResult && <FirstTaskResult result={firstTaskResult} />}
 
               <button
                 type="button"

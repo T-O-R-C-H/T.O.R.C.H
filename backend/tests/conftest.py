@@ -26,6 +26,21 @@ def auth_headers(auth_token):
     return {"Authorization": f"Bearer {auth_token}"}
 
 
+@pytest.fixture(autouse=True)
+def all_capabilities_enabled(monkeypatch):
+    """
+    Run every test against the shipped capability defaults.
+
+    The planner refuses a tool whose capability is switched off, replacing it
+    with an error step that needs no approval. Those flags live in the
+    developer's own .env, so without this a local "email off" makes the
+    send_email approval test pass vacuously - the assertion stops describing
+    the approval policy and starts describing the developer's machine.
+    """
+    for flag in ("allow_files", "allow_apps", "allow_email"):
+        monkeypatch.setattr(settings, flag, True)
+
+
 @pytest.fixture
 def temp_db(tmp_path):
     """

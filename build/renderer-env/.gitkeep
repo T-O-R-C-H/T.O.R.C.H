@@ -1,0 +1,3 @@
+# Vite loads renderer env vars from here.
+# The project .env belongs to the backend and must not be watched by Vite:
+# it is rewritten on every Settings save, which would reload the renderer.
