@@ -3914,3 +3914,27 @@ button:not(:disabled):active,
   line-height: 1.5;
   color: var(--color-torch-text-tertiary);
 }
+
+/* ─── Microphone level ───
+   Every bar is one measured frame of real audio. There is no idle animation:
+   a silent room draws a flat row, which is the honest signal that TORCH is
+   listening but hearing nothing. */
+
+.waveform {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  flex: 1;
+  min-width: 0;
+}
+
+.waveform__bar {
+  flex: 1;
+  min-width: 1px;
+  height: 100%;
+  background: var(--color-torch-text-tertiary);
+  transform-origin: center;
+  /* Just enough to smooth the frame-to-frame step without lagging speech. */
+  transition: transform 80ms linear;
+}

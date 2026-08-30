@@ -12,7 +12,7 @@ import uuid
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -35,7 +35,7 @@ from websocket import manager as ws_manager
 from agent.brain import plan_command
 from agent.planner import validate_plan, create_response_message
 from agent.executor import executor
-from errors.plain_language import translate_error
+from errors.plain_language import translate_error, UserFacingError
 from agent.rollback import rollback_manager
 from system_checks import check_playwright_readiness
 
@@ -46,6 +46,10 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("torch.main")
+
+# A 30s mono 16 kHz recording is about 1 MB; this is generous headroom without
+# letting a request hold arbitrary audio in memory.
+MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 @asynccontextmanager
@@ -694,6 +698,44 @@ async def get_insights(days: int = 7):
 
     days = max(1, min(days, 30))
     return await asyncio.to_thread(db.get_insights, days)
+
+
+@app.get("/api/voice/capabilities")
+async def voice_capabilities():
+    """
+    What voice features this machine can actually do.
+
+    The renderer hides the microphone entirely when speech cannot be
+    transcribed locally, rather than offering a button that either fails or
+    quietly uploads the recording somewhere.
+    """
+    from tools.voice import local_stt_available
+
+    return {"speech_to_text": local_stt_available()}
+
+
+@app.post("/api/voice/transcribe")
+async def transcribe_voice(request: Request):
+    """
+    Transcribe a recording captured by the renderer.
+
+    The renderer sends 16-bit PCM WAV, which the local speech stack reads
+    directly — no ffmpeg, and nothing leaves the machine.
+    """
+    from tools.voice import transcribe_audio
+
+    wav_bytes = await request.body()
+    if not wav_bytes:
+        raise HTTPException(status_code=400, detail="That recording was empty.")
+    if len(wav_bytes) > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="That recording is too long.")
+
+    try:
+        text = await asyncio.to_thread(transcribe_audio, wav_bytes)
+    except UserFacingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"transcript": text}
 
 
 @app.post("/api/voice/listen")

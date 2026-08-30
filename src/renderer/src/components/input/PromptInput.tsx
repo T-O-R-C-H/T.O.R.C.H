@@ -4,6 +4,9 @@ import { useTorchStore } from '../../store/torchStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { API_BASE, torchFetch } from '../../config/api'
 import { FALLBACK_MODELS } from '../../config/models'
+import { useAudioCapture } from '../../hooks/useAudioCapture'
+import { Waveform } from './Waveform'
+import { IconMic } from '../icons'
 
 interface PromptInputProps {
   onSend: (command: string) => void
@@ -171,6 +174,64 @@ export function PromptInput({
 }: PromptInputProps): JSX.Element {
   const [text, setText] = useState('')
   const [justSent, setJustSent] = useState(false)
+
+  const audio = useAudioCapture()
+  const [transcribing, setTranscribing] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  /*
+   * The microphone is offered only when the backend can actually transcribe
+   * on this machine. Voice used to fall back to a cloud recogniser whenever
+   * the local model was missing, so a button that is always visible is a
+   * button that quietly uploads your audio. Undefined until we have asked.
+   */
+  const [sttAvailable, setSttAvailable] = useState<boolean | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    torchFetch(`${API_BASE}/api/voice/capabilities`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setSttAvailable(Boolean(data.speech_to_text))
+      })
+      .catch(() => {
+        if (!cancelled) setSttAvailable(false)
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleMicClick = async (): Promise<void> => {
+    setVoiceError(null)
+    if (audio.state === 'recording') {
+      const wav = await audio.stop()
+      if (!wav) return
+      setTranscribing(true)
+      try {
+        const response = await torchFetch(`${API_BASE}/api/voice/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'audio/wav' },
+          body: wav
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.detail || 'transcribe-failed')
+        const transcript = (data.transcript || '').trim()
+        if (!transcript) {
+          setVoiceError("TORCH didn't catch that. Try again.")
+          return
+        }
+        // Append rather than replace: the user may have typed part of it.
+        setText((current) => (current ? `${current} ${transcript}` : transcript))
+        inputRef.current?.focus()
+      } catch (err) {
+        setVoiceError(err instanceof Error ? err.message : "That didn't work. Try again.")
+      } finally {
+        setTranscribing(false)
+      }
+      return
+    }
+    await audio.start()
+  }
   const [models, setModels] = useState(FALLBACK_MODELS)
   const [phase, setPhase] = useState<Phase>('idle')
   const [enhanceError, setEnhanceError] = useState<string | null>(null)
@@ -342,6 +403,13 @@ export function PromptInput({
           </div>
         </div>
 
+        {audio.state === 'recording' && (
+          <div className={styles.voiceRow}>
+            <Waveform levels={audio.levels} />
+            <span className={styles.metaItem}>Listening — press the mic again when done</span>
+          </div>
+        )}
+
         <div className={styles.row}>
           <div className={styles.right}>
             {hasText && !enhancing && (
@@ -355,6 +423,21 @@ export function PromptInput({
                 {pillLabel}
                 <span>{pillText}</span>
               </span>
+            )}
+            {sttAvailable && (
+              <button
+                type="button"
+                onClick={() => void handleMicClick()}
+                disabled={isProcessing || transcribing}
+                className={
+                  styles.iconBtn + (audio.state === 'recording' ? ' ' + styles.micActive : '')
+                }
+                aria-label={audio.state === 'recording' ? 'Stop recording' : 'Speak a command'}
+                aria-pressed={audio.state === 'recording'}
+                title={audio.state === 'recording' ? 'Stop recording' : 'Speak a command'}
+              >
+                <IconMic size={14} />
+              </button>
             )}
             <button
               type="button"
@@ -373,7 +456,13 @@ export function PromptInput({
         <div className={styles.meta}>
           {/* Only states worth interrupting for. "Ready" and the model tier are
               the normal case and say nothing the user needs. */}
-          {enhanceError ? (
+          {transcribing ? (
+            <span className={styles.metaItem}>Writing down what you said…</span>
+          ) : voiceError ? (
+            <span className={styles.metaItem}>{voiceError}</span>
+          ) : audio.error ? (
+            <span className={styles.metaItem}>{audio.error}</span>
+          ) : enhanceError ? (
             <span className={styles.metaItem}>{enhanceError}</span>
           ) : demoMode ? (
             <span className={styles.metaItem}>Demo mode</span>

@@ -531,3 +531,18 @@
     animation-duration: 1.4s;
   }
 }
+/* ─── Voice ─── */
+
+.micActive {
+  color: var(--color-torch-error, #ef4444);
+}
+.micActive::before {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.voiceRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px 2px;
+}

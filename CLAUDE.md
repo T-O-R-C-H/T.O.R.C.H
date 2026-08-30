@@ -23,7 +23,12 @@ It is built for everyone — non-technical users, students, developers, freelanc
 **Shell:** Electron 39 (wraps the whole app as a Windows desktop application)
 **AI providers:** Gemini, DeepSeek, OpenAI, Claude, and explicit Ollama model selection through the provider abstraction. Automatic selection currently prefers configured cloud providers in that order; there is no implemented fast/reasoning local-tier router.
 **Vision model:** Qwen2.5-VL 7B via Ollama (screen control — sees screen and generates mouse/keyboard actions)
-**Voice:** OpenAI Whisper (local, for STT) + pyttsx3 (local TTS)
+**Voice:** capture runs in the renderer (`hooks/useAudioCapture.ts` — Web Audio,
+real level metering, 16 kHz mono WAV). Transcription is local-only via Whisper
+through SpeechRecognition; **the `whisper` package is not currently installed**,
+so `/api/voice/capabilities` reports `speech_to_text: false` and the UI hides
+the microphone rather than offering it. There is **no cloud fallback and no
+wake word** — see the voice note under Safety Rules. TTS is pyttsx3 (local).
 **Database:** SQLite (local, torch.db)
 **Memory:** SQLite-backed task, contact, file, and habit records. ChromaDB is installed but is not used by the current storage implementation.
 **Screen capture:** PyAutoGUI + mss
@@ -206,6 +211,14 @@ When vision control ends: emit `vision_control_end` WS message → frontend hide
 - **Rollback snapshots** are taken AFTER HITL approval, immediately before execution — never before
 - **The Stop button** must cancel the current task within 2 seconds — wired to `executor.stop_task()`
 - **Undo** must appear after every task that touched the filesystem
+- **Voice never leaves the machine.** `tools/voice.py` must not reach a cloud
+  recogniser. `listen()` used to fall back to Google's Web Speech API whenever
+  the local model was missing — which was always — so every voice command was
+  uploaded while the app called itself local-first. `WakeWordDetector` was
+  worse: it held the microphone open and sent every captured phrase to Google
+  to test for the wake word. Both are gone; `test_voice_local.py` asserts
+  `recognize_google` does not appear anywhere in the module. If transcription
+  cannot run locally, the feature is **hidden**, not degraded to the cloud.
 - **Plain language errors only** — no stack traces, no error codes, no technical strings ever reach the chat UI
 - **A failed task must say so in the chat.** Never let a task end silently, and
   never report failure as success.
