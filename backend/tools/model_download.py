@@ -184,14 +184,28 @@ class UrlModelDownload(ModelDownload):
                 # present() would read as ready.
                 partial = destination + ".part"
                 with urllib.request.urlopen(url, timeout=60) as response:
+                    expected = int(response.headers.get("Content-Length") or 0)
+                    written = 0
                     with open(partial, "wb") as handle:
                         while True:
                             block = response.read(262144)
                             if not block:
                                 break
                             handle.write(block)
+                            written += len(block)
                             with self._lock:
                                 self._state["downloaded_bytes"] += len(block)
+
+                # A dropped connection ends the read loop exactly like a
+                # finished one. Without this check a truncated file was
+                # renamed into place and later read as ready - which is how a
+                # 180 MB fragment of a 325 MB model reached the loader and
+                # failed there instead, as a protobuf parse error.
+                if expected and written != expected:
+                    os.remove(partial)
+                    raise RuntimeError(
+                        f"{name} came down short: {written} of {expected} bytes"
+                    )
                 os.replace(partial, destination)
 
             if not self.present():

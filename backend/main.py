@@ -1206,7 +1206,15 @@ async def process_command(
             )
             return
         
-        natural_response = "Got it. Here is my plan:" if len(step_labels) > 1 else f"On it. {step_labels[0]}."
+        # A plan that is only an error is not something TORCH is "on it" for.
+        # Saying "On it. The AI service is busy right now." announces a start
+        # and a failure in one breath.
+        if len(validated_steps) == 1 and validated_steps[0].get("tool") == "error":
+            natural_response = step_labels[0]
+        elif len(step_labels) > 1:
+            natural_response = "Got it. Here is my plan:"
+        else:
+            natural_response = f"On it. {step_labels[0]}."
         
         response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)

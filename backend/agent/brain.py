@@ -524,4 +524,9 @@ async def plan_command(
             "args": {},
             "requires_approval": False,
             "error": f"{plain['what_happened']} {plain['what_to_do']}",
+            # Already plain. Without this the executor translates it a second
+            # time, the wording matches none of the markers, and a specific
+            # message ("the service is busy") is replaced by the generic
+            # fallback - which is exactly what reached the user.
+            "error_is_plain": True,
         }]
