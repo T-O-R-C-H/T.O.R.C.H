@@ -75,7 +75,22 @@ def translate_error(error_str: str) -> dict:
             "what_to_do": "Please check your internet connection and try again in a moment."
         }
         
-    # 4. API Key/Quota issues
+    # 4a. The AI service is up but too busy to answer.
+    #
+    # Separate from the credentials branch below on purpose: a 503 is not the
+    # user's fault and nothing in their settings will fix it, so telling them
+    # to check their configuration sends them looking for a problem that is
+    # not there. Waiting is the actual remedy.
+    if any(marker in err for marker in [
+        "503", "unavailable", "overloaded", "high demand", "try again later",
+        "service unavailable", "capacity",
+    ]):
+        return {
+            "what_happened": "The AI service is busy right now.",
+            "what_to_do": "Nothing is wrong on your side — try again in a moment."
+        }
+
+    # 4b. API Key/Quota issues
     if any(marker in err for marker in ["api key", "quota", "rate limit", "credentials", "authentication", "unauthenticated", "429"]):
         return {
             "what_happened": "There was an issue connecting to the AI helper service.",

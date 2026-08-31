@@ -143,3 +143,64 @@ class ModelDownload:
         self._set(
             state="idle", downloaded_bytes=0, total_bytes=self.total_bytes, error=None
         )
+
+
+class UrlModelDownload(ModelDownload):
+    """
+    A model published as plain files rather than a Hugging Face repo.
+
+    Same contract as the parent - present(), state(), start() - so callers and
+    the UI cannot tell the two apart. Only the fetch differs: this streams
+    from URLs, because not every model lives on the Hub.
+    """
+
+    def __init__(
+        self,
+        *,
+        files: Dict[str, str],
+        target_dir_factory,
+        total_bytes: int,
+        label: str,
+    ) -> None:
+        super().__init__(
+            repo_id="",
+            target_dir_factory=target_dir_factory,
+            allow_patterns=[],
+            required_files=list(files.keys()),
+            total_bytes=total_bytes,
+            label=label,
+        )
+        self.files = dict(files)
+
+    def _worker(self) -> None:
+        import urllib.request
+
+        try:
+            os.makedirs(self.target_dir, exist_ok=True)
+            for name, url in self.files.items():
+                destination = os.path.join(self.target_dir, name)
+                # Download beside the target and rename at the end, so an
+                # interrupted transfer cannot leave a truncated file that
+                # present() would read as ready.
+                partial = destination + ".part"
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    with open(partial, "wb") as handle:
+                        while True:
+                            block = response.read(262144)
+                            if not block:
+                                break
+                            handle.write(block)
+                            with self._lock:
+                                self._state["downloaded_bytes"] += len(block)
+                os.replace(partial, destination)
+
+            if not self.present():
+                raise RuntimeError("download finished but the files are missing")
+            self._set(state="ready", downloaded_bytes=self.total_bytes, error=None)
+            logger.info("%s ready at %s", self.label, self.target_dir)
+        except Exception as exc:
+            logger.error("%s download failed: %s", self.label, exc)
+            self._set(
+                state="error",
+                error="The download didn't finish. Check your connection and try again.",
+            )

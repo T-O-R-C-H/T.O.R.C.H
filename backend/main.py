@@ -786,22 +786,22 @@ async def tts_status():
 
 @app.post("/api/voice/tts/model")
 async def download_tts_voice():
-    """Fetch the Piper voice, because the user asked for it in Settings."""
+    """Fetch the Kokoro voice, because the user asked for it in Settings."""
     from tools import tts
 
-    if not tts.piper_installed():
+    if not tts.kokoro_installed():
         raise HTTPException(status_code=503, detail="The natural voice isn't available in this build.")
-    return await asyncio.to_thread(tts.piper_model.start)
+    return await asyncio.to_thread(tts.kokoro_model.start)
 
 
 @app.post("/api/voice/synthesize")
 async def synthesize_companion_voice(data: dict):
     """
-    Render speech with Piper — rung one of the ladder, and entirely local.
+    Render speech with Kokoro — rung one of the ladder, and entirely local.
 
     This used to POST the text to Google's Gemini TTS endpoint, so the recap
     of what TORCH had just done on the user's computer left the machine before
-    it was spoken. A 503 here is normal and expected: it means no Piper voice
+    it was spoken. A 503 here is normal and expected: it means no Kokoro voice
     is downloaded, and the renderer drops to speechSynthesis.
     """
     from tools import tts
@@ -824,7 +824,7 @@ async def speak_with_system_voice(data: dict):
     """
     The last rung: the operating system's own voice.
 
-    Reached only when Piper has no voice and the renderer's speechSynthesis
+    Reached only when Kokoro has no model and the renderer's speechSynthesis
     is unavailable too.
     """
     from tools import tts

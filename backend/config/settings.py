@@ -13,7 +13,7 @@ class TorchSettings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="AIzaSyTrialCloudKeyPlaceholder", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-2.5-pro", alias="GEMINI_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
