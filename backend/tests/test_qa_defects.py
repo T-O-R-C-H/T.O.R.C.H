@@ -104,3 +104,47 @@ def test_the_recap_reports_a_cancellation_rather_than_a_failure():
     assert "Cancelled — nothing was sent." in source
     # And the cancellation branch is tested before the generic failure wording.
     assert source.index('any(s.get("cancelled")') < source.index("I couldn't finish that.")
+
+
+# ─── An already-plain error is not translated twice ───
+
+
+def test_a_translated_message_is_not_translated_again():
+    """
+    brain.py translates a planning failure, then the executor translated it a
+    second time. The plain wording matched no marker, so a specific message
+    ("the AI service is busy") was replaced by the generic fallback and that
+    is what reached the user.
+    """
+    from errors.plain_language import translate_error
+
+    plain = translate_error("503 UNAVAILABLE high demand")
+    once = f"{plain['what_happened']} {plain['what_to_do']}"
+
+    assert "busy" in once
+    # Re-translating loses it, which is why the flag exists.
+    assert "busy" not in translate_error(once)["what_happened"]
+
+
+def test_the_planner_marks_its_errors_as_already_plain():
+    import inspect
+    from agent import brain
+
+    assert '"error_is_plain": True' in inspect.getsource(brain)
+
+
+def test_the_executor_skips_translation_when_marked():
+    import inspect
+    from agent import executor as executor_module
+
+    source = inspect.getsource(executor_module)
+    assert 'step.get("error_is_plain")' in source
+
+
+def test_an_error_only_plan_does_not_announce_a_start():
+    """"On it. The AI service is busy right now." announces a start and a
+    failure in the same breath."""
+    import inspect
+
+    source = inspect.getsource(main.process_command)
+    assert 'validated_steps[0].get("tool") == "error"' in source

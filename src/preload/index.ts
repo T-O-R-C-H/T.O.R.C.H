@@ -52,19 +52,12 @@ const torchAPI = {
   maximizeWindow: (): void => ipcRenderer.send('window:maximize'),
   closeWindow: (): void => ipcRenderer.send('window:close'),
 
-  // Overlay controls
-  showOverlay: (): void => ipcRenderer.send('overlay:show'),
-  hideOverlay: (): void => ipcRenderer.send('overlay:hide'),
-  openMainWindow: (): void => ipcRenderer.send('overlay:openMain'),
-  setOverlaySize: (width: number, height: number): void =>
-    ipcRenderer.send('overlay:setSize', { width, height }),
+  openMainWindow: (): void => ipcRenderer.send('window:openMain'),
   captureScreens: (): Promise<ScreenCapture[]> => ipcRenderer.invoke('companion:captureScreens'),
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
-  suspendOverlayForVisionCapture: (): void => ipcRenderer.send('vision-capture:start'),
-  restoreOverlayAfterVisionCapture: (): void => ipcRenderer.send('vision-capture:end'),
   completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),
   publishTaskEvent: (event: Record<string, unknown>): void =>
     ipcRenderer.send('task-event:publish', event),
@@ -161,9 +154,6 @@ const torchAPI = {
   },
 
   // Event listeners
-  onOverlayActivate: (callback: () => void): void => {
-    ipcRenderer.on('overlay:activate', callback)
-  },
   onClipboardChanged: (callback: (_e: unknown, change: ClipboardChangeEvent) => void): void => {
     ipcRenderer.on('clipboard:changed', callback)
   },
@@ -172,9 +162,6 @@ const torchAPI = {
   },
 
   // Remove listeners
-  removeOverlayActivate: (): void => {
-    ipcRenderer.removeAllListeners('overlay:activate')
-  },
   removeClipboardChanged: (): void => {
     ipcRenderer.removeAllListeners('clipboard:changed')
   },
