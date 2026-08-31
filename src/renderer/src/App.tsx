@@ -7,7 +7,6 @@ import { Topbar } from './components/layout/Topbar'
 
 import { UpdateNotice } from './components/layout/UpdateNotice'
 
-import { FloatingOverlay } from './components/overlay/FloatingOverlay'
 import { GuidanceOverlay } from './components/overlay/GuidanceOverlay'
 
 import { CommandPill } from './components/pill/CommandPill'
@@ -53,23 +52,6 @@ import { Messaging } from './pages/tools/Messaging'
 
 import { Browser } from './pages/tools/Browser'
 import ControlBorder from './pages/ControlBorder'
-
-function OverlayRoute(): JSX.Element {
-  useEffect(() => {
-    document.body.style.background = 'transparent'
-    document.documentElement.style.background = 'transparent'
-    return (): void => {
-      document.body.style.background = ''
-      document.documentElement.style.background = ''
-    }
-  }, [])
-
-  return (
-    <div className="overlay-shell">
-      <FloatingOverlay />
-    </div>
-  )
-}
 
 /** These windows are transparent: the page must not paint its own background. */
 function TransparentRoute({ children }: { children: React.ReactNode }): JSX.Element {
@@ -163,7 +145,6 @@ function App(): JSX.Element {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/overlay" element={<OverlayRoute />} />
         <Route path="/guide" element={<GuidanceRoute />} />
         <Route
           path="/pill"
