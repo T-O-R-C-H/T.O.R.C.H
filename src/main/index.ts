@@ -40,6 +40,7 @@ let mainWindow: BrowserWindow | null = null
 let overlayWindow: BrowserWindow | null = null
 let guidanceWindow: BrowserWindow | null = null
 let pillWindow: BrowserWindow | null = null
+let companionWindow: BrowserWindow | null = null
 let taskPanelWindow: BrowserWindow | null = null
 let controlBorderWindow: BrowserWindow | null = null
 let controlBorderDisplayListenersRegistered = false
@@ -816,6 +817,115 @@ function positionPill(width = PILL_WIDTH): void {
   })
 }
 
+/*
+ * The overlay companion.
+ *
+ * A chat panel that sits on top of whatever the user is doing, rather than a
+ * window they switch to. It is a real Electron window, not a browser
+ * extension, so it works over every app rather than one browser's tabs.
+ *
+ * It gets its own hotkey rather than the pill's. The spec assigns it
+ * Ctrl+Shift+Space, but that is already the pill's voice trigger - shown in
+ * Settings, in onboarding, and described in the privacy policy - and the same
+ * spec says the pill is unchanged. Two windows cannot own one shortcut, so
+ * this takes the neighbouring chord and the conflict is the founder's to
+ * settle.
+ */
+const COMPANION_WIDTH = 340
+const COMPANION_SHORTCUT = 'CommandOrControl+Alt+Space'
+
+function companionBounds(): { x: number; y: number; width: number; height: number } {
+  const area = screen.getPrimaryDisplay().workArea
+  const height = Math.round(area.height * 0.6)
+  return {
+    width: COMPANION_WIDTH,
+    height,
+    // Flush to the right edge, vertically centred in the work area.
+    x: area.x + area.width - COMPANION_WIDTH,
+    y: area.y + Math.round((area.height - height) / 2)
+  }
+}
+
+function createCompanionWindow(): void {
+  companionWindow = new BrowserWindow({
+    ...companionBounds(),
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    // It takes typed input, so it has to be focusable.
+    focusable: true,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      zoomFactor: 1.0
+    }
+  })
+
+  companionWindow.setAlwaysOnTop(true, 'screen-saver')
+  companionWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // Kept out of TORCH's own screenshots, like the pill and the task panel:
+  // the companion is furniture, not part of what the user is looking at.
+  companionWindow.setContentProtection(true)
+
+  screen.on('display-metrics-changed', () => {
+    if (companionWindow && !companionWindow.isDestroyed()) {
+      companionWindow.setBounds(companionBounds())
+    }
+  })
+
+  /*
+   * Deliberately no hide-on-blur.
+   *
+   * The spec says "dismissed with Escape or clicking outside", but the same
+   * spec's premise is a panel you talk to *while looking at whatever you are
+   * doing*. Hiding it the moment another window takes focus makes those two
+   * things impossible at once - the first click into the app you are asking
+   * about dismisses the thing you are asking. It closes on Escape and on its
+   * own close button instead. Worth revisiting if it proves intrusive.
+   */
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    companionWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/companion')
+  } else {
+    companionWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/companion' })
+  }
+}
+
+function showCompanion(): void {
+  if (!companionWindow || companionWindow.isDestroyed()) createCompanionWindow()
+  if (!companionWindow || isQuitting) return
+  companionWindow.setBounds(companionBounds())
+  companionWindow.setAlwaysOnTop(true, 'screen-saver')
+  companionWindow.show()
+  companionWindow.moveTop()
+  companionWindow.focus()
+  companionWindow.webContents.send('companion:animate-in')
+}
+
+/** Let the panel slide out before the window actually goes. */
+const COMPANION_EXIT_MS = 240
+
+function hideCompanion(): void {
+  if (!companionWindow || companionWindow.isDestroyed()) return
+  companionWindow.webContents.send('companion:animate-out')
+  setTimeout(() => {
+    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.hide()
+  }, COMPANION_EXIT_MS)
+}
+
+function toggleCompanion(): void {
+  if (companionWindow?.isVisible()) hideCompanion()
+  else showCompanion()
+}
+
 function createPillWindow(): void {
   pillWindow = new BrowserWindow({
     width: PILL_WIDTH,
@@ -1171,6 +1281,10 @@ app.whenReady().then(() => {
   try {
     // Stands in for a wake word: TORCH does not listen until asked, and this
     // is how the user asks from anywhere.
+    // The companion panel. Its own chord: the pill already owns
+    // Ctrl+Shift+Space and the spec keeps the pill unchanged.
+    globalShortcut.register(COMPANION_SHORTCUT, toggleCompanion)
+
     globalShortcut.register(VOICE_SHORTCUT, () => {
       if (pillWindow?.isVisible()) {
         hidePill()
@@ -1197,6 +1311,10 @@ app.whenReady().then(() => {
   // The renderer shows this in Settings and onboarding rather than hardcoding
   // its own copy, so the label always matches what is registered.
   ipcMain.handle('shortcuts:voice', () => VOICE_SHORTCUT_LABEL)
+
+  ipcMain.on('companion:show', showCompanion)
+  ipcMain.on('companion:hide', hideCompanion)
+  ipcMain.on('companion:toggle', toggleCompanion)
 
   ipcMain.handle('prefs:get', () => ({
     launchOnLogin: app.getLoginItemSettings().openAtLogin,
@@ -1410,6 +1528,9 @@ app.whenReady().then(() => {
   createMainWindow()
   createOverlayWindow()
   createPillWindow()
+  // Built up front so the first hotkey press shows an already-loaded panel
+  // rather than a blank window waiting on the renderer.
+  createCompanionWindow()
   createTaskPanelWindow()
   createGuidanceWindow()
   createControlBorderWindow()

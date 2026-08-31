@@ -106,6 +106,17 @@ const torchAPI = {
   showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
   hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
   getVoiceShortcut: (): Promise<string> => ipcRenderer.invoke('shortcuts:voice'),
+
+  // Overlay companion
+  showCompanion: (): void => ipcRenderer.send('companion:show'),
+  hideCompanion: (): void => ipcRenderer.send('companion:hide'),
+  toggleCompanion: (): void => ipcRenderer.send('companion:toggle'),
+  onCompanionAnimateIn: (callback: () => void): void => {
+    ipcRenderer.on('companion:animate-in', callback)
+  },
+  onCompanionAnimateOut: (callback: () => void): void => {
+    ipcRenderer.on('companion:animate-out', callback)
+  },
   onPillActivate: (callback: (payload: { voice: boolean }) => void): void => {
     ipcRenderer.on('pill:activate', (_event, payload) => callback(payload ?? { voice: false }))
   },

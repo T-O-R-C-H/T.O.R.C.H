@@ -11,6 +11,7 @@ import { FloatingOverlay } from './components/overlay/FloatingOverlay'
 import { GuidanceOverlay } from './components/overlay/GuidanceOverlay'
 
 import { CommandPill } from './components/pill/CommandPill'
+import { Companion } from './pages/Companion'
 import { TaskPanel } from './components/pill/TaskPanel'
 
 import { useTorchStore } from './store/torchStore'
@@ -177,6 +178,14 @@ function App(): JSX.Element {
           element={
             <TransparentRoute>
               <TaskPanel />
+            </TransparentRoute>
+          }
+        />
+        <Route
+          path="/companion"
+          element={
+            <TransparentRoute>
+              <Companion />
             </TransparentRoute>
           }
         />

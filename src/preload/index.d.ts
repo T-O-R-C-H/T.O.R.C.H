@@ -58,6 +58,11 @@ interface TorchAPI {
   showTaskPanel: () => void
   hideTaskPanel: () => void
   getVoiceShortcut: () => Promise<string>
+  showCompanion: () => void
+  hideCompanion: () => void
+  toggleCompanion: () => void
+  onCompanionAnimateIn: (callback: () => void) => void
+  onCompanionAnimateOut: (callback: () => void) => void
   onPillActivate: (callback: (payload: { voice: boolean }) => void) => void
   getPreferences: () => Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }>
   setPreferences: (
