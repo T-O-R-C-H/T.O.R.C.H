@@ -3983,3 +3983,55 @@ button:not(:disabled):active,
 .ob-footnote--above-actions .voice-shortcut {
   margin: 0 2px;
 }
+
+/* ─── Problem reporting ───
+   Quiet by default: it sits under every result, so it must not compete with
+   the result itself. It only becomes prominent once opened. */
+
+.report-problem__trigger {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--color-torch-text-tertiary);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.report-problem__trigger:hover {
+  color: var(--color-torch-text-secondary);
+}
+
+.report-problem {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-torch-border);
+  background: var(--color-torch-muted);
+}
+
+.report-problem__lead {
+  font-size: 11px;
+  color: var(--color-torch-text-secondary);
+  margin-bottom: 8px;
+}
+
+.report-problem__body {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--color-torch-surface);
+  border: 1px solid var(--color-torch-border-subtle);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--color-torch-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.report-problem__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}

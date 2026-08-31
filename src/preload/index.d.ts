@@ -45,6 +45,7 @@ interface TorchAPI {
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
   removeGuidance: () => void
   openExternal: (url: string) => void
+  getReportInfo: () => Promise<{ appVersion: string; electron: string; os: string }>
   getDesktopContext: () => Promise<{
     windowTitle: string
     appName: string

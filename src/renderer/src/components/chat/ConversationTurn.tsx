@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ReportProblem } from './ReportProblem'
 import { motion } from 'framer-motion'
 import type { Message as MessageType } from '../../store/torchStore'
 import type { AgentStatus } from '../../store/torchStore'
@@ -141,6 +142,14 @@ export function ConversationTurn({
               onEdit={(edited) => onEdit?.(hitlStep.id, edited)}
               onCancel={() => onCancel?.(hitlStep.id)}
             />
+          )}
+
+          {/* One per task, on the turn that carries the steps. A task shows a
+              plan turn and a recap turn, so reporting on both would put two
+              links under one result, and the step-bearing turn is the one
+              worth sending. */}
+          {!showActivity && (agent.steps?.length ?? 0) > 0 && (
+            <ReportProblem userMessage={user ?? null} agentMessage={agent ?? null} />
           )}
 
           {agent.reversible && (

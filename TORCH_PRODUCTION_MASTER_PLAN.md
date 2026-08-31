@@ -1575,7 +1575,15 @@ Plain English, not legal jargon. Must clearly state:
 - If a cloud AI provider is configured, the user's commands are sent to that provider — name which one and link their policy.
 - How to delete all local data.
 
-## G.3 Crash and feedback reporting
+## G.3 Crash and feedback reporting — **DONE**
+
+Built as `components/chat/ReportProblem.tsx` plus `utils/problemReport.ts`.
+One link under each task that ran steps; pressing it shows the complete
+report, and opening the GitHub issue is a second, separate press. Step
+results are excluded because they carry the user's own data — a directory
+listing, a document's contents, the body of an email — and a test asserts
+they never appear.
+
 
 An in-app "Something went wrong" button on every task result. Captures: task command, step list, error, app version, OS version. Sends to a simple endpoint or opens a pre-filled GitHub issue.
 

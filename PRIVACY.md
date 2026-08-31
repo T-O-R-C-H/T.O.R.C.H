@@ -168,7 +168,8 @@ these stop being true, **this page has to change in the same commit**:
 - Provider preference order is set in `agent/providers/__init__.py`.
 - There is no analytics or telemetry anywhere in the codebase.
 
-**Still to do before publishing:** the "Something went wrong" button described
-under *What we collect* does not exist yet (master plan G.3). Either build it
-or cut that paragraph — do not publish a description of a button a user cannot
-find.
+The "Something went wrong" button described under *What we collect* is built
+(`components/chat/ReportProblem.tsx`). It shows the whole report before
+anything leaves, and opening the issue is a second, separate press. Step
+results are deliberately excluded from the report — they carry the user's own
+data — and `problemReport.test.ts` asserts that.

@@ -14,6 +14,7 @@ import {
   powerMonitor
 } from 'electron'
 import { join } from 'path'
+import os from 'os'
 import { randomBytes } from 'crypto'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -1341,6 +1342,19 @@ app.whenReady().then(() => {
   })
 
   // Open external links
+  /*
+   * What a problem report would say about this machine.
+   *
+   * Deliberately narrow: a version and an OS build, nothing that identifies
+   * the person. The renderer shows the whole report before anything is sent,
+   * and nothing leaves unless the user opens the issue themselves.
+   */
+  ipcMain.handle('system:reportInfo', () => ({
+    appVersion: app.getVersion(),
+    electron: process.versions.electron,
+    os: `${os.type()} ${os.release()} (${process.arch})`
+  }))
+
   ipcMain.on('shell:openExternal', (_, url: string) => {
     shell.openExternal(url)
   })

@@ -91,6 +91,8 @@ const torchAPI = {
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
+  getReportInfo: (): Promise<{ appVersion: string; electron: string; os: string }> =>
+    ipcRenderer.invoke('system:reportInfo'),
 
   // Desktop context
   getDesktopContext: (): Promise<DesktopContext> => ipcRenderer.invoke('context:getDesktop'),
