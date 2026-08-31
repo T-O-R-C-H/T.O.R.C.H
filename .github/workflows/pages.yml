@@ -1,12 +1,15 @@
 name: Deploy website
 
-# Publishes website/ to GitHub Pages. The folder in the repo stays the source
-# of truth; nothing is hand-edited on the Pages branch.
+# Publishes site/ to GitHub Pages.
+#
+# Deliberately not website/: that folder holds an in-progress Vite build of
+# the marketing site, and this is the self-contained no-framework version.
+# Keeping them apart means deploying one does not overwrite the other.
 on:
   push:
     branches: [main]
     paths:
-      - 'website/**'
+      - 'site/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -31,6 +34,6 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: website
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
