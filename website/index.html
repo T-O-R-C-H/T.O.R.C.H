@@ -1,24 +1,838 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f3f3ef" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TORCH — Tell your computer what to do</title>
     <meta
       name="description"
-      content="TORCH is an AI desktop agent that sees your screen, moves through apps, and completes multi-step work while keeping every action visible."
+      content="TORCH is an assistant that works your PC — finds your files, sends your email, fills in the form. Runs on your computer. Asks before anything that matters."
     />
-    <meta property="og:title" content="TORCH — Tell it once. Consider it done." />
+    <meta property="og:title" content="TORCH — Tell your computer what to do" />
     <meta
       property="og:description"
-      content="An AI desktop agent for Windows. One command, every step visible."
+      content="An assistant that actually works your PC. Runs on your computer. Asks before anything that matters."
     />
     <meta property="og:type" content="website" />
-    <link rel="icon" type="image/png" href="/logo.png" />
-    <title>TORCH — AI desktop agent for Windows</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* TORCH marketing site.
+         Square corners everywhere, one accent (white on black), no gradients,
+         no shadows. The product is calm; the page should be too. */
+      :root {
+        --bg: #0a0a0a;
+        --surface: #131313;
+        --surface-2: #1a1a1a;
+        --border: #262626;
+        --border-strong: #3a3a3a;
+        --text: #f4f4f5;
+        --text-2: #a1a1aa;
+        --text-3: #71717a;
+        --mono: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .wrap {
+        width: 100%;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .label {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+
+      /* ─── Buttons ─── */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 22px;
+        font-size: 14px;
+        font-weight: 500;
+        border: 1px solid var(--text);
+        background: var(--text);
+        color: #0a0a0a;
+        cursor: pointer;
+        transition:
+          background 150ms ease,
+          color 150ms ease;
+      }
+      .btn:hover {
+        background: transparent;
+        color: var(--text);
+      }
+      .btn--ghost {
+        background: transparent;
+        color: var(--text);
+        border-color: var(--border-strong);
+      }
+      .btn--ghost:hover {
+        border-color: var(--text);
+        background: transparent;
+        color: var(--text);
+      }
+      .btn--sm {
+        padding: 8px 16px;
+        font-size: 13px;
+      }
+
+      /* ─── Nav ─── */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(10, 10, 10, 0.85);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+      }
+      .wordmark {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+      }
+      /* The reversed R of the TORCH mark. */
+      .wordmark span {
+        display: inline-block;
+        transform: scaleX(-1);
+      }
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 28px;
+      }
+      .nav-links a {
+        font-size: 14px;
+        color: var(--text-2);
+      }
+      .nav-links a:hover {
+        color: var(--text);
+      }
+      @media (max-width: 760px) {
+        .nav-links a:not(.btn) {
+          display: none;
+        }
+      }
+
+      /* ─── Hero ─── */
+      header.hero {
+        padding: 120px 0 96px;
+        border-bottom: 1px solid var(--border);
+      }
+      h1 {
+        font-size: clamp(38px, 6vw, 66px);
+        line-height: 1.05;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        max-width: 15ch;
+      }
+      .hero p.lead {
+        margin-top: 26px;
+        font-size: 18px;
+        line-height: 1.65;
+        color: var(--text-2);
+        max-width: 60ch;
+      }
+      .hero-actions {
+        margin-top: 40px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+      .hero-note {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .hero-sub {
+        margin-top: 16px;
+        font-size: 13px;
+        color: var(--text-3);
+      }
+
+      /* ─── Sections ─── */
+      section {
+        padding: 96px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      h2 {
+        font-size: clamp(28px, 3.6vw, 40px);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+      }
+      .section-head {
+        margin-bottom: 56px;
+      }
+      .section-head p {
+        margin-top: 14px;
+        color: var(--text-2);
+        max-width: 58ch;
+      }
+
+      /* ─── Demo panel ─── */
+      .demo {
+        border: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .demo-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border: 1px solid var(--border-strong);
+      }
+      .demo-body {
+        padding: 56px 24px 64px;
+        text-align: center;
+      }
+      .mark {
+        margin: 0 auto 22px;
+        display: block;
+      }
+      .mark circle.ring {
+        fill: none;
+        stroke: var(--border-strong);
+        stroke-width: 1;
+      }
+      .mark circle.node {
+        fill: var(--text-3);
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: node 1600ms ease-in-out infinite both;
+      }
+      @keyframes node {
+        0%,
+        70%,
+        100% {
+          fill: var(--text-3);
+          transform: scale(1);
+        }
+        20% {
+          fill: var(--text);
+          transform: scale(1.25);
+        }
+      }
+      .demo-body > p {
+        color: var(--text-2);
+        font-size: 15px;
+      }
+      .suggestions {
+        margin: 34px auto 0;
+        max-width: 620px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        text-align: left;
+      }
+      @media (max-width: 620px) {
+        .suggestions {
+          grid-template-columns: 1fr;
+        }
+      }
+      .suggestion {
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        padding: 14px 16px;
+      }
+      .suggestion strong {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .suggestion span {
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .demo-caption {
+        margin-top: 20px;
+        font-size: 14px;
+        color: var(--text-2);
+      }
+
+      /* ─── Feature grid ─── */
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+        background: var(--border);
+        border: 1px solid var(--border);
+      }
+      @media (max-width: 900px) {
+        .grid-3 {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 600px) {
+        .grid-3 {
+          grid-template-columns: 1fr;
+        }
+      }
+      .cell {
+        background: var(--bg);
+        padding: 30px 26px;
+      }
+      .cell h3 {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      .cell p {
+        font-size: 14px;
+        color: var(--text-2);
+      }
+
+      /* ─── Steps ─── */
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 44px;
+      }
+      @media (max-width: 800px) {
+        .steps {
+          grid-template-columns: 1fr;
+          gap: 34px;
+        }
+      }
+      .step-num {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-3);
+        padding-bottom: 14px;
+        margin-bottom: 18px;
+        border-bottom: 1px solid var(--border);
+      }
+      .step h3 {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 10px;
+      }
+      .step p {
+        color: var(--text-2);
+        font-size: 14px;
+      }
+
+      /* ─── Pricing ─── */
+      .tiers {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .tiers {
+          grid-template-columns: 1fr;
+        }
+      }
+      .tier {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        padding: 30px 26px;
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+      .tier--featured {
+        border-color: var(--text);
+      }
+      .tier-name {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+      .tier-price {
+        margin: 16px 0 6px;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .tier-price small {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--text-3);
+      }
+      .tier-for {
+        font-size: 13px;
+        color: var(--text-2);
+        min-height: 40px;
+      }
+      .tier ul {
+        list-style: none;
+        margin: 22px 0 26px;
+        display: grid;
+        gap: 10px;
+      }
+      .tier li {
+        font-size: 14px;
+        color: var(--text-2);
+        padding-left: 18px;
+        position: relative;
+      }
+      .tier li::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 9px;
+        width: 7px;
+        height: 1px;
+        background: var(--border-strong);
+      }
+      .tier .btn {
+        margin-top: auto;
+        width: 100%;
+      }
+      .badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid var(--text);
+        padding: 3px 8px;
+        margin-left: 10px;
+      }
+      .price-note {
+        margin-top: 24px;
+        font-size: 13px;
+        color: var(--text-3);
+      }
+
+      /* ─── CTA ─── */
+      .cta {
+        text-align: center;
+      }
+      .cta h2 {
+        max-width: 20ch;
+        margin: 0 auto;
+      }
+      .cta p {
+        margin: 18px auto 34px;
+        color: var(--text-2);
+        max-width: 52ch;
+      }
+      .waitlist {
+        margin-top: 56px;
+        padding-top: 40px;
+        border-top: 1px solid var(--border);
+      }
+      .waitlist p {
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+      form.notify {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      form.notify input {
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        color: var(--text);
+        padding: 11px 14px;
+        font-size: 14px;
+        font-family: inherit;
+        min-width: 260px;
+      }
+      form.notify input:focus {
+        outline: none;
+        border-color: var(--text);
+      }
+      .notify-said {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--text-2);
+        min-height: 20px;
+      }
+
+      /* ─── Footer ─── */
+      footer {
+        padding: 72px 0 40px;
+      }
+      .foot-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 32px;
+      }
+      @media (max-width: 720px) {
+        .foot-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .foot-col h4 {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        margin-bottom: 16px;
+        font-weight: 500;
+      }
+      .foot-col a {
+        display: block;
+        font-size: 14px;
+        color: var(--text-2);
+        margin-bottom: 10px;
+      }
+      .foot-col a:hover {
+        color: var(--text);
+      }
+      .foot-bottom {
+        margin-top: 56px;
+        padding-top: 26px;
+        border-top: 1px solid var(--border);
+        text-align: center;
+        font-size: 13px;
+        color: var(--text-3);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <nav>
+      <div class="wrap nav-inner">
+        <a href="#" class="wordmark" aria-label="TORCH">TO<span>R</span>CH</a>
+        <div class="nav-links">
+          <a href="#how">How it works</a>
+          <a href="#pricing">Pricing</a>
+          <a href="privacy.html">Privacy</a>
+          <a href="https://github.com/T-O-R-C-H/T.O.R.C.H">GitHub</a>
+          <a class="btn btn--sm" href="https://github.com/T-O-R-C-H/T.O.R.C.H/releases"
+            >Download for Windows</a
+          >
+        </div>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div class="wrap">
+        <h1>Tell your computer what to do. It does it.</h1>
+        <p class="lead">
+          TORCH is an assistant that actually works your PC — finds your files, sends your email,
+          fills in the form, opens the app. You type or say what you want in plain English. It asks
+          before anything that matters.
+        </p>
+        <div class="hero-actions">
+          <a class="btn" href="https://github.com/T-O-R-C-H/T.O.R.C.H/releases"
+            >Download for Windows</a
+          >
+          <span class="hero-note">Free. Works offline. Windows 10 and 11.</span>
+        </div>
+        <p class="hero-sub">No account needed to start.</p>
+      </div>
+    </header>
+
+    <section id="demo">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="label">See it work</span>
+        </div>
+
+        <!--
+          This panel reproduces the app's real empty state, using the app's own
+          copy. Replace the whole .demo-body with the screen recording once one
+          has been captured — see DEMO_SCRIPT.md. Do not substitute a mockup
+          with invented numbers.
+        -->
+        <div class="demo">
+          <div class="demo-bar" aria-hidden="true">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          </div>
+          <div class="demo-body">
+            <svg class="mark" width="64" height="64" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="ring" cx="50" cy="50" r="34" />
+              <circle class="node" cx="50" cy="16" r="6" style="animation-delay: 0ms" />
+              <circle class="node" cx="82.3" cy="39.5" r="6" style="animation-delay: 160ms" />
+              <circle class="node" cx="70" cy="77.5" r="6" style="animation-delay: 320ms" />
+              <circle class="node" cx="30" cy="77.5" r="6" style="animation-delay: 480ms" />
+              <circle class="node" cx="17.7" cy="39.5" r="6" style="animation-delay: 640ms" />
+            </svg>
+            <p>What do you need done?</p>
+            <div class="suggestions">
+              <div class="suggestion">
+                <strong>Find a file</strong><span>Search folders and open what you need</span>
+              </div>
+              <div class="suggestion">
+                <strong>Draft an email</strong><span>Compose and review before sending</span>
+              </div>
+              <div class="suggestion">
+                <strong>Summarize a document</strong
+                ><span>Get key points without reading every page</span>
+              </div>
+              <div class="suggestion">
+                <strong>Open an application</strong
+                ><span>Launch apps and navigate your desktop</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="demo-caption">
+          Every step is shown as it happens. Nothing runs behind your back.
+        </p>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head"><h2>What it can do</h2></div>
+        <div class="grid-3">
+          <div class="cell">
+            <h3>Find anything</h3>
+            <p>
+              Ask for a file the way you'd describe it to a person. TORCH searches your folders and
+              opens it.
+            </p>
+          </div>
+          <div class="cell">
+            <h3>Write and send email</h3>
+            <p>
+              Draft a reply, send a follow-up, check what came in. It shows you the message before
+              it goes.
+            </p>
+          </div>
+          <div class="cell">
+            <h3>Use your apps for you</h3>
+            <p>
+              Opens programs and clicks through them the way you would — forms, settings, the bits
+              nobody enjoys.
+            </p>
+          </div>
+          <div class="cell">
+            <h3>Speak instead of typing</h3>
+            <p>
+              Press Ctrl+Shift+Space and talk. Your voice is turned into text on your own computer.
+            </p>
+          </div>
+          <div class="cell">
+            <h3>Ask before anything risky</h3>
+            <p>
+              Sending, deleting, buying, running commands — TORCH stops and waits for you to say
+              yes.
+            </p>
+          </div>
+          <div class="cell">
+            <h3>Undo what it did</h3>
+            <p>Moved the wrong file? One button puts it back.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap">
+        <div class="section-head"><h2>How it works</h2></div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">01</div>
+            <h3>Say what you want</h3>
+            <p>
+              Type it or say it. "Find the invoice from Tunde and email it to accounts."
+            </p>
+          </div>
+          <div class="step">
+            <div class="step-num">02</div>
+            <h3>Watch it work</h3>
+            <p>
+              TORCH breaks the job into steps and shows each one as it goes. A blue border appears
+              whenever it is controlling your screen, so you always know.
+            </p>
+          </div>
+          <div class="step">
+            <div class="step-num">03</div>
+            <h3>Approve anything that matters</h3>
+            <p>
+              Before it sends, deletes, or spends, it stops and asks. You can edit what it was about
+              to do, or cancel.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing">
+      <div class="wrap">
+        <div class="section-head"><h2>Pricing</h2></div>
+        <div class="tiers">
+          <div class="tier">
+            <span class="tier-name">Free</span>
+            <div class="tier-price">₦0</div>
+            <p class="tier-for">
+              For trying it out, and for people who want everything on their own machine.
+            </p>
+            <ul>
+              <li>50 tasks a month</li>
+              <li>Runs entirely on your computer</li>
+              <li>Voice typing, offline</li>
+              <li>All the safety checks</li>
+            </ul>
+            <a class="btn btn--ghost" href="https://github.com/T-O-R-C-H/T.O.R.C.H/releases"
+              >Download</a
+            >
+          </div>
+
+          <div class="tier tier--featured">
+            <span class="tier-name">Pro <span class="badge">Most popular</span></span>
+            <div class="tier-price">₦4,999<small> /month</small></div>
+            <p class="tier-for">For daily use.</p>
+            <ul>
+              <li>Unlimited tasks</li>
+              <li>Faster, smarter results using an online assistant</li>
+              <li>Everything in Free</li>
+              <li>Priority support</li>
+            </ul>
+            <a class="btn" href="#cta">Get Pro</a>
+          </div>
+
+          <div class="tier">
+            <span class="tier-name">Team</span>
+            <div class="tier-price">₦9,999<small> per person/month</small></div>
+            <p class="tier-for">For small teams.</p>
+            <ul>
+              <li>Everything in Pro, for everyone</li>
+              <li>Shared shortcuts across the team</li>
+              <li>One invoice</li>
+              <li>Onboarding help</li>
+            </ul>
+            <a class="btn btn--ghost" href="#cta">Talk to us</a>
+          </div>
+        </div>
+        <p class="price-note">Prices in naira, billed monthly. Cancel any time.</p>
+      </div>
+    </section>
+
+    <section id="cta" class="cta">
+      <div class="wrap">
+        <h2>Stop doing the boring parts yourself.</h2>
+        <p>
+          TORCH runs on your computer, asks before anything important, and works offline if you want
+          it to.
+        </p>
+        <a class="btn" href="https://github.com/T-O-R-C-H/T.O.R.C.H/releases"
+          >Download for Windows</a
+        >
+
+        <div class="waitlist">
+          <p><strong>Not on Windows?</strong> Tell us where to reach you about the Mac version.</p>
+          <form class="notify" id="notify">
+            <input
+              type="email"
+              id="email"
+              placeholder="your@email.com"
+              aria-label="Your email address"
+              required
+            />
+            <button class="btn btn--ghost" type="submit">Notify me</button>
+          </form>
+          <p class="notify-said" id="notify-said" role="status"></p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div class="foot-grid">
+          <div class="foot-col">
+            <h4>Product</h4>
+            <a href="https://github.com/T-O-R-C-H/T.O.R.C.H/releases">Download</a>
+            <a href="#how">How it works</a>
+            <a href="#pricing">Pricing</a>
+          </div>
+          <div class="foot-col">
+            <h4>Company</h4>
+            <a href="https://github.com/T-O-R-C-H/T.O.R.C.H">About</a>
+            <a href="https://github.com/T-O-R-C-H/T.O.R.C.H/issues">Contact</a>
+          </div>
+          <div class="foot-col">
+            <h4>Legal</h4>
+            <a href="privacy.html">Privacy policy</a>
+          </div>
+          <div class="foot-col">
+            <h4>Code</h4>
+            <a href="https://github.com/T-O-R-C-H/T.O.R.C.H">GitHub</a>
+            <a href="https://github.com/T-O-R-C-H/T.O.R.C.H/issues/new">Report a problem</a>
+          </div>
+        </div>
+        <div class="foot-bottom">© 2026 TORCH · Built in Nigeria 🇳🇬</div>
+      </div>
+    </footer>
+
+    <script>
+      // There is no backend for this page, so the form does not pretend to
+      // sign anyone up. It hands the address to a mail client, which is a
+      // thing that actually happens, rather than showing a success message
+      // for a list that does not exist.
+      document.getElementById('notify').addEventListener('submit', function (event) {
+        event.preventDefault()
+        var email = document.getElementById('email').value.trim()
+        if (!email) return
+        var said = document.getElementById('notify-said')
+        said.textContent = 'Opening your email app so you can send it…'
+        window.location.href =
+          'mailto:hello@torch.ng?subject=' +
+          encodeURIComponent('Mac waitlist') +
+          '&body=' +
+          encodeURIComponent('Please let me know when the Mac version is ready. ' + email)
+      })
+    </script>
   </body>
 </html>
