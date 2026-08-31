@@ -1,12 +1,18 @@
 import { useState, useEffect } from 'react'
+import { ReportProblem } from './ReportProblem'
+import { motion } from 'framer-motion'
 import type { Message as MessageType } from '../../store/torchStore'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { StepList } from './StepList'
-import { ApprovalCard } from './ApprovalCard'
+import { ApprovalCard } from '../aicss/ApprovalCard'
 import { AgentActivity } from './AgentActivity'
+import { TextResponse } from '../aicss/TextResponse'
+import { StreamingText } from '../aicss/StreamingText'
 import { LinkifiedText } from './LinkifiedText'
+import { MailResults } from '../mail/MailResults'
+import { AgentQuestion } from './AgentQuestion'
 import {
   formatAgentContent,
   formatUserContent,
@@ -22,8 +28,9 @@ interface ConversationTurnProps {
   activityStartedAt?: number
   onActivityTimeout?: () => void
   onApprove?: (stepId: string) => void
-  onEdit?: (stepId: string) => void
+  onEdit?: (stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (stepId: string) => void
+  onSend?: (command: string) => void
 }
 
 export function ConversationTurn({
@@ -35,7 +42,8 @@ export function ConversationTurn({
   onActivityTimeout,
   onApprove,
   onEdit,
-  onCancel
+  onCancel,
+  onSend
 }: ConversationTurnProps): JSX.Element | null {
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const { sendUndoCommand, sendStopCommand } = useWebSocket()
@@ -53,9 +61,8 @@ export function ConversationTurn({
     let timer: ReturnType<typeof setTimeout> | undefined
     if (agent?.reversible && agent.undoState === 'available') {
       const elapsed = Date.now() - agent.timestamp
-      const remaining = 300000 - elapsed
-      if (remaining <= 0) setExpired(true)
-      else timer = setTimeout(() => setExpired(true), remaining)
+      const remaining = Math.max(0, 300000 - elapsed)
+      timer = setTimeout(() => setExpired(true), remaining)
     }
     return () => {
       if (timer) clearTimeout(timer)
@@ -68,8 +75,6 @@ export function ConversationTurn({
   const isErrorReply = Boolean(bodyText && isLikelyErrorMessage(bodyText))
   const waitingForFirstToken = Boolean(agent?.isStreaming && !bodyText)
   const showStatusLine = Boolean(showActivity && (!agent || waitingForFirstToken))
-  const hasFailedSteps = Boolean(agent?.steps?.some((s) => s.status === 'failed'))
-
   return (
     <article className="chat-turn fade-in">
       {user && (
@@ -88,7 +93,13 @@ export function ConversationTurn({
       )}
 
       {agent && (
-        <div className="chat-turn__response">
+        <motion.div
+          className="chat-turn__response"
+          layout="position"
+          initial={{ opacity: 0, y: 12, filter: 'blur(5px)', clipPath: 'inset(0 0 18% 0)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)', clipPath: 'inset(0 0 0% 0)' }}
+          transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+        >
           {bodyText && isErrorReply && (
             <div className="chat-error-card">
               <span className="chat-error-card__title">Could not finish</span>
@@ -96,25 +107,49 @@ export function ConversationTurn({
             </div>
           )}
 
-          {bodyText && !isErrorReply && (
-            <div
-              className={`chat-turn__body ${agent.isStreaming ? 'chat-turn__body--streaming' : ''}`}
-            >
-              <LinkifiedText text={bodyText} />
-              {agent.isStreaming && <span className="chat-turn__cursor" aria-hidden="true" />}
-            </div>
+          {bodyText && !isErrorReply && agent.needsAnswer && (
+            <AgentQuestion question={bodyText} onSubmit={(answer) => onSend?.(answer)} />
           )}
 
-          {agent.steps && agent.steps.length > 0 && <StepList steps={agent.steps} />}
+          {bodyText && !isErrorReply && !agent.needsAnswer && (
+            <motion.div
+              className="chat-turn__body chat-turn__body--revealed"
+              layout="position"
+              transition={{ layout: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } }}
+            >
+              {agent.isStreaming || agent.isNew ? (
+                <StreamingText text={bodyText} />
+              ) : (
+                <TextResponse>
+                  <LinkifiedText text={bodyText} />
+                </TextResponse>
+              )}
+            </motion.div>
+          )}
+
+          {agent.emails && agent.emails.length > 0 && <MailResults emails={agent.emails} />}
+
+          {agent.steps && agent.steps.length > 0 && (
+            <StepList steps={agent.steps} command={user?.content} />
+          )}
 
           {hitlStep && agent && (
             <ApprovalCard
               summary={hitlStep.label}
               warning={hitlWarning}
+              args={hitlStep.args}
               onApprove={() => onApprove?.(hitlStep.id)}
-              onEdit={() => onEdit?.(hitlStep.id)}
+              onEdit={(edited) => onEdit?.(hitlStep.id, edited)}
               onCancel={() => onCancel?.(hitlStep.id)}
             />
+          )}
+
+          {/* One per task, on the turn that carries the steps. A task shows a
+              plan turn and a recap turn, so reporting on both would put two
+              links under one result, and the step-bearing turn is the one
+              worth sending. */}
+          {!showActivity && (agent.steps?.length ?? 0) > 0 && (
+            <ReportProblem userMessage={user ?? null} agentMessage={agent ?? null} />
           )}
 
           {agent.reversible && (
@@ -137,7 +172,7 @@ export function ConversationTurn({
               )}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
     </article>
   )

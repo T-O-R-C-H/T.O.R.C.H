@@ -1,0 +1,154 @@
+/* ═══════════════════════════════════════════════════
+   TORCH design tokens
+
+   Define once, use everywhere. No component should hardcode a colour, a
+   duration, or a spacing value.
+
+   Colour lives in the `@theme` block in globals.css, because Tailwind 4 reads
+   it from there to generate utilities. This file adds everything Tailwind does
+   not own — spacing, motion, type scale — plus semantic aliases so components
+   can say what a value means rather than what it looks like.
+
+   The palette is light. An earlier dark system was deliberately replaced; see
+   the note in CLAUDE.md before reintroducing dark values.
+   ═══════════════════════════════════════════════════ */
+
+:root {
+  /* ─── Semantic surfaces ───
+     Aliases over the @theme colours, so a component says which role a surface
+     plays instead of which shade it happens to be. */
+  --surface-base: var(--color-torch-bg);
+  --surface-raised: var(--color-torch-surface);
+  --surface-muted: var(--color-torch-muted);
+  --surface-hover: #f4f4f5;
+  --surface-active: #ebebed;
+
+  --border-subtle: var(--color-torch-border-subtle);
+  --border-default: var(--color-torch-border);
+  --border-strong: var(--color-torch-border-hover);
+
+  --text-primary: var(--color-torch-text);
+  --text-secondary: var(--color-torch-text-secondary);
+  --text-tertiary: var(--color-torch-text-tertiary);
+  --text-ghost: var(--color-torch-text-ghost);
+
+  /* The one accent that carries meaning: TORCH is driving the screen. */
+  --accent-control: var(--color-torch-blue-dark);
+
+  /* Window close is the single place red is correct — it is the OS
+     convention, and users reach for it by colour. */
+  --window-close-bg: #c42b1c;
+  --window-close-fg: #ffffff;
+
+  /* ─── Type scale ─── */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+
+  /* ─── Spacing, 4px base ─── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ─── Motion ───
+     The difference between a web page in a window and a desktop product.
+     Entrances are slower than exits: leaving quickly feels responsive,
+     arriving quickly feels abrupt. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --dur-instant: 100ms;
+  --dur-fast: 160ms;
+  --dur-base: 240ms;
+  --dur-slow: 360ms;
+  --dur-slower: 500ms;
+
+  /* Stagger between items in a list that appears together. */
+  --stagger: 40ms;
+
+  /* ─── Chrome ─── */
+  --titlebar-height: 32px;
+}
+
+/* ─── Shared animations ─── */
+
+@keyframes torch-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes torch-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes torch-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes torch-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes torch-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+}
+
+/*
+  Someone who has asked their operating system to reduce motion has usually
+  done so because movement makes the machine hard to use. Honour it.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

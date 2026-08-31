@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { StepList } from './StepList'
-import { ApprovalCard } from './ApprovalCard'
+import { ApprovalCard } from '../aicss/ApprovalCard'
 import type { Message as MessageType } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
 import { IconSparkles } from '../icons'
@@ -9,7 +9,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 interface MessageProps {
   message: MessageType
   onApprove?: (stepId: string) => void
-  onEdit?: (stepId: string) => void
+  onEdit?: (stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (stepId: string) => void
 }
 
@@ -33,11 +33,7 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
     if (message.reversible && message.undoState === 'available') {
       const elapsed = Date.now() - message.timestamp
       const remaining = 300000 - elapsed
-      if (remaining <= 0) {
-        setExpired(true)
-      } else {
-        timer = setTimeout(() => setExpired(true), remaining)
-      }
+      timer = setTimeout(() => setExpired(true), Math.max(0, remaining))
     }
     return () => {
       if (timer) clearTimeout(timer)
@@ -74,8 +70,9 @@ export function Message({ message, onApprove, onEdit, onCancel }: MessageProps):
           <ApprovalCard
             summary={hitlStep.label}
             warning={hitlWarning}
+            args={hitlStep.args}
             onApprove={() => onApprove?.(hitlStep.id)}
-            onEdit={() => onEdit?.(hitlStep.id)}
+            onEdit={(edited) => onEdit?.(hitlStep.id, edited)}
             onCancel={() => onCancel?.(hitlStep.id)}
           />
         )}

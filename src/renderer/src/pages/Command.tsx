@@ -1,28 +1,25 @@
 import { ChatArea } from '../components/chat/ChatArea'
-import { CommandInput } from '../components/input/CommandInput'
+import { ActivityOverlay } from '../components/chat/ActivityOverlay'
+import { PromptInput } from '../components/input/PromptInput'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { useEffect, useCallback } from 'react'
 import { handleDemoCommand, handleDemoApproval, handleDemoCancel } from '../demo/demoAgent'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { formatAgentContent } from '../utils/plainLanguage'
-import { streamMessageContent } from '../utils/streamContent'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const demoMode = useTorchStore((s) => s.demoMode)
   const showSettingsKeyBanner = useTorchStore((s) => s.showSettingsKeyBanner)
-  const pendingLaunchCommand = useTorchStore((s) => s.pendingLaunchCommand)
-  const setPendingLaunchCommand = useTorchStore((s) => s.setPendingLaunchCommand)
   const { sendCommand, sendApproval } = useWebSocket()
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
     if (!demoMode) {
-      fetch(`${API_BASE}/api/metrics`)
+      torchFetch(`${API_BASE}/api/metrics`)
         .then((r) => r.json())
         .then((data) => useTorchStore.getState().setMetrics(data))
         .catch(() => {})
@@ -37,7 +34,8 @@ export function Command(): JSX.Element {
         currentStatus === 'executing' ||
         currentStatus === 'awaiting_input' ||
         currentStatus === 'awaiting_approval'
-      ) return
+      )
+        return
       addMessage({
         id: crypto.randomUUID(),
         role: 'user',
@@ -51,39 +49,11 @@ export function Command(): JSX.Element {
         return
       }
 
-      if (wsConnected) {
-        sendCommand(command)
-      } else {
-        useTorchStore.getState().setAgentStatus('processing')
-        setTimeout(async () => {
-          const messageId = crypto.randomUUID()
-          const offlineText = formatAgentContent(
-            "TORCH isn't connected right now. Make sure the app is running, then try your request again."
-          )
-          useTorchStore.getState().addMessage({
-            id: messageId,
-            role: 'torch',
-            content: '',
-            timestamp: Date.now(),
-            isStreaming: true,
-            steps: [
-              {
-                id: '1',
-                label: 'Waiting for connection',
-                tool: 'system',
-                args: {},
-                status: 'failed',
-                requiresApproval: false,
-                error: 'Backend offline'
-              }
-            ]
-          })
-          await streamMessageContent(messageId, offlineText)
-          useTorchStore.getState().setAgentStatus('idle')
-        }, 500)
-      }
+      // sendCommand waits briefly for a cold-starting/reconnecting socket, so
+      // a request is not discarded just because the first render was early.
+      sendCommand(command)
     },
-    [addMessage, demoMode, sendCommand, wsConnected]
+    [addMessage, demoMode, sendCommand]
   )
 
   useEffect(() => {
@@ -93,14 +63,6 @@ export function Command(): JSX.Element {
       handleSend(commandToRun)
     }
   }, [location.state, location.pathname, navigate, handleSend])
-
-  useEffect(() => {
-    if (pendingLaunchCommand) {
-      const cmd = pendingLaunchCommand
-      setPendingLaunchCommand(null)
-      handleSend(cmd)
-    }
-  }, [pendingLaunchCommand, setPendingLaunchCommand, handleSend])
 
   const handleApprove = (messageId: string, stepId: string): void => {
     if (demoMode) {
@@ -116,8 +78,25 @@ export function Command(): JSX.Element {
     }
   }
 
-  const handleEdit = (messageId: string, stepId: string): void => {
-    console.log('Edit step:', messageId, stepId)
+  const handleEdit = (
+    messageId: string,
+    stepId: string,
+    editedArgs: Record<string, string>
+  ): void => {
+    // Approve, but with the values the user corrected. The executor replaces
+    // the step's arguments before running it.
+    if (!wsConnected || !sendApproval(messageId, stepId, 'edit', editedArgs)) {
+      useTorchStore.getState().updateStep(messageId, stepId, {
+        status: 'failed',
+        error: "TORCH isn't connected right now, so that action wasn't run."
+      })
+      useTorchStore.getState().setAgentStatus('idle')
+      return
+    }
+    useTorchStore.getState().updateStep(messageId, stepId, {
+      args: editedArgs,
+      status: 'active'
+    })
   }
 
   const handleCancel = (messageId: string, stepId: string): void => {
@@ -166,8 +145,9 @@ export function Command(): JSX.Element {
           onCancel={handleCancel}
           onSend={handleSend}
         />
-        <CommandInput onSend={handleSend} />
+        <PromptInput onSend={handleSend} />
       </div>
+      <ActivityOverlay />
     </div>
   )
 }

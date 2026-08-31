@@ -14,7 +14,17 @@ from config.settings import settings
 
 logger = logging.getLogger("torch.executor")
 
+# Declining an approval is a choice, not an error. The recap looks for this
+# exact text so a cancelled task is never reported as something going wrong.
+CANCELLED_BY_USER = "You cancelled that step."
+
 NON_BLOCKING_FAILURE_TOOLS = {"screenshot"}
+
+# Tools that drive the user's mouse and keyboard. Reading the screen is not
+# included: looking is not taking control, and the border is a claim about
+# control. The border spans a run of these steps rather than flashing per
+# action, which would be noise at UIA speed.
+SCREEN_CONTROL_TOOLS = {"click_element", "type_into"}
 NON_RETRYABLE_ERROR_MARKERS = (
     "authentication failed",
     "unauthorized",
@@ -43,6 +53,8 @@ class Executor:
     def __init__(self):
         self._approval_events: Dict[str, asyncio.Event] = {}
         self._approval_results: Dict[str, str] = {}
+        # Arguments the user changed in the approval card, keyed by step id.
+        self._approval_edits: Dict[str, Dict[str, Any]] = {}
         self._approval_clients: Dict[str, str] = {}
         self._active_tasks: Dict[str, Set[str]] = {}
         self._active_task_channels: Dict[Tuple[str, str], str] = {}
@@ -50,8 +62,30 @@ class Executor:
         self._completed_cancelled_tasks: Set[Tuple[str, str]] = set()
         self._planning_requests: Dict[str, Dict[str, str]] = {}
         self._pending_planning_cancellations: Set[Tuple[str, str]] = set()
+        # Clients currently showing the screen-control border.
+        self._screen_control_clients: Set[str] = set()
         self._tool_registry: Dict[str, Callable] = {}
         self._load_tools()
+
+    async def show_screen_control(self, client_id: str) -> None:
+        """Raise the border, if it is not already up for this client."""
+        if client_id in self._screen_control_clients:
+            return
+        self._screen_control_clients.add(client_id)
+        await ws_manager.send_message({"type": "uia_control_start"}, client_id)
+
+    async def clear_screen_control(self, client_id: str) -> None:
+        """
+        Take the border down.
+
+        Safe to call when it was never raised, so every path out of a task can
+        call it unconditionally. A border left up covers the user's screen for
+        the rest of the session.
+        """
+        if client_id not in self._screen_control_clients:
+            return
+        self._screen_control_clients.discard(client_id)
+        await ws_manager.send_message({"type": "uia_control_end"}, client_id)
 
     def _load_tools(self) -> None:
         """Dynamically load all tool functions."""
@@ -68,6 +102,10 @@ class Executor:
             "tools.social": ["post_social", "send_message"],
             "tools.system": ["open_app", "run_terminal", "download_file"],
             "tools.vision_control": ["vision_control"],
+            # UI Automation reads the accessibility tree instead of pixels, so
+            # it is ~2,700x faster than the vision loop and targets elements by
+            # name rather than guessing coordinates.
+            "tools.uia_control": ["read_screen", "click_element", "type_into", "describe_screen"],
         }
 
         for module_path, tool_names in tool_modules.items():
@@ -118,7 +156,7 @@ class Executor:
         await ws_manager.send_status("executing", client_id)
 
         from agent.step_phrasing import get_plain_phrase
-        from errors.plain_language import translate_error
+        from errors.plain_language import translate_error, UserFacingError
         from agent.rollback import rollback_manager
 
         for i, step in enumerate(steps):
@@ -167,6 +205,11 @@ class Executor:
                 results.append("")
                 break
 
+            # Raise the border before the first step that drives input, and
+            # leave it up for the rest of the run.
+            if tool_name in SCREEN_CONTROL_TOOLS:
+                await self.show_screen_control(client_id)
+
             # Mark step as active
             step["status"] = "active"
             await ws_manager.send_step_update(
@@ -190,26 +233,53 @@ class Executor:
                 )
 
                 # Wait for approval
-                approval = await self._wait_for_approval(step_id, client_id)
+                approval, edited_args = await self._wait_for_approval(step_id, client_id)
+
+                if approval == "edit" and edited_args:
+                    # Only arguments the step already has may be replaced, so an
+                    # edit cannot introduce a parameter the tool never expected.
+                    applied = {
+                        key: value
+                        for key, value in edited_args.items()
+                        if key in step.get("args", {})
+                    }
+                    if applied:
+                        step["args"].update(applied)
+                        # resolved_args was built before the approval pause, so
+                        # it has to be updated too or the tool would run on the
+                        # values the user just changed away from.
+                        resolved_args.update(self._resolve_references(applied, results))
+                        logger.info(
+                            f"Applied user edits to {step.get('tool')}: {sorted(applied)}"
+                        )
+                        await ws_manager.send_step_update(
+                            message_id,
+                            step_id,
+                            "active",
+                            label=step["label"],
+                            client_id=client_id,
+                        )
 
                 if self._task_is_cancelled(client_id, message_id) or approval == "cancel":
                     step["status"] = "failed"
-                    step["error"] = "Cancelled by user"
+                    step["error"] = CANCELLED_BY_USER
+                    step["cancelled"] = True
                     await ws_manager.send_step_update(
                         message_id, step_id, "failed",
-                        error="Cancelled by user",
+                        error=CANCELLED_BY_USER,
                         client_id=client_id,
                     )
-                    await ws_manager.send_terminal_line("Cancelled by user", "warning", client_id)
+                    await ws_manager.send_terminal_line(CANCELLED_BY_USER, "warning", client_id)
                     await ws_manager.send_status("idle", client_id)
                     results.append("")
                     # Mark remaining steps as failed
                     for remaining_step in steps[i+1:]:
                         remaining_step["status"] = "failed"
-                        remaining_step["error"] = "Task stopped by user"
+                        remaining_step["error"] = "Stopped — you cancelled this task."
+                        remaining_step["cancelled"] = True
                         await ws_manager.send_step_update(
                             message_id, remaining_step["id"], "failed",
-                            error="Task stopped by user",
+                            error="Stopped — you cancelled this task.",
                             client_id=client_id,
                         )
                     break
@@ -312,7 +382,11 @@ class Executor:
                             )
                             break
                     except Exception as e:
-                        translated = translate_error(str(e))
+                        translated = (
+                            {"what_happened": str(e), "what_to_do": ""}
+                            if isinstance(e, UserFacingError)
+                            else translate_error(str(e))
+                        )
                         plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
                         step["status"] = "failed"
                         step["error"] = plain_err
@@ -363,6 +437,10 @@ class Executor:
                 stopped = self._task_is_cancelled(client_id, message_id)
                 if stopped:
                     plain_err = "Task stopped by user"
+                elif isinstance(e, UserFacingError):
+                    # Already written for the user; translating would replace a
+                    # specific message with the generic fallback.
+                    plain_err = str(e)
                 else:
                     translated = translate_error(str(e))
                     plain_err = f"{translated['what_happened']} {translated['what_to_do']}"
@@ -401,6 +479,11 @@ class Executor:
                     continue
 
                 break
+
+        # Every exit from the loop lands here — success, failure, cancellation
+        # and stop alike. process_command clears it again if this is skipped by
+        # an exception, and stop_task clears it immediately.
+        await self.clear_screen_control(client_id)
 
         await ws_manager.send_status("idle", client_id)
         active_for_client = self._active_tasks.get(client_id)
@@ -475,6 +558,14 @@ class Executor:
         for step_id, event in self._approval_events.items():
             if self._approval_clients.get(step_id) == client_id:
                 event.set()
+
+        # Stop means the user wants their screen back now, not when the
+        # current step finishes unwinding.
+        if client_id in self._screen_control_clients:
+            self._screen_control_clients.discard(client_id)
+            asyncio.create_task(
+                ws_manager.send_message({"type": "uia_control_end"}, client_id)
+            )
 
         try:
             from tools.vision_control import cancel_vision_control
@@ -557,30 +648,48 @@ class Executor:
 
     async def _wait_for_approval(
         self, step_id: str, client_id: str = "main", timeout: float = 300
-    ) -> str:
-        """Wait for HITL approval with timeout (default 5 minutes)."""
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """
+        Wait for HITL approval with timeout (default 5 minutes).
+
+        Returns the action and, for an edited approval, the arguments the user
+        changed. Timing out returns "cancel": an unanswered prompt must never
+        act on its own.
+        """
         event = asyncio.Event()
         self._approval_events[step_id] = event
         self._approval_clients[step_id] = client_id
 
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
-            return self._approval_results.pop(step_id, "cancel")
+            action = self._approval_results.pop(step_id, "cancel")
+            return action, self._approval_edits.pop(step_id, None)
         except asyncio.TimeoutError:
             logger.warning(f"Approval timeout for step {step_id}")
-            return "cancel"
+            return "cancel", None
         finally:
             self._approval_events.pop(step_id, None)
             self._approval_clients.pop(step_id, None)
+            self._approval_edits.pop(step_id, None)
 
-    def submit_approval(self, step_id: str, action: str) -> bool:
-        """Submit an approval response from the frontend."""
+    def submit_approval(
+        self, step_id: str, action: str, edited_args: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Submit an approval response from the frontend.
+
+        `edited_args` carries the values the user changed in the approval card.
+        They are applied to the step before it runs, so an edited approval acts
+        on what the user actually saw and confirmed.
+        """
         if action not in {"approve", "edit", "cancel"}:
             return False
         event = self._approval_events.get(step_id)
         if not event or event.is_set():
             return False
         self._approval_results[step_id] = action
+        if action == "edit" and isinstance(edited_args, dict):
+            self._approval_edits[step_id] = edited_args
         event.set()
         return True
 

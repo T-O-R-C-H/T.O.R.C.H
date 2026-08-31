@@ -3,6 +3,18 @@ TORCH Plain-Language Error Translator (HIDE-2)
 Converts technical exceptions/errors into calm, plain-English explanations with next steps.
 """
 
+import re
+
+class UserFacingError(Exception):
+    """
+    An error whose message is already written for the user.
+
+    Tools that know exactly what went wrong should raise this rather than a
+    bare Exception, so the wording survives instead of being replaced by the
+    generic fallback below.
+    """
+
+
 def translate_error(error_str: str) -> dict:
     """
     Translates a raw exception or error message into user-friendly terms.
@@ -29,6 +41,24 @@ def translate_error(error_str: str) -> dict:
         return {
             "what_happened": "I couldn't find the file you requested.",
             "what_to_do": "Please double-check the file name and make sure it exists."
+        }
+
+    # 1b. Search completed but no matching file exists
+    if any(marker in err for marker in [
+        "no files matching", "no exact match", "no file matching",
+        "could not find a safe file match", "safe file match"
+    ]):
+        name = ""
+        m = re.search(r"'([^']+)'", error_str)
+        if m:
+            name = m.group(1).strip()
+        what_happened = (
+            f"I searched the folder but couldn't find a file matching '{name}'."
+            if name else "I searched the folder but couldn't find a matching file."
+        )
+        return {
+            "what_happened": what_happened,
+            "what_to_do": "Double-check the file name, or tell me another folder to look in (like Downloads or Desktop)."
         }
     
     # 2. Permission Denied
@@ -59,10 +89,17 @@ def translate_error(error_str: str) -> dict:
             "what_to_do": "Please double-check your email credentials and App Password in Settings."
         }
 
+    # 5b. Web search refused (rate limiting / bot challenge)
+    if "search is temporarily unavailable" in err:
+        return {
+            "what_happened": "Web search isn't responding at the moment.",
+            "what_to_do": "Give it a minute and try again."
+        }
+
     # 6. Unknown tool / capability error
     if any(marker in err for marker in ["unknown tool", "tool not registered", "not found in"]):
         return {
-            "what_happened": "I wasn't able to check that folder.",
+            "what_happened": "That isn't something I know how to do yet.",
             "what_to_do": "Want me to try a different way?"
         }
 

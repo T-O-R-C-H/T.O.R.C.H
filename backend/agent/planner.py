@@ -6,7 +6,7 @@ Validates and enriches the execution plan from the brain.
 import uuid
 import logging
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger("torch.planner")
 
@@ -28,6 +28,7 @@ VALID_TOOLS = {
     "download_file", "open_app", "post_social", "send_message",
     "run_terminal", "move_file", "delete_file", "create_folder",
     "zip_files", "vision_control", "error", "save_skill", "respond",
+    "read_screen", "click_element", "type_into", "describe_screen",
 }
 
 
@@ -77,6 +78,43 @@ SPOTIFY_PLAYBACK_VISION_TASK = re.compile(
 )
 
 
+# Capabilities the user can switch off during onboarding or in Settings. A
+# disabled capability blocks its tools here, in the planner, rather than
+# relying on the model to leave them out of the plan.
+CAPABILITY_TOOLS = {
+    "files": {
+        "find_file", "find_file_fuzzy", "list_directory", "read_pdf", "read_word",
+        "read_excel", "move_file", "delete_file", "create_folder", "zip_files",
+    },
+    "apps": {
+        "open_app", "run_terminal", "vision_control",
+        "read_screen", "click_element", "type_into", "describe_screen",
+    },
+    "email": {"send_email", "read_inbox"},
+}
+
+CAPABILITY_REFUSALS = {
+    "files": "File access is switched off, so I can't look through your files. You can turn it back on in Settings.",
+    "apps": "Opening apps is switched off, so I can't do that. You can turn it back on in Settings.",
+    "email": "Email access is switched off, so I can't reach your inbox. You can turn it back on in Settings.",
+}
+
+
+def _disabled_capability(tool: str) -> Optional[str]:
+    """Return the capability blocking this tool, or None when it is allowed."""
+    from config.settings import settings
+
+    enabled = {
+        "files": settings.allow_files,
+        "apps": settings.allow_apps,
+        "email": settings.allow_email,
+    }
+    for capability, tools in CAPABILITY_TOOLS.items():
+        if tool in tools and not enabled[capability]:
+            return capability
+    return None
+
+
 def _vision_task_requires_approval(tool: str, tool_args: Any) -> bool:
     if tool != "vision_control" or not isinstance(tool_args, dict):
         return False
@@ -100,6 +138,7 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     validated_steps = []
     from agent.step_phrasing import get_plain_phrase
+    from errors.plain_language import translate_error
 
     for i, step in enumerate(raw_steps):
         tool = step.get("tool", "unknown")
@@ -107,8 +146,19 @@ def validate_plan(raw_steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # Validate tool exists
         if tool not in VALID_TOOLS and tool != "error":
             logger.warning(f"Unknown tool: {tool}, marking as error")
-            step["tool"] = "error"
-            step["error"] = f"Unknown tool: {tool}"
+            # Rebind the local too: everything below (approval policy, phrasing,
+            # the validated step itself) reads `tool`, so mutating only the
+            # incoming dict would let the unknown name through unchanged.
+            step["tool"] = tool = "error"
+            # This plan is sent to the UI before execution starts, so the error
+            # has to be readable now — not only once the executor reaches it.
+            step["error"] = translate_error("Unknown tool")["what_happened"]
+
+        blocked_by = _disabled_capability(tool)
+        if blocked_by:
+            logger.info(f"Tool {tool} blocked: {blocked_by} capability is disabled")
+            step["tool"] = tool = "error"
+            step["error"] = CAPABILITY_REFUSALS[blocked_by]
 
         tool_args = step.get("args", {})
 

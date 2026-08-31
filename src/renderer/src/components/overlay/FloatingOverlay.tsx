@@ -27,6 +27,7 @@ export function FloatingOverlay(): JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { sendCommand, sendStopCommand } = useWebSocket()
   const wsConnected = useTorchStore((state) => state.wsConnected)
+  const wsLatencyMs = useTorchStore((state) => state.wsLatencyMs)
   const agentStatus = useTorchStore((state) => state.agentStatus)
   const messages = useTorchStore((state) => state.messages)
 
@@ -72,22 +73,35 @@ export function FloatingOverlay(): JSX.Element {
       void refreshContext()
       inputRef.current?.focus()
     }
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        window.torchAPI?.hideOverlay()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
     window.torchAPI?.onOverlayActivate(handleActivate)
     return () => {
       window.clearTimeout(initialRefresh)
+      window.removeEventListener('keydown', handleKeyDown)
       window.torchAPI?.removeOverlayActivate()
     }
   }, [refreshContext])
 
   useEffect(() => {
-    if (agentStatus === 'idle') setTaskStartedAt(null)
-  }, [agentStatus])
-
-  useEffect(() => {
-    const height =
-      agentStatus === 'idle' ? 180 : agentStatus === 'awaiting_input' ? 620 : 480
+    let height: number
+    if (agentStatus === 'idle') {
+      height = 180
+    } else if (agentStatus === 'awaiting_input') {
+      height = 620
+    } else {
+      // Base height for header + current step label
+      const baseHeight = 120
+      // Each step row is ~30px, clamp to reasonable bounds
+      const stepsHeight = Math.min(latestSteps.length, 12) * 30
+      height = Math.max(200, Math.min(baseHeight + stepsHeight + 80, 600))
+    }
     window.torchAPI?.setOverlaySize(360, height)
-  }, [agentStatus])
+  }, [agentStatus, latestSteps.length])
 
   const stopTask = useCallback(
     (timedOut = false): void => {
@@ -151,8 +165,14 @@ export function FloatingOverlay(): JSX.Element {
     <div className="floating-overlay floating-overlay--companion">
       <header className="fo-header overlay-drag">
         <div className="fo-header__brand">
-          <span className={`fo-status-dot fo-status-dot--${connectionStatus}`} />
+          <span
+            className={`fo-status-dot fo-status-dot--${connectionStatus}`}
+            title={wsConnected ? `Connected${wsLatencyMs !== null ? ` \u2022 ${wsLatencyMs}ms` : ''}` : 'Disconnected'}
+          />
           <TorchLogo className="fo-header__logo" tone="light" width={68} />
+          {wsConnected && wsLatencyMs !== null && (
+            <span className="fo-latency-badge">{wsLatencyMs}ms</span>
+          )}
         </div>
         <div className="fo-header__clock">
           <span className="fo-clock__time">{timeString}</span>
@@ -192,7 +212,7 @@ export function FloatingOverlay(): JSX.Element {
           ref={inputRef}
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Tell TORCH what to do…"
+          placeholder="Ask TORCH or type a command… (Esc to hide)"
           rows={1}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
@@ -208,8 +228,33 @@ export function FloatingOverlay(): JSX.Element {
           onClick={handleSend}
           aria-label="Send"
         >
-          <CmdArrowUp size={15} />
+          <CmdArrowUp size={14} />
         </button>
+      </div>
+
+      <div className="fo-chips overlay-no-drag">
+        {['Summarize screen', 'Find a file', 'Check unread emails'].map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => {
+              if (!isBusy && wsConnected) {
+                setInput(chip)
+                const store = useTorchStore.getState()
+                store.addMessage({
+                  id: crypto.randomUUID(),
+                  role: 'user',
+                  content: chip,
+                  timestamp: Date.now()
+                })
+                store.setAgentStatus('processing')
+                sendCommand(`${chip}\n\nActive desktop: ${context.appName} — ${context.windowTitle}`)
+              }
+            }}
+          >
+            {chip}
+          </button>
+        ))}
       </div>
     </div>
   )

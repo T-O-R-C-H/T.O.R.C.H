@@ -38,7 +38,22 @@ venv/
 data/
 *.db
 
+# Caches
+.eslintcache
+*.tsbuildinfo
+
 # Packages
 *.exe
 *.dmg
 *.AppImage
+
+# Claude Code local permissions (machine-specific, may grant broad tool access)
+.claude/settings.json
+.claude/settings.local.json
+
+# PyInstaller backend bundle output (rebuilt by backend/build_backend.py)
+dist-backend/
+build-backend/
+
+# uiautomation writes this next to the process
+@AutomationLog.txt

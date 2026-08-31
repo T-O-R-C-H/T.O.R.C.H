@@ -5,13 +5,14 @@ Handles WebSocket communication and REST API endpoints.
 
 import sys
 import os
+import time
 import asyncio
 import json
 import uuid
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -29,12 +30,14 @@ class SkillCreateRequest(BaseModel):
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import settings
+from auth import verify_token, verify_ws_token
 from websocket import manager as ws_manager
 from agent.brain import plan_command
 from agent.planner import validate_plan, create_response_message
 from agent.executor import executor
-from errors.plain_language import translate_error
+from errors.plain_language import translate_error, UserFacingError
 from agent.rollback import rollback_manager
+from system_checks import check_playwright_readiness
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +46,10 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("torch.main")
+
+# A 30s mono 16 kHz recording is about 1 MB; this is generous headroom without
+# letting a request hold arbitrary audio in memory.
+MAX_AUDIO_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 @asynccontextmanager
@@ -59,19 +66,9 @@ async def lifespan(app: FastAPI):
     # Create data directory
     os.makedirs(settings.data_dir, exist_ok=True)
 
-    # Check Playwright/Chromium
-    try:
-        from playwright.async_api import async_playwright
-        try:
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                await browser.close()
-            logger.info("Playwright: ready (Chromium found)")
-        except Exception as e:
-            logger.warning(f"Playwright: library found but browser not ready — {e}")
-            logger.warning("Run: playwright install chromium")
-    except ImportError:
-        logger.warning("Playwright not installed — run: pip install playwright && playwright install chromium")
+    # Check Playwright/Chromium in the background so the server becomes healthy
+    # immediately instead of blocking startup on a full Chromium launch.
+    playwright_task = asyncio.create_task(_warm_playwright())
 
     # Warm up tool registry so the first command is faster
     try:
@@ -93,6 +90,22 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("TORCH backend shutting down")
+    if not playwright_task.done():
+        playwright_task.cancel()
+        try:
+            await playwright_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+async def _warm_playwright() -> None:
+    """Verify Playwright + Chromium are installed without blocking server startup."""
+    result = await check_playwright_readiness()
+    if result["browser_automation_ready"]:
+        logger.info("Playwright: ready (Chromium found)")
+    else:
+        logger.warning("Playwright: %s", result["message"])
+        logger.warning("Run: playwright install chromium")
 
 
 app = FastAPI(
@@ -100,13 +113,17 @@ app = FastAPI(
     description="Thinking, Observing, Reasoning, Creating & Handling",
     version="1.0.0",
     lifespan=lifespan,
+    # Every REST route requires the session token. The WebSocket route is not
+    # covered by this and checks the token itself before accepting.
+    dependencies=[Depends(verify_token)],
 )
 
-# CORS
+# CORS. Credentials stay off: auth rides on the Authorization header, not
+# cookies, and "*" origins with credentials enabled is invalid per spec.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -132,34 +149,31 @@ async def get_status() -> dict[str, str | bool | int]:
 @app.get("/api/system-check")
 async def system_check():
     """Check if Playwright browser automation is installed and ready."""
-    playwright_installed = False
-    try:
-        from playwright.async_api import async_playwright
-        playwright_installed = True
-    except ImportError:
-        pass
-    return {
-        "playwright_installed": playwright_installed
-    }
+    return await check_playwright_readiness()
 
 
 @app.get("/api/models")
 async def list_models():
-    """Available AI models for the command input picker."""
-    return {
-        "models": [
-            {"id": "auto", "label": "Auto"},
-            {"id": "deepseek-v4-flash", "label": "DeepSeek V4 Flash"},
-            {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro"},
-            {"id": "gemini-2.5-flash", "label": "Gemini 2.5 Flash"},
-            {"id": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
-            {"id": "gemini-2.0-flash", "label": "Gemini 2.0 Flash"},
-            {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
-            {"id": "claude-opus-4-8", "label": "Claude Opus 4.8"},
-            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5"},
-        ],
-        "current": settings.gemini_model,
-    }
+    """
+    Speed/depth choices for the command input picker.
+
+    Users never see model or vendor names, so these are labelled by what they
+    do. The ids stay real model identifiers because get_provider() routes on
+    them; only whichever provider is actually configured is offered.
+    """
+    tiers = [{"id": "auto", "label": "Automatic"}]
+
+    if settings.gemini_api_key:
+        tiers.append({"id": "gemini-2.5-flash", "label": "Faster"})
+        tiers.append({"id": "gemini-2.5-pro", "label": "More thorough"})
+    elif settings.deepseek_api_key:
+        tiers.append({"id": "deepseek-v4-flash", "label": "Faster"})
+        tiers.append({"id": "deepseek-v4-pro", "label": "More thorough"})
+    elif settings.anthropic_api_key:
+        tiers.append({"id": "claude-haiku-4-5", "label": "Faster"})
+        tiers.append({"id": "claude-sonnet-4-6", "label": "More thorough"})
+
+    return {"models": tiers, "current": "auto"}
 
 
 @app.post("/api/email/test")
@@ -170,12 +184,117 @@ async def test_email_connection():
     try:
         import imaplib
         mail = imaplib.IMAP4_SSL(settings.gmail_imap_host)
-        mail.login(settings.gmail_address, settings.gmail_app_password)
+        mail.login(settings.gmail_address, "".join(settings.gmail_app_password.split()))
         mail.logout()
         return {"ok": True, "address": settings.gmail_address, "message": "Gmail connection works."}
     except Exception as e:
         logger.error(f"Gmail test failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Gmail sign-in failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+def _friendly_email_error(err: Exception) -> str:
+    """Turn raw IMAP/SMTP exceptions into user-friendly messages."""
+    message = str(err)
+    low = message.lower()
+    if "authenticationfailed" in low or "invalid credentials" in low or "login failed" in low:
+        return (
+            "Incorrect Gmail address or App Password. Re-check both in Settings, then generate a "
+            "fresh App Password at myaccount.google.com/apppasswords and save it again."
+        )
+    if "timed out" in low or "timeout" in low:
+        return "Gmail connection timed out. Check your internet connection and try again."
+    if "name or service not known" in low or "getaddrinfo" in low:
+        return "Could not reach Gmail's servers. Check your internet connection and try again."
+    return f"Gmail connection failed: {message}"
+
+
+def _structured_inbox_from_steps(completed_steps: list) -> list | None:
+    """Re-fetch the inbox as structured messages for the chat recap card."""
+    step = next((s for s in completed_steps if s.get("tool") == "read_inbox"), None)
+    if not step:
+        return None
+    try:
+        from tools.email import inbox_emails
+        args = step.get("args") or {}
+        count = args.get("count") or 10
+        query = args.get("query") or ""
+        return inbox_emails(count=int(count), query=str(query))
+    except Exception as e:
+        logger.warning(f"Could not build structured inbox recap: {e}")
+        return None
+
+
+@app.get("/api/email/inbox")
+async def email_inbox(limit: int = 100, offset: int = 0):
+    """List inbox messages (newest first) as structured JSON."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    try:
+        from tools.email import fetch_inbox
+        return fetch_inbox(limit=max(1, min(limit, 500)), offset=max(0, offset))
+    except Exception as e:
+        logger.error(f"Inbox fetch failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+@app.get("/api/email/read")
+async def email_read(uid: str):
+    """Return the full content of a single inbox message."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    if not uid:
+        raise HTTPException(status_code=400, detail="Missing uid.")
+    try:
+        from tools.email import fetch_email
+        return fetch_email(uid)
+    except Exception as e:
+        logger.error(f"Email read failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+@app.post("/api/email/mark-read")
+async def email_mark_read(data: dict):
+    """Mark a message as read or unread."""
+    if not settings.gmail_address or not settings.gmail_app_password:
+        raise HTTPException(status_code=400, detail="Add your Gmail address and App Password in Settings first.")
+    uid = str(data.get("uid", ""))
+    read = bool(data.get("read", True))
+    if not uid:
+        raise HTTPException(status_code=400, detail="Missing uid.")
+    try:
+        from tools.email import mark_email_read
+        mark_email_read(uid, read)
+        return {"ok": True, "uid": uid, "read": read}
+    except Exception as e:
+        logger.error(f"Mark-read failed: {e}")
+        raise HTTPException(status_code=400, detail=_friendly_email_error(e))
+
+
+_GREETING_MARKERS = (
+    "help you with today",
+    "help you with anything",
+    "how can i help",
+    "what can i do",
+    "anything else",
+    "anything i can help",
+    "welcome back",
+    "at your service",
+    "what's up",
+    "how are you",
+    "how's it going",
+    "good morning",
+    "good afternoon",
+    "good evening",
+)
+
+
+def _is_clarifying_question(text: str) -> bool:
+    """True when a reply is a genuine clarifying question that needs an inline
+    answer — not a greeting or chit-chat that merely happens to end with '?'."""
+    t = (text or "").strip().lower()
+    if not t.endswith("?"):
+        return False
+    return not any(marker in t for marker in _GREETING_MARKERS)
 
 
 def _connection_status_block() -> str:
@@ -211,6 +330,66 @@ def _connection_status_block() -> str:
     return "\n".join(lines)
 
 
+# Settings the UI may change, mapped to the .env name each one is stored under.
+# This doubles as the allowlist for POST /api/settings: anything absent here
+# cannot be written, which keeps auth_token, host, db_path and data_dir out of
+# reach of a request body.
+EDITABLE_SETTINGS = {
+    "gemini_api_key": "GEMINI_API_KEY",
+    "gemini_model": "GEMINI_MODEL",
+    "openai_api_key": "OPENAI_API_KEY",
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "deepseek_api_key": "DEEPSEEK_API_KEY",
+    "deepseek_model": "DEEPSEEK_MODEL",
+    "gmail_address": "GMAIL_ADDRESS",
+    "gmail_app_password": "GMAIL_APP_PASSWORD",
+    "gmail_smtp_host": "GMAIL_SMTP_HOST",
+    "gmail_smtp_port": "GMAIL_SMTP_PORT",
+    "gmail_imap_host": "GMAIL_IMAP_HOST",
+    "wake_word": "WAKE_WORD",
+    "wake_word_sensitivity": "WAKE_WORD_SENSITIVITY",
+    "whisper_model_size": "WHISPER_MODEL_SIZE",
+    "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
+    "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
+    "allow_files": "TORCH_ALLOW_FILES",
+    "allow_apps": "TORCH_ALLOW_APPS",
+    "allow_email": "TORCH_ALLOW_EMAIL",
+}
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _env_file_path() -> str:
+    """Where settings are persisted. Indirected so tests can redirect it."""
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+
+def _coerce_setting(key: str, value):
+    """
+    Convert a JSON value to the type the settings field declares.
+
+    JSON gives strings where the model wants bool or int, and assigning them
+    raw is silently wrong: "false" is a truthy string, so a permission switched
+    off would have stayed on.
+    """
+    field = type(settings).model_fields.get(key)
+    if field is None:
+        return value
+
+    annotation = field.annotation
+    if annotation is bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in _TRUTHY
+    if annotation is int:
+        return int(value)
+    if annotation is float:
+        return float(value)
+    if annotation is str:
+        return "" if value is None else str(value)
+    return value
+
+
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings (sanitized — no secrets)."""
@@ -239,6 +418,9 @@ async def get_settings():
         "whisper_model_size": settings.whisper_model_size,
         "screen_watch_enabled": settings.screen_watch_enabled,
         "screen_watch_interval": settings.screen_watch_interval,
+        "allow_files": settings.allow_files,
+        "allow_apps": settings.allow_apps,
+        "allow_email": settings.allow_email,
     }
 
 
@@ -247,7 +429,7 @@ async def update_settings(data: dict):
     """Update settings and persist to .env in the root directory."""
     import os
     # .env should be in the root (parent of backend)
-    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    env_path = _env_file_path()
     
     # Update in memory and .env — never wipe secrets with empty strings
     secret_fields = {
@@ -257,14 +439,31 @@ async def update_settings(data: dict):
         "deepseek_api_key",
         "gmail_app_password",
     }
+
     filtered = {}
     for key, value in data.items():
-        if key in secret_fields and (value is None or str(value).strip() == ""):
+        # Only fields this endpoint is designed to manage may be written.
+        # Assigning any attribute that happens to exist on settings would let a
+        # caller reach auth_token, host, db_path and the rest.
+        if key not in EDITABLE_SETTINGS:
+            logger.warning(f"Ignoring attempt to set non-editable setting: {key}")
             continue
+        if key in secret_fields:
+            # Secrets are held in the OS keystore by the desktop app and passed
+            # in as environment variables. Writing them back to .env would undo
+            # that, so this endpoint no longer accepts them.
+            logger.warning(f"Refusing to persist secret through settings API: {key}")
+            continue
+
+        try:
+            value = _coerce_setting(key, value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail=f"Invalid value for {key}")
+
         filtered[key] = value
-        if hasattr(settings, key):
-            setattr(settings, key, value)
-            
+        setattr(settings, key, value)
+
+
     # Read existing env
     env_vars = {}
     if os.path.exists(env_path):
@@ -277,30 +476,10 @@ async def update_settings(data: dict):
                         k, v = parts
                         env_vars[k] = v
                     
-    # Map pydantic field names to env vars
-    mapping = {
-        "gemini_api_key": "GEMINI_API_KEY",
-        "gemini_model": "GEMINI_MODEL",
-        "openai_api_key": "OPENAI_API_KEY",
-        "anthropic_api_key": "ANTHROPIC_API_KEY",
-        "deepseek_api_key": "DEEPSEEK_API_KEY",
-        "deepseek_model": "DEEPSEEK_MODEL",
-        "gmail_address": "GMAIL_ADDRESS",
-        "gmail_app_password": "GMAIL_APP_PASSWORD",
-        "gmail_smtp_host": "GMAIL_SMTP_HOST",
-        "gmail_smtp_port": "GMAIL_SMTP_PORT",
-        "gmail_imap_host": "GMAIL_IMAP_HOST",
-        "wake_word": "WAKE_WORD",
-        "wake_word_sensitivity": "WAKE_WORD_SENSITIVITY",
-        "whisper_model_size": "WHISPER_MODEL_SIZE",
-        "screen_watch_enabled": "SCREEN_WATCH_ENABLED",
-        "screen_watch_interval": "SCREEN_WATCH_INTERVAL",
-    }
-    
     for key, value in filtered.items():
-        if key in mapping:
-            env_vars[mapping[key]] = str(value)
-            
+        env_vars[EDITABLE_SETTINGS[key]] = str(value)
+
+
     # Write back
     try:
         with open(env_path, "w") as f:
@@ -359,6 +538,26 @@ async def delete_history():
         conn.execute("DELETE FROM tasks")
         conn.execute("DELETE FROM steps")
     return {"ok": True}
+
+
+@app.delete("/api/memory")
+async def clear_memory():
+    """Forget learned habits, contacts and file patterns. Keeps task history."""
+    from memory.storage import db
+
+    removed = db.clear_memory()
+    logger.info(f"Cleared learned memory: {removed} record(s)")
+    return {"ok": True, "removed": removed}
+
+
+@app.delete("/api/habits")
+async def reset_habits():
+    """Drop the learned command frequencies only."""
+    from memory.storage import db
+
+    removed = db.reset_habits()
+    logger.info(f"Reset habits: {removed} record(s)")
+    return {"ok": True, "removed": removed}
 
 
 @app.get("/api/memory")
@@ -486,6 +685,86 @@ async def get_metrics():
     return await get_current_metrics()
 
 
+@app.get("/api/insights")
+async def get_insights(days: int = 7):
+    """
+    Aggregates of the real task history.
+
+    Only figures the database can support. There is no accuracy or
+    time-saved number here because nothing in TORCH measures either, and an
+    invented one would be indistinguishable from a real one to the user.
+    """
+    from memory.storage import db
+
+    days = max(1, min(days, 30))
+    return await asyncio.to_thread(db.get_insights, days)
+
+
+@app.get("/api/voice/capabilities")
+async def voice_capabilities():
+    """
+    What voice features this machine can actually do.
+
+    `speech_to_text` means ready right now — engine installed and weights on
+    disk. The renderer needs the two apart so it can tell "no voice on this
+    build" from "one download away", and never offers a microphone that would
+    either fail or upload the recording somewhere.
+    """
+    from tools import stt
+
+    return {"speech_to_text": stt.local_stt_available(), **stt.status()}
+
+
+@app.get("/api/voice/model")
+async def voice_model_status():
+    """Progress of the voice model download, polled while it runs."""
+    from tools import stt
+
+    return stt.status()
+
+
+@app.post("/api/voice/model")
+async def download_voice_model():
+    """
+    Fetch the voice model, because the user asked for it.
+
+    This is the only place in TORCH that downloads a model, and it is reached
+    only from an explicit yes. Nothing on the voice path may download
+    implicitly — faster-whisper would do exactly that on first use, so every
+    other load passes local_files_only.
+    """
+    from tools import stt
+
+    try:
+        return await asyncio.to_thread(stt.start_download)
+    except UserFacingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/api/voice/transcribe")
+async def transcribe_voice(request: Request):
+    """
+    Transcribe a recording captured by the renderer.
+
+    The renderer sends 16-bit PCM WAV, which the local speech stack reads
+    directly — no ffmpeg, and nothing leaves the machine.
+    """
+    from tools.voice import transcribe_audio
+
+    wav_bytes = await request.body()
+    if not wav_bytes:
+        raise HTTPException(status_code=400, detail="That recording was empty.")
+    if len(wav_bytes) > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="That recording is too long.")
+
+    try:
+        text = await asyncio.to_thread(transcribe_audio, wav_bytes)
+    except UserFacingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return {"transcript": text}
+
+
 @app.post("/api/voice/listen")
 async def listen_for_companion_voice():
     """Capture one voice turn without blocking the FastAPI event loop."""
@@ -497,20 +776,108 @@ async def listen_for_companion_voice():
     return {"transcript": transcript}
 
 
+@app.get("/api/voice/tts")
+async def tts_status():
+    """Which rung of the speech ladder is available, and the voice download state."""
+    from tools import tts
+
+    return tts.status()
+
+
+@app.post("/api/voice/tts/model")
+async def download_tts_voice():
+    """Fetch the Piper voice, because the user asked for it in Settings."""
+    from tools import tts
+
+    if not tts.piper_installed():
+        raise HTTPException(status_code=503, detail="The natural voice isn't available in this build.")
+    return await asyncio.to_thread(tts.piper_model.start)
+
+
 @app.post("/api/voice/synthesize")
 async def synthesize_companion_voice(data: dict):
-    """Generate a neural companion voice, leaving the renderer free to fall back locally."""
-    from agent.voice_synthesis import synthesize_voice
+    """
+    Render speech with Piper — rung one of the ladder, and entirely local.
+
+    This used to POST the text to Google's Gemini TTS endpoint, so the recap
+    of what TORCH had just done on the user's computer left the machine before
+    it was spoken. A 503 here is normal and expected: it means no Piper voice
+    is downloaded, and the renderer drops to speechSynthesis.
+    """
+    from tools import tts
 
     text = str(data.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
     try:
-        wav = await asyncio.wait_for(asyncio.to_thread(synthesize_voice, text), timeout=20)
+        wav = await asyncio.wait_for(asyncio.to_thread(tts.synthesize, text), timeout=20)
+    except UserFacingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except Exception as error:
-        logger.warning(f"Neural voice unavailable: {error}")
-        raise HTTPException(status_code=503, detail="Neural voice unavailable") from error
+        logger.warning(f"Natural voice unavailable: {error}")
+        raise HTTPException(status_code=503, detail="The natural voice is unavailable.") from error
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.post("/api/voice/speak")
+async def speak_with_system_voice(data: dict):
+    """
+    The last rung: the operating system's own voice.
+
+    Reached only when Piper has no voice and the renderer's speechSynthesis
+    is unavailable too.
+    """
+    from tools import tts
+
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    try:
+        await asyncio.wait_for(asyncio.to_thread(tts.speak_with_system_voice, text), timeout=30)
+    except UserFacingError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return {"spoken": True}
+
+
+@app.post("/api/prompt/enhance")
+async def enhance_prompt(data: dict):
+    """
+    Rewrite the user's command so the agent has more to work with.
+
+    Returns the original text unchanged rather than inventing something when no
+    provider is configured — the caller replaces the user's input with whatever
+    comes back, so a canned answer would silently discard what they typed.
+    """
+    from agent.providers import get_provider
+
+    text = str(data.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    provider = get_provider("auto")
+    if provider is None:
+        raise HTTPException(status_code=503, detail="No AI provider is configured")
+
+    instruction = (
+        "Rewrite the following instruction for a computer assistant so it is "
+        "specific and unambiguous. Keep the user's original intent and any names, "
+        "paths or details exactly as given. Do not invent new requirements, do not "
+        "add commentary, and do not answer the request. Reply with the rewritten "
+        "instruction only.\n\n"
+        f"Instruction: {text}"
+    )
+
+    try:
+        improved = await asyncio.wait_for(provider.generate_text(instruction), timeout=20)
+    except Exception as error:
+        logger.warning(f"Prompt enhance failed: {error}")
+        raise HTTPException(status_code=503, detail="Could not improve that just now") from error
+
+    improved = str(improved or "").strip().strip('"')
+    if not improved:
+        raise HTTPException(status_code=503, detail="Could not improve that just now")
+
+    return {"text": improved}
 
 
 # ─── WEBSOCKET ───
@@ -519,6 +886,13 @@ async def synthesize_companion_voice(data: dict):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint for real-time communication."""
+    # Reject before accept() so an unauthorized client never reaches the
+    # message loop that can issue commands.
+    if not verify_ws_token(websocket):
+        logger.warning("Rejected WebSocket connection with missing or invalid token")
+        await websocket.close(code=4401)
+        return
+
     client_id = str(uuid.uuid4())[:8]
     await ws_manager.connect(websocket, client_id)
 
@@ -568,19 +942,31 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
     if msg_type == "command":
         content = message.get("content", "")
         model = message.get("model", "auto")
+        request_id = message.get("requestId")
+        if not isinstance(request_id, str) or not request_id or len(request_id) > 128:
+            request_id = None
         logger.info(f"Command received: {content[:80]}")
         planning_id = str(uuid.uuid4())
         executor.begin_planning(client_id, planning_id, "command")
         asyncio.create_task(
-            process_command(content, client_id, model=model, planning_id=planning_id)
+            process_command(
+                content,
+                client_id,
+                model=model,
+                planning_id=planning_id,
+                request_id=request_id,
+            )
         )
 
     elif msg_type == "hitl_response":
         message_id = message.get("messageId")
         step_id = message.get("stepId")
         action = message.get("action", "cancel")
+        edited = message.get("editedData")
         logger.info(f"HITL response: {step_id} → {action}")
-        accepted = bool(step_id) and executor.submit_approval(step_id, action)
+        accepted = bool(step_id) and executor.submit_approval(
+            step_id, action, edited if isinstance(edited, dict) else None
+        )
         await ws_manager.send_message({
             "type": "approval_result",
             "messageId": message_id,
@@ -645,6 +1031,13 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
         logger.info(f"Visual companion command: {content[:80]} ({len(screenshots)} screens)")
         asyncio.create_task(process_companion_command(content, screenshots, client_id, audio))
 
+    elif msg_type == "ping":
+        # Latency probe. Echo the client's timestamp back so it can measure the
+        # round trip; the frontend sends one of these every 10 seconds.
+        await ws_manager.send_message(
+            {"type": "pong", "ts": message.get("ts")}, client_id
+        )
+
     else:
         logger.warning(f"Unknown message type: {msg_type}")
 
@@ -653,12 +1046,20 @@ async def _discard_cancelled_plan(
     client_id: str,
     planning_id: str,
     channel: str,
+    request_id: str | None = None,
 ) -> bool:
     """Discard a late planner result after Stop without resurfacing task state."""
     if not executor.consume_pending_cancellation(client_id, planning_id):
         return False
 
     await ws_manager.send_status("idle", client_id)
+    if channel == "command":
+        await _send_task_outcome(
+            client_id,
+            request_id,
+            "cancelled",
+            "The task was stopped before it finished.",
+        )
     if channel == "overlay":
         await ws_manager.send_overlay_event(
             status="idle",
@@ -668,19 +1069,70 @@ async def _discard_cancelled_plan(
     return True
 
 
+async def _send_task_outcome(
+    client_id: str,
+    request_id: str | None,
+    status: str,
+    summary: str,
+) -> None:
+    """Send one correlated terminal result for clients that gate on completion."""
+    if not request_id:
+        return
+    await ws_manager.send_message(
+        {
+            "type": "task_outcome",
+            "requestId": request_id,
+            "status": status,
+            "summary": summary,
+        },
+        client_id,
+    )
+
+
+# Phrases a tool uses when it completed without finding anything. A step can
+# succeed and still have nothing to report, and the recap has to say so rather
+# than claim a find.
+_EMPTY_RESULT_MARKERS = (
+    "no exact match",
+    "no match",
+    "no results",
+    "couldn't find",
+    "could not find",
+    "nothing found",
+    "no files found",
+)
+
+
+def _result_found_nothing(result: str) -> bool:
+    """True when a successful step's own output says it found nothing."""
+    lowered = (result or "").lower()
+    return any(marker in lowered for marker in _EMPTY_RESULT_MARKERS)
+
+
+def _elapsed_ms(started_at: float) -> int:
+    """Milliseconds since a time.monotonic() reading, floored at zero."""
+    return max(0, round((time.monotonic() - started_at) * 1000))
+
+
 async def process_command(
     command: str,
     client_id: str,
     model: str = "auto",
     planning_id: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Process a user command through the full agent pipeline."""
     planning_id = planning_id or str(uuid.uuid4())
+    # Wall-clock from the moment the command arrives, so the recorded duration
+    # is what the user actually waited - planning included, not just execution.
+    started_at = time.monotonic()
     executor.begin_planning(client_id, planning_id, "command")
     try:
         # The WebSocket handler registers the planning id before scheduling
         # this coroutine, so an immediately-following Stop can arrive first.
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
 
         # 1. Set status to processing
@@ -701,7 +1153,9 @@ async def process_command(
             model=model,
         )
 
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
 
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
@@ -710,8 +1164,14 @@ async def process_command(
             executor.finish_planning(client_id, planning_id)
             natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
             response_msg = create_response_message(natural_response, [])
+            response_msg["speak"] = True
+            if _is_clarifying_question(natural_response):
+                response_msg["needsAnswer"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id, request_id, "completed", natural_response
+            )
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
@@ -729,8 +1189,15 @@ async def process_command(
             executor.finish_planning(client_id, planning_id)
             natural_response = "I am not sure how to help with that. Try rephrasing."
             response_msg = create_response_message(natural_response, [])
+            response_msg["speak"] = True
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id,
+                request_id,
+                "failed",
+                "I couldn't turn that request into a task. Try rephrasing it.",
+            )
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
@@ -749,7 +1216,9 @@ async def process_command(
 
         # 5. Execute plan
         message_id = response_msg["id"]
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
         executor.finish_planning(client_id, planning_id)
         executed_steps = await executor.execute_plan(
@@ -770,29 +1239,64 @@ async def process_command(
                 "content": recap_sentence,
                 "timestamp": __import__("time").time() * 1000,
                 "steps": executed_steps,
+                "speak": True,
             }
             await ws_manager.send_agent_response(recap_msg, client_id)
+            await _send_task_outcome(
+                client_id, request_id, "cancelled", recap_sentence
+            )
             return
 
         # Check if execution failed
         failed_steps = [s for s in executed_steps if s["status"] == "failed"]
         if failed_steps:
+            # Say what went wrong in the chat. Without this the task simply
+            # stops and the only trace is the inline step card, which reads as
+            # the agent having ignored the request.
+            # Step errors are already plain language: the executor runs them
+            # through translate_error() before reporting a step as failed.
+            first_error = (failed_steps[0].get("error") or "").strip()
+            if any(s.get("cancelled") for s in failed_steps):
+                # Declining an approval is a choice. Reporting it as "I
+                # couldn't finish that" tells the user something went wrong
+                # when they are the one who stopped it.
+                recap_sentence = "Cancelled — nothing was sent."
+            elif first_error:
+                recap_sentence = f"I couldn't finish that. {first_error}"
+            else:
+                failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
+                recap_sentence = (
+                    f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
+                )
+
             # Save exchange to context
             ConversationContext.add_exchange(
                 client_id=client_id,
                 user_command=command,
-                reply_summary="Task execution failed.",
+                reply_summary=recap_sentence,
                 step_results=executed_steps
             )
             # Log failure in database for accurate metrics
             try:
                 from memory.storage import db
-                db.save_task(command, validated_steps, "failed")
+                db.save_task(command, validated_steps, "failed", _elapsed_ms(started_at))
                 metrics_data = await get_current_metrics()
                 await ws_manager.send_metrics(metrics_data, client_id)
             except Exception as db_err:
                 logger.warning(f"Failed to log task failure: {db_err}")
+
+            await ws_manager.send_agent_response({
+                "id": str(uuid.uuid4()),
+                "role": "torch",
+                "content": recap_sentence,
+                "timestamp": __import__("time").time() * 1000,
+                "steps": [],
+                "speak": True,
+            }, client_id)
             await ws_manager.send_status("idle", client_id)
+            await _send_task_outcome(
+                client_id, request_id, "failed", recap_sentence
+            )
             return
 
         # Save exchange to context
@@ -806,21 +1310,19 @@ async def process_command(
         # 6. Send completion
         await ws_manager.send_terminal_line("Task completed", "success", client_id)
 
-        failed_steps = [s for s in executed_steps if s["status"] == "failed"]
+        # Failures returned above, so everything from here on succeeded.
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
+        recap_emails = None
+        last_result = ""
 
-        if failed_steps:
-            failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
-            recap_sentence = (
-                f"I couldn't finish everything. Problem with: {', '.join(failed_labels)}."
-            )
-        elif completed_steps:
+        if completed_steps:
             tools_used = {s["tool"] for s in completed_steps}
             last_result = (completed_steps[-1].get("result") or "").strip()
             if "send_email" in tools_used:
                 recap_sentence = "Your email was sent."
             elif "read_inbox" in tools_used:
-                recap_sentence = "I checked your inbox."
+                recap_sentence = "Here's what I found in your inbox."
+                recap_emails = _structured_inbox_from_steps(completed_steps)
             elif "move_file" in tools_used:
                 recap_sentence = last_result if last_result else "Your file was moved."
             elif "create_folder" in tools_used:
@@ -830,7 +1332,12 @@ async def process_command(
             elif "analyse_screen" in tools_used or "screenshot" in tools_used:
                 recap_sentence = "Here's what I saw on your screen."
             elif "find_file" in tools_used or "find_file_fuzzy" in tools_used:
-                if "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
+                if _result_found_nothing(last_result):
+                    # The recap used to be picked from the tool that ran, so a
+                    # search that found nothing still announced "I found the
+                    # file." while the body underneath said it had not.
+                    recap_sentence = "I couldn't find that. Here's the closest I got."
+                elif "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
                     recap_sentence = "I found your document and pulled out the key details."
                 else:
                     recap_sentence = last_result if last_result else "I found the file."
@@ -843,14 +1350,29 @@ async def process_command(
         else:
             recap_sentence = None
 
-        if recap_sentence:
+        # Every finished task ends with a sentence in the chat. Tools with no
+        # branch above - list_directory among them - used to end the task with
+        # no closing line at all, which reads as TORCH having given up.
+        #
+        # This is deliberately not `recap_sentence`: that feeds the task
+        # outcome, where the tool's own result is the more useful summary and
+        # onboarding renders it verbatim.
+        bubble_sentence = recap_sentence or "That's done."
+
+        if bubble_sentence:
+            # `speak` marks the final sentence for the voice ladder. Plan
+            # messages never carry it: reading a step list aloud is exactly
+            # what E.3 rules out.
             recap_msg = {
                 "id": str(uuid.uuid4()),
                 "role": "torch",
-                "content": recap_sentence,
+                "content": bubble_sentence,
                 "timestamp": __import__("time").time() * 1000,
                 "steps": [],
+                "speak": True,
             }
+            if recap_emails is not None:
+                recap_msg["emails"] = recap_emails
             await ws_manager.send_agent_response(recap_msg, client_id)
 
         # Notify if task is reversible
@@ -864,22 +1386,34 @@ async def process_command(
         # Update metrics after task completion
         try:
             from memory.storage import db
-            db.save_task(command, validated_steps, "completed")
+            db.save_task(command, validated_steps, "completed", _elapsed_ms(started_at))
             db.log_command(command)
             metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as e:
             logger.warning(f"Metrics update failed: {e}")
 
+        await _send_task_outcome(
+            client_id,
+            request_id,
+            "completed",
+            recap_sentence or last_result or "The task completed.",
+        )
+
     except Exception as e:
-        if await _discard_cancelled_plan(client_id, planning_id, "command"):
+        if await _discard_cancelled_plan(
+            client_id, planning_id, "command", request_id=request_id
+        ):
             return
         logger.error(f"Command processing failed: {e}", exc_info=True)
+        # An exception must not leave the screen-control border covering the
+        # user's display for the rest of the session.
+        await executor.clear_screen_control(client_id)
         
         # Record failure in database for accurate success rate metrics
         try:
             from memory.storage import db
-            db.save_task(command, [], "failed")
+            db.save_task(command, [], "failed", _elapsed_ms(started_at))
             metrics_data = await get_current_metrics()
             await ws_manager.send_metrics(metrics_data, client_id)
         except Exception as db_err:
@@ -900,6 +1434,9 @@ async def process_command(
             "steps": [],
         }
         await ws_manager.send_agent_response(error_msg, client_id)
+        await _send_task_outcome(
+            client_id, request_id, "failed", error_msg["content"]
+        )
     finally:
         executor.finish_planning(client_id, planning_id)
 
@@ -1035,13 +1572,32 @@ async def process_companion_command(
 
 if __name__ == "__main__":
     import uvicorn
+    import socket
 
-    reload_enabled = os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
+    def find_available_port(start_port: int, host: str = "127.0.0.1", max_attempts: int = 10) -> int:
+        for p in range(start_port, start_port + max_attempts):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind((host, p))
+                    return p
+            except OSError:
+                continue
+        return start_port
 
+    target_port = find_available_port(settings.port, settings.host)
+    frozen = getattr(sys, "frozen", False)
+    reload_enabled = (
+        not frozen and os.getenv("TORCH_RELOAD", "true").lower() in {"1", "true", "yes"}
+    )
+
+    logger.info(f"Starting server process on port {target_port}")
+    # A packaged build has no main.py on disk, so "main:app" cannot be imported
+    # by name. Hand uvicorn the application object instead. Reload needs the
+    # import string, so it is only available when running from source.
     uvicorn.run(
-        "main:app",
+        app if frozen else "main:app",
         host=settings.host,
-        port=settings.port,
+        port=target_port,
         reload=reload_enabled,
         log_level="info",
     )

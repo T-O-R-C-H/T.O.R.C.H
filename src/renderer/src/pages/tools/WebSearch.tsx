@@ -1,8 +1,24 @@
 import { IconGlobe as Globe, IconSearch as Search } from '../../components/icons'
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 
+/**
+ * Web search runs through the agent like any other command, so this page hands
+ * the query to the Command Center rather than owning a second search path.
+ */
 export function WebSearch(): JSX.Element {
   const [query, setQuery] = useState('')
+  const navigate = useNavigate()
+
+  const runSearch = (): void => {
+    const trimmed = query.trim()
+    if (!trimmed) return
+    navigate('/chat', { state: { runCommand: `Search the web for ${trimmed}` } })
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter') runSearch()
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full page-enter">
@@ -23,11 +39,19 @@ export function WebSearch(): JSX.Element {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Search anything..."
               className="w-full pl-8 text-[12px]"
             />
           </div>
-          <button className="btn-primary">Search</button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={runSearch}
+            disabled={!query.trim()}
+          >
+            Search
+          </button>
         </div>
       </div>
     </div>

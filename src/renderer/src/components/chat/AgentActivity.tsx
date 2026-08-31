@@ -2,43 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { AgentStatus } from '../../store/torchStore'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchLogo } from '../ui/TorchLogo'
+import { TorchMark } from '../ui/TorchMark'
 
 const SLOW_THRESHOLD_MS = 8000
 const VERY_SLOW_THRESHOLD_MS = 15000
-const TIMEOUT_MS = 28000
+const TIMEOUT_MS = 45000
 const OFFLINE_STOP_MS = 20000
-const CIPHER_GLYPHS = '01#@$%&*+=<>/\\[]{}'
-
-function CipherText({ text }: { text: string }): JSX.Element {
-  const [display, setDisplay] = useState('')
-
-  useEffect(() => {
-    let frame = 0
-    const totalFrames = Math.max(18, text.length * 2)
-    const timer = window.setInterval(() => {
-      const resolved = Math.floor((frame / totalFrames) * text.length)
-      setDisplay(
-        text
-          .split('')
-          .map((character, index) => {
-            if (character === ' ') return ' '
-            if (index < resolved) return character
-            return CIPHER_GLYPHS[Math.floor(Math.random() * CIPHER_GLYPHS.length)]
-          })
-          .join('')
-      )
-      frame += 1
-      if (frame > totalFrames) {
-        window.clearInterval(timer)
-        setDisplay(text)
-      }
-    }, 34)
-    return () => window.clearInterval(timer)
-  }, [text])
-
-  return <>{display || CIPHER_GLYPHS.slice(0, Math.min(text.length, 8))}</>
-}
 
 function statusLabel(
   status: AgentStatus,
@@ -50,11 +19,11 @@ function statusLabel(
   hasConnectedOnce: boolean
 ): string {
   if (timedOut) return 'Stopping, this took too long…'
-  
+
   if (!hasConnectedOnce && (offline || wsPhase === 'connecting')) {
     return 'Connecting to TORCH…'
   }
-  
+
   if (offline) return 'Reconnecting…'
   if (reconnected) return 'Waiting for response…'
   if (slow) return 'Still working — this may take a moment…'
@@ -106,12 +75,14 @@ export function AgentActivity({
   const showOffline = browserOffline || (!demoMode && !wsConnected)
 
   useEffect(() => {
-    setSlow(false)
-    setVerySlow(false)
-    setTimedOut(false)
-    setReconnected(false)
-    firedRef.current = false
-    wasOfflineRef.current = showOffline
+    const resetTimer = window.setTimeout(() => {
+      setSlow(false)
+      setVerySlow(false)
+      setTimedOut(false)
+      setReconnected(false)
+      firedRef.current = false
+      wasOfflineRef.current = showOffline
+    }, 0)
 
     const elapsed = startedAt ? Date.now() - startedAt : 0
 
@@ -126,7 +97,15 @@ export function AgentActivity({
         },
         Math.max(OFFLINE_STOP_MS - elapsed, 0)
       )
-      return () => clearTimeout(offlineTimer)
+      return () => {
+        clearTimeout(offlineTimer)
+        clearTimeout(resetTimer)
+      }
+    }
+
+    // While the user is choosing (approval / an answer), never time out.
+    if (status === 'awaiting_approval' || status === 'awaiting_input') {
+      return () => clearTimeout(resetTimer)
     }
 
     const slowTimer = setTimeout(() => setSlow(true), Math.max(SLOW_THRESHOLD_MS - elapsed, 0))
@@ -146,6 +125,7 @@ export function AgentActivity({
     )
 
     return () => {
+      clearTimeout(resetTimer)
       clearTimeout(slowTimer)
       clearTimeout(verySlowTimer)
       clearTimeout(timeoutTimer)
@@ -175,6 +155,16 @@ export function AgentActivity({
     return undefined
   }, [showOffline])
 
+  const label = statusLabel(
+    status,
+    slow,
+    showOffline,
+    timedOut,
+    reconnected,
+    wsPhase,
+    hasConnectedOnce
+  )
+
   const activityClasses = [
     'chat-turn__activity',
     timedOut ? 'chat-turn__activity--warn' : '',
@@ -187,30 +177,25 @@ export function AgentActivity({
     <div className="flex flex-col gap-2">
       <div className={activityClasses}>
         {!timedOut && (
-          <TorchLogo tone="dark" width={84} animate />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={`${status}-${slow}-${showOffline}-${timedOut}-${reconnected}`}
+              className="chat-turn__activity-label"
+              initial={{ opacity: 0, y: 4, filter: 'blur(3px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -3, filter: 'blur(2px)' }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <span className="chat-turn__activity-pill">
+                {/* The cycling mark is the app's "work is happening" signal.
+                    The label carries which kind of work, so the mark does not
+                    need a per-status variant of its own. */}
+                <TorchMark size={18} active />
+                <span className="chat-turn__activity-text">{label}</span>
+              </span>
+            </motion.span>
+          </AnimatePresence>
         )}
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={`${status}-${slow}-${showOffline}-${timedOut}-${reconnected}`}
-            className="chat-turn__activity-label"
-            initial={{ opacity: 0, y: 4, filter: 'blur(3px)' }}
-            animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: -3, filter: 'blur(2px)' }}
-            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <CipherText
-              text={statusLabel(
-                status,
-                slow,
-                showOffline,
-                timedOut,
-                reconnected,
-                wsPhase,
-                hasConnectedOnce
-              )}
-            />
-          </motion.span>
-        </AnimatePresence>
       </div>
 
       {verySlow && !timedOut && onStop && (
@@ -228,22 +213,4 @@ export function AgentActivity({
       )}
     </div>
   )
-}
-
-export function useAgentWatchdog(
-  active: boolean,
-  startedAt: number | undefined,
-  onTimeout: () => void
-): void {
-  useEffect(() => {
-    if (!active || !startedAt) return
-
-    const wsConnected = useTorchStore.getState().wsConnected
-    const demoMode = useTorchStore.getState().demoMode
-    const offline = !navigator.onLine || (!demoMode && !wsConnected)
-    const limit = offline ? OFFLINE_STOP_MS : TIMEOUT_MS
-    const elapsed = Date.now() - startedAt
-    const timer = setTimeout(onTimeout, Math.max(limit - elapsed, 0))
-    return () => clearTimeout(timer)
-  }, [active, startedAt, onTimeout])
 }

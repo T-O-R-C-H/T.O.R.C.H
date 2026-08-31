@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
+import { VoiceSection } from '../components/settings/VoiceSection'
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 import {
   IconKey as Key,
   IconMail as Mail,
-  IconMic as Mic,
-  IconMonitor as Monitor,
-  IconPalette as Palette,
   IconPower as Power,
   IconDatabase as Database,
   IconExternalLink as ExternalLink,
@@ -63,42 +61,62 @@ export function Settings(): JSX.Element {
   const [geminiKey, setGeminiKey] = useState('')
   const [gmailAddress, setGmailAddress] = useState('')
   const [gmailPassword, setGmailPassword] = useState('')
-  const [wakeWordSensitivity, setWakeWordSensitivity] = useState(50)
-  const [screenWatchInterval, setScreenWatchInterval] = useState('30')
-  const [voiceModel, setVoiceModel] = useState('base')
-  const [theme, setTheme] = useState('light')
+  const [emailTest, setEmailTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
+  const [emailTestMsg, setEmailTestMsg] = useState('')
+
+  const [secureStorage, setSecureStorage] = useState<boolean | null>(null)
+
+  // Capability permissions. The planner enforces these server-side.
+  const [allowFiles, setAllowFiles] = useState(true)
+  const [allowApps, setAllowApps] = useState(true)
+  const [allowEmail, setAllowEmail] = useState(true)
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
-  const [playwrightInstalled, setPlaywrightInstalled] = useState<boolean | null>(null)
-
-  // Local state for social connection status (persisted via localStorage)
-  const [socialConnected, setSocialConnected] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('torch_social_connected') || '{}')
-    } catch {
-      return {}
-    }
-  })
+  const [browserAutomation, setBrowserAutomation] = useState<{
+    playwrightInstalled: boolean
+    chromiumInstalled: boolean
+    ready: boolean
+    message: string
+  } | null>(null)
 
   useEffect(() => {
-    const loadSystemCheck = (retries = 5) => {
-      fetch(`${API_BASE}/api/system-check`)
+    const loadSystemCheck = (retries = 5): void => {
+      torchFetch(`${API_BASE}/api/system-check`)
         .then((r) => {
           if (!r.ok) throw new Error()
           return r.json()
         })
-        .then((data) => setPlaywrightInstalled(data.playwright_installed))
+        .then((data) =>
+          setBrowserAutomation({
+            playwrightInstalled: Boolean(data.playwright_installed),
+            chromiumInstalled: Boolean(data.chromium_installed),
+            ready: Boolean(data.browser_automation_ready),
+            message: String(data.message || 'Browser automation is not ready.')
+          })
+        )
         .catch(() => {
           if (retries > 0) {
             setTimeout(() => loadSystemCheck(retries - 1), 1000)
           } else {
-            setPlaywrightInstalled(null)
+            setBrowserAutomation(null)
           }
         })
     }
 
-    const loadSettings = (retries = 5) => {
-      fetch(`${API_BASE}/api/settings`)
+    // Surfaced so a user is never told their keys are encrypted when the OS
+    // keystore is unavailable and they are not.
+    void window.torchAPI?.getPreferences().then((prefs) => {
+      setLaunchOnLogin(prefs.launchOnLogin)
+      setMinimizeToTray(prefs.minimizeToTray)
+    })
+
+    void window.torchAPI
+      ?.getCredentialStatus()
+      .then((status) => setSecureStorage(status.encryptionAvailable))
+      .catch(() => setSecureStorage(null))
+
+    const loadSettings = (retries = 5): void => {
+      torchFetch(`${API_BASE}/api/settings`)
         .then((r) => {
           if (!r.ok) throw new Error()
           return r.json()
@@ -107,9 +125,9 @@ export function Settings(): JSX.Element {
           if (data.gemini_configured) setGeminiKey('********')
           setGmailAddress(data.gmail_address || '')
           if (data.gmail_password_set) setGmailPassword('********')
-          setWakeWordSensitivity(data.wake_word_sensitivity * 100 || 50)
-          setScreenWatchInterval(data.screen_watch_interval?.toString() || '30')
-          setVoiceModel(data.whisper_model_size || 'base')
+          setAllowFiles(data.allow_files !== false)
+          setAllowApps(data.allow_apps !== false)
+          setAllowEmail(data.allow_email !== false)
         })
         .catch(() => {
           if (retries > 0) {
@@ -122,35 +140,109 @@ export function Settings(): JSX.Element {
     loadSettings()
   }, [])
 
-  const handleSocialLogin = (key: string, url: string): void => {
+  // Opens the site in the user's own browser. TORCH has no visibility into
+  // that session, so it cannot claim the account is connected.
+  const handleSocialLogin = (_key: string, url: string): void => {
     window.torchAPI?.openExternal(url)
-    const updated = { ...socialConnected, [key]: true }
-    setSocialConnected(updated)
-    localStorage.setItem('torch_social_connected', JSON.stringify(updated))
+  }
+
+  const handleTestEmail = async (): Promise<void> => {
+    setEmailTest('testing')
+    setEmailTestMsg('')
+    try {
+      const res = await torchFetch(`${API_BASE}/api/email/test`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setEmailTest('ok')
+        setEmailTestMsg(data.message || 'Gmail connection works.')
+      } else {
+        setEmailTest('fail')
+        setEmailTestMsg(data.detail || 'Gmail sign-in failed.')
+      }
+    } catch {
+      setEmailTest('fail')
+      setEmailTestMsg('Could not reach the TORCH backend.')
+    }
+  }
+
+  const [dataMessage, setDataMessage] = useState<string | null>(null)
+
+  /** Forget learned patterns. Task history is kept — that is a separate action. */
+  const handleClearMemory = async (): Promise<void> => {
+    if (!confirm('Forget the habits, contacts and file patterns TORCH has learned?')) return
+    try {
+      const res = await torchFetch(`${API_BASE}/api/memory`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      setDataMessage(
+        `Cleared ${data.removed ?? 0} learned record(s). Your task history is untouched.`
+      )
+    } catch {
+      setDataMessage("Couldn't clear that just now. Check that TORCH is running.")
+    }
+  }
+
+  /** Save the task history to a file the user chooses. */
+  const handleExportHistory = async (): Promise<void> => {
+    try {
+      const res = await torchFetch(`${API_BASE}/api/history`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `torch-history-${new Date().toISOString().slice(0, 10)}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+      setDataMessage('History downloaded.')
+    } catch {
+      setDataMessage("Couldn't export your history just now.")
+    }
+  }
+
+  const handleResetHabits = async (): Promise<void> => {
+    if (!confirm('Reset everything TORCH has learned about which commands you use most?')) return
+    try {
+      const res = await torchFetch(`${API_BASE}/api/habits`, { method: 'DELETE' })
+      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      setDataMessage(`Reset ${data.removed ?? 0} habit record(s).`)
+    } catch {
+      setDataMessage("Couldn't reset habits just now.")
+    }
   }
 
   const handleSave = async (): Promise<void> => {
     try {
       const payload: Record<string, unknown> = {
         gmail_address: gmailAddress,
-        wake_word_sensitivity: wakeWordSensitivity / 100,
-        screen_watch_interval: screenWatchInterval === 'off' ? 0 : Number(screenWatchInterval),
-        whisper_model_size: voiceModel
+        allow_files: allowFiles,
+        allow_apps: allowApps,
+        allow_email: allowEmail
       }
 
-      if (geminiKey && geminiKey !== '********') {
-        payload.gemini_api_key = geminiKey
-      }
-      if (gmailPassword && gmailPassword !== '********') {
-        payload.gmail_app_password = gmailPassword
-      }
-
-      const res = await fetch(`${API_BASE}/api/settings`, {
+      const res = await torchFetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
       if (!res.ok) throw new Error('Save failed')
+
+      // Secrets go to the OS keystore through the main process, not into .env.
+      // '********' means the field was left untouched.
+      const secrets: Record<string, string> = {}
+      if (geminiKey && geminiKey !== '********') secrets.gemini_api_key = geminiKey
+      if (gmailPassword && gmailPassword !== '********') {
+        secrets.gmail_app_password = gmailPassword
+      }
+      if (Object.keys(secrets).length > 0) {
+        const stored = await window.torchAPI?.setCredentials(secrets)
+        if (stored && !stored.ok) {
+          alert(stored.reason || 'Could not save your credentials securely.')
+          return
+        }
+      }
 
       if (geminiKey) {
         useTorchStore.getState().setShowSettingsKeyBanner(false)
@@ -166,29 +258,6 @@ export function Settings(): JSX.Element {
       alert('Failed to save. Make sure TORCH is running and the backend is online.')
     }
   }
-
-  const SegmentButton = ({
-    options,
-    value,
-    onChange
-  }: {
-    options: { value: string; label: string }[]
-    value: string
-    onChange: (v: string) => void
-  }): JSX.Element => (
-    <div className="segment-control">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`segment-control__btn ${value === opt.value ? 'active' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
 
   return (
     <div className="page-shell page-enter">
@@ -221,6 +290,11 @@ export function Settings(): JSX.Element {
                   <Key size={13} className="text-[var(--color-torch-text-tertiary)]" />
                   <span className="t-label">API CONFIGURATION</span>
                 </div>
+                <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
+                  {secureStorage === false
+                    ? "This computer has no secure storage available, so TORCH can't encrypt your keys here. They won't be saved."
+                    : 'Keys are encrypted by your operating system and never stored in plain text.'}
+                </p>
                 <SettingRow
                   label="AI Connection Key"
                   description="Powers all AI reasoning — get your key to start"
@@ -269,6 +343,29 @@ export function Settings(): JSX.Element {
                     className="w-[300px] text-[12px]"
                   />
                 </SettingRow>
+                <SettingRow
+                  label="Connection"
+                  description="Spaces in the password are removed automatically when saving"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn-secondary text-[11px] px-3 py-1.5"
+                      onClick={() => void handleTestEmail()}
+                      disabled={emailTest === 'testing'}
+                    >
+                      {emailTest === 'testing' ? 'Testing…' : 'Test connection'}
+                    </button>
+                    {emailTest === 'ok' && (
+                      <span className="badge-success px-2.5 py-1 text-[11px]">{emailTestMsg}</span>
+                    )}
+                    {emailTest === 'fail' && (
+                      <span className="badge-error px-2.5 py-1 text-[11px] max-w-[320px]">
+                        {emailTestMsg}
+                      </span>
+                    )}
+                  </div>
+                </SettingRow>
               </div>
 
               {/* Social Accounts */}
@@ -278,56 +375,47 @@ export function Settings(): JSX.Element {
                   <span className="t-label">CONNECTED ACCOUNTS</span>
                 </div>
                 <p className="text-[12px] text-[var(--color-torch-text-secondary)] mb-5 leading-relaxed">
-                  TORCH uses browser automation to post — no API keys needed. Just make sure you are
-                  logged into these platforms in your browser.
+                  TORCH can open these sites with a message ready for you, but it cannot post or
+                  send on your behalf — you publish it yourself.
                 </p>
 
-                {SOCIAL_PLATFORMS.map((platform) => {
-                  const connected = socialConnected[platform.key] || false
-                  return (
-                    <div key={platform.key} className="setting-row">
-                      <div>
-                        <div className="setting-row__label">{platform.name}</div>
-                        <div className="setting-row__desc font-mono">Login-based access</div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleSocialLogin(platform.key, platform.url)}
-                          className="btn-secondary text-[10px] px-3 py-1.5"
-                        >
-                          Open & login
-                        </button>
-                        <div className="pill-count flex items-center gap-1.5">
-                          <span
-                            className={`topbar-dot ${connected ? 'topbar-dot--live' : ''}`}
-                            style={{ width: 6, height: 6 }}
-                          />
-                          {connected ? 'connected' : 'not verified'}
-                        </div>
-                      </div>
+                {SOCIAL_PLATFORMS.map((platform) => (
+                  <div key={platform.key} className="setting-row">
+                    <div>
+                      <div className="setting-row__label">{platform.name}</div>
+                      <div className="setting-row__desc font-mono">Opens in your browser</div>
                     </div>
-                  )
-                })}
+                    <button
+                      type="button"
+                      onClick={() => handleSocialLogin(platform.key, platform.url)}
+                      className="btn-secondary text-[10px] px-3 py-1.5"
+                    >
+                      Open site
+                    </button>
+                  </div>
+                ))}
 
                 {/* Playwright status */}
                 <div className="mt-4 p-4 card">
-                  {playwrightInstalled === true ? (
+                  {browserAutomation?.ready ? (
                     <div className="flex items-center gap-2">
                       <span className="topbar-dot topbar-dot--live" />
-                      <p className="t-mono-xs">Playwright installed — browser automation ready</p>
+                      <p className="t-mono-xs">Browser automation ready</p>
                     </div>
-                  ) : playwrightInstalled === false ? (
+                  ) : browserAutomation ? (
                     <>
                       <p className="t-mono-xs" style={{ color: 'var(--color-torch-error)' }}>
-                        Playwright not installed — run in terminal:
+                        {browserAutomation.message}
                       </p>
-                      <p className="t-mono-xs mt-1.5">playwright install chromium</p>
+                      <p className="t-mono-xs mt-1.5">
+                        {browserAutomation.playwrightInstalled
+                          ? 'playwright install chromium'
+                          : 'pip install playwright && playwright install chromium'}
+                      </p>
                     </>
                   ) : (
                     <>
-                      <p className="t-mono-xs">Playwright required — run in terminal:</p>
-                      <p className="t-mono-xs mt-1.5">playwright install chromium</p>
+                      <p className="t-mono-xs">Checking browser automation…</p>
                     </>
                   )}
                 </div>
@@ -348,77 +436,28 @@ export function Settings(): JSX.Element {
           {activeTab === 'preferences' && (
             <>
               {/* Voice */}
+              {/* Permissions — enforced by the planner, not cosmetic */}
               <div>
                 <div className="flex items-center gap-2.5 mb-4">
-                  <Mic size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">VOICE SETTINGS</span>
+                  <Power size={13} className="text-[var(--color-torch-text-tertiary)]" />
+                  <span className="t-label">WHAT TORCH CAN DO</span>
                 </div>
-                <SettingRow label="Wake Word Sensitivity">
-                  <span className="t-mono-xs text-[#555] w-10 text-right">
-                    {wakeWordSensitivity}%
-                  </span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={wakeWordSensitivity}
-                    onChange={(e) => setWakeWordSensitivity(Number(e.target.value))}
-                    className="w-[200px] accent-white"
-                  />
+                <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
+                  Switching one off stops TORCH using those tools at all — it will say so instead of
+                  trying.
+                </p>
+                <SettingRow label="Find and open your files">
+                  <ToggleSwitch checked={allowFiles} onChange={() => setAllowFiles(!allowFiles)} />
                 </SettingRow>
-                <SettingRow
-                  label="Voice Model Size"
-                  description="Larger = more accurate but slower"
-                >
-                  <SegmentButton
-                    options={[
-                      { value: 'tiny', label: 'TINY' },
-                      { value: 'base', label: 'BASE' },
-                      { value: 'small', label: 'SMALL' }
-                    ]}
-                    value={voiceModel}
-                    onChange={setVoiceModel}
-                  />
+                <SettingRow label="Open apps and run commands">
+                  <ToggleSwitch checked={allowApps} onChange={() => setAllowApps(!allowApps)} />
+                </SettingRow>
+                <SettingRow label="Read and send your email">
+                  <ToggleSwitch checked={allowEmail} onChange={() => setAllowEmail(!allowEmail)} />
                 </SettingRow>
               </div>
 
-              {/* Screen Watch */}
-              <div>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <Monitor size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">SCREEN WATCH</span>
-                </div>
-                <SettingRow label="Capture Interval">
-                  <SegmentButton
-                    options={[
-                      { value: '15', label: '15S' },
-                      { value: '30', label: '30S' },
-                      { value: '60', label: '60S' },
-                      { value: 'off', label: 'OFF' }
-                    ]}
-                    value={screenWatchInterval}
-                    onChange={setScreenWatchInterval}
-                  />
-                </SettingRow>
-              </div>
-
-              {/* Appearance */}
-              <div>
-                <div className="flex items-center gap-2.5 mb-4">
-                  <Palette size={13} className="text-[var(--color-torch-text-tertiary)]" />
-                  <span className="t-label">APPEARANCE</span>
-                </div>
-                <SettingRow label="Theme">
-                  <SegmentButton
-                    options={[
-                      { value: 'dark', label: 'DARK' },
-                      { value: 'light', label: 'LIGHT' }
-                    ]}
-                    value={theme}
-                    onChange={setTheme}
-                  />
-                </SettingRow>
-              </div>
+              <VoiceSection />
 
               {/* Startup */}
               <div>
@@ -429,13 +468,24 @@ export function Settings(): JSX.Element {
                 <SettingRow label="Launch on login">
                   <ToggleSwitch
                     checked={launchOnLogin}
-                    onChange={() => setLaunchOnLogin(!launchOnLogin)}
+                    onChange={() => {
+                      const next = !launchOnLogin
+                      setLaunchOnLogin(next)
+                      void window.torchAPI?.setPreferences({ launchOnLogin: next })
+                    }}
                   />
                 </SettingRow>
-                <SettingRow label="Minimize to tray">
+                <SettingRow
+                  label="Minimize to tray"
+                  description="Off minimizes to the taskbar instead"
+                >
                   <ToggleSwitch
                     checked={minimizeToTray}
-                    onChange={() => setMinimizeToTray(!minimizeToTray)}
+                    onChange={() => {
+                      const next = !minimizeToTray
+                      setMinimizeToTray(next)
+                      void window.torchAPI?.setPreferences({ minimizeToTray: next })
+                    }}
                   />
                 </SettingRow>
               </div>
@@ -447,10 +497,33 @@ export function Settings(): JSX.Element {
                   <span className="t-label">DATA MANAGEMENT</span>
                 </div>
                 <div className="flex gap-3 font-mono">
-                  <button className="btn-secondary text-[10px]">Clear memory</button>
-                  <button className="btn-secondary text-[10px]">Export history</button>
-                  <button className="btn-danger text-[10px]">Reset all habits</button>
+                  <button
+                    type="button"
+                    className="btn-secondary text-[10px]"
+                    onClick={() => void handleClearMemory()}
+                  >
+                    Clear memory
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary text-[10px]"
+                    onClick={() => void handleExportHistory()}
+                  >
+                    Export history
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger text-[10px]"
+                    onClick={() => void handleResetHabits()}
+                  >
+                    Reset all habits
+                  </button>
                 </div>
+                {dataMessage && (
+                  <p className="text-[11px] text-[var(--color-torch-text-secondary)] mt-3">
+                    {dataMessage}
+                  </p>
+                )}
               </div>
 
               {/* Developer Tools */}

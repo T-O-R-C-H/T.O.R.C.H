@@ -1,4 +1,4 @@
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 let activeUtterance: SpeechSynthesisUtterance | null = null
 let activeAudio: HTMLAudioElement | null = null
@@ -23,6 +23,30 @@ export function selectPreferredVoice(voices: SpeechSynthesisVoice[]): SpeechSynt
   return englishVoices.find((voice) => voice.localService) ?? englishVoices[0] ?? voices[0] ?? null
 }
 
+/** Longest utterance worth speaking. Beyond this it stops being a recap. */
+export const MAX_SPOKEN_CHARS = 240
+
+/**
+ * Reduce a recap to the part worth hearing.
+ *
+ * Some recaps carry a tool's raw result — a moved file's full path, a
+ * command's output, a directory listing. Reading those aloud is the same
+ * mistake as reading a step list: the screen is the right place for detail,
+ * and the voice is for the outcome.
+ */
+export function spokenForm(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  if (!flat) return ''
+  if (flat.length <= MAX_SPOKEN_CHARS) return flat
+
+  // Prefer a clean sentence boundary before falling back to a hard cut.
+  const firstSentence = flat.match(/^.*?[.!?](\s|$)/)
+  if (firstSentence && firstSentence[0].trim().length <= MAX_SPOKEN_CHARS) {
+    return firstSentence[0].trim()
+  }
+  return `${flat.slice(0, MAX_SPOKEN_CHARS).trimEnd()}…`
+}
+
 export function stopSpeaking(): void {
   playbackGeneration += 1
   window.speechSynthesis?.cancel()
@@ -32,8 +56,13 @@ export function stopSpeaking(): void {
   activeUtterance = null
 }
 
+/** Rung two: the renderer's own speech synthesis. Always local, no setup. */
 function speakLocally(text: string, generation: number): void {
-  if (!window.speechSynthesis || !text.trim()) return
+  if (!text.trim()) return
+  if (!window.speechSynthesis) {
+    void speakViaSystemVoice(text)
+    return
+  }
 
   const speak = (): void => {
     if (generation !== playbackGeneration) return
@@ -67,21 +96,52 @@ function speakLocally(text: string, generation: number): void {
   }, 500)
 }
 
-export async function speakWithNaturalVoice(text: string): Promise<void> {
-  if (!text.trim()) return
+/**
+ * The last rung: the operating system's own voice, spoken by the backend.
+ *
+ * Only reached when Piper has no voice downloaded and this renderer has no
+ * speechSynthesis either — an unusual combination, but silently saying
+ * nothing would leave the user wondering whether the toggle works.
+ */
+async function speakViaSystemVoice(text: string): Promise<void> {
+  try {
+    await torchFetch(`${API_BASE}/api/voice/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    })
+  } catch {
+    // Nothing further to fall back to.
+  }
+}
+
+/**
+ * Speak one sentence, using the best voice available on this machine.
+ *
+ * The ladder is Piper, then the renderer's speechSynthesis, then the system
+ * voice. Every rung is local: this used to POST the text to Google's Gemini
+ * TTS endpoint, so a summary of what TORCH had just done on the user's
+ * computer left the machine before it was spoken.
+ *
+ * A 503 from the first rung is normal — it means no Piper voice has been
+ * downloaded — so falling through is the expected path, not an error.
+ */
+export async function speakWithNaturalVoice(raw: string): Promise<void> {
+  const text = spokenForm(raw)
+  if (!text) return
   stopSpeaking()
   const generation = playbackGeneration
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 7000)
 
   try {
-    const response = await fetch(`${API_BASE}/api/voice/synthesize`, {
+    const response = await torchFetch(`${API_BASE}/api/voice/synthesize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
       signal: controller.signal
     })
-    if (!response.ok) throw new Error('Neural voice unavailable')
+    if (!response.ok) throw new Error('natural-voice-unavailable')
     const audioUrl = URL.createObjectURL(await response.blob())
     if (generation !== playbackGeneration) {
       URL.revokeObjectURL(audioUrl)

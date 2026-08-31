@@ -5,7 +5,9 @@ Speech-to-text via OpenAI Whisper (local) and text-to-speech via pyttsx3.
 
 import logging
 import threading
-from typing import Optional, Callable
+from typing import Optional
+
+from errors.plain_language import UserFacingError
 
 logger = logging.getLogger("torch.tools.voice")
 
@@ -35,8 +37,39 @@ def speak(text: str) -> str:
         return f"Speech failed: {e}"
 
 
+def local_stt_available() -> bool:
+    """
+    Whether speech can be transcribed on this machine right now.
+
+    Callers use this to decide whether to offer voice at all. Offering a
+    microphone that cannot transcribe locally is how audio ends up somewhere
+    the user did not agree to send it.
+    """
+    from tools import stt
+
+    return stt.local_stt_available()
+
+
+def transcribe_audio(wav_bytes: bytes) -> str:
+    """
+    Transcribe a 16-bit PCM WAV entirely on this machine.
+
+    There is deliberately no cloud fallback. Failing here is the honest
+    outcome: it is reported plainly and the user can choose to download the
+    local model.
+    """
+    from tools import stt
+
+    return stt.transcribe(wav_bytes)
+
+
 def listen(duration: int = 5) -> str:
-    """Listen for speech and transcribe using Whisper (SpeechRecognition)."""
+    """
+    Capture one turn from the system microphone and transcribe it locally.
+
+    Kept for the companion voice path. The renderer captures its own audio
+    (so it can show a real level meter) and calls transcribe_audio instead.
+    """
     try:
         import speech_recognition as sr
 
@@ -46,80 +79,33 @@ def listen(duration: int = 5) -> str:
             logger.info("Listening for speech...")
             audio = recognizer.listen(source, timeout=duration, phrase_time_limit=15)
 
-        # Use Whisper for transcription (local, free)
+        if not local_stt_available():
+            return "Listen failed: the offline speech model isn't installed."
+
         try:
-            text = recognizer.recognize_whisper(audio, model="base", language="english")
-            logger.info(f"Transcribed: {text}")
+            from config.settings import settings
+
+            text = recognizer.recognize_whisper(
+                audio, model=settings.whisper_model_size or "base", language="english"
+            )
+            logger.info("Transcribed one voice turn")
             return text
         except sr.UnknownValueError:
             return ""
-        except Exception:
-            # Fallback to Google Web Speech API
-            try:
-                text = recognizer.recognize_google(audio)
-                return text
-            except:
-                return ""
 
     except Exception as e:
         logger.error(f"Listen failed: {e}")
         return f"Listen failed: {e}"
 
 
-class WakeWordDetector:
-    """Background wake word detection for 'Hey TORCH'."""
-
-    def __init__(self, callback: Optional[Callable] = None):
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        self._callback = callback
-
-    def start(self) -> None:
-        """Start wake word detection in background thread."""
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
-        self._thread.start()
-        logger.info("Wake word detection started")
-
-    def stop(self) -> None:
-        """Stop wake word detection."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=2)
-        logger.info("Wake word detection stopped")
-
-    def _listen_loop(self) -> None:
-        """Continuous listening loop for wake word."""
-        try:
-            import speech_recognition as sr
-
-            recognizer = sr.Recognizer()
-            recognizer.energy_threshold = 300
-            recognizer.dynamic_energy_threshold = True
-
-            with sr.Microphone() as source:
-                recognizer.adjust_for_ambient_noise(source, duration=1)
-
-                while self._running:
-                    try:
-                        audio = recognizer.listen(source, timeout=2, phrase_time_limit=3)
-                        try:
-                            text = recognizer.recognize_google(audio).lower()
-                            if "hey torch" in text or "torch" in text:
-                                logger.info(f"Wake word detected: '{text}'")
-                                if self._callback:
-                                    self._callback()
-                        except sr.UnknownValueError:
-                            pass
-                        except sr.RequestError:
-                            pass
-                    except sr.WaitTimeoutError:
-                        continue
-                    except Exception as e:
-                        logger.error(f"Wake word loop error: {e}")
-                        continue
-
-        except Exception as e:
-            logger.error(f"Wake word detector failed to start: {e}")
+# Wake word is deliberately not implemented.
+#
+# The previous WakeWordDetector held the microphone open continuously and sent
+# every captured phrase to Google's Web Speech API to check whether it was the
+# wake word — so an always-listening feature streamed the room to a third
+# party. It was never instantiated anywhere, so nothing used it, but leaving
+# it in the module meant one wire-up away from shipping that.
+#
+# Bringing it back needs an engine that matches the phrase entirely on this
+# machine (openWakeWord, Porcupine, Vosk). Until one is chosen and packaged,
+# there is no wake word rather than a wake word that uploads audio.

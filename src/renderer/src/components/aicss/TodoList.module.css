@@ -1,0 +1,326 @@
+.todo {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #1a1a1a;
+  border-radius: 8px;
+  padding: 6px 0 12px;
+}
+.todoHead {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #1a1a1a;
+  font-size: 13px;
+  min-height: 22px;
+}
+.todoHeadIcon {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: #a1a1a1;
+}
+.todoListIcon,
+.todoChevron,
+.todoHeadCheck {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity 140ms ease;
+}
+.todoListIcon,
+.todoChevron {
+  width: 13px;
+  height: 13px;
+}
+.todoHeadCheck {
+  width: 16px;
+  height: 16px;
+  color: #15a06a;
+}
+.todoChevron {
+  opacity: 0;
+  transition:
+    opacity 140ms ease,
+    transform 220ms ease;
+}
+.todoHead[aria-expanded='false'] .todoChevron {
+  transform: rotate(-90deg);
+}
+.todoHead:hover .todoListIcon,
+.todoHead:hover .todoHeadPie,
+.todoHead:hover .todoHeadCheck {
+  opacity: 0;
+}
+.todoHead:hover .todoChevron {
+  opacity: 1;
+}
+.todoTitle {
+  font-weight: 500;
+}
+.todoCount {
+  margin-left: auto;
+  color: #a1a1a1;
+  font-variant-numeric: tabular-nums;
+}
+.todoCollapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 280ms ease,
+    opacity 200ms ease;
+}
+.todoCollapsible.isCollapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+.todoInner {
+  min-height: 0;
+  overflow: hidden;
+}
+.todoThinking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 0 0 0;
+  font-size: 12px;
+  font-weight: 450;
+  letter-spacing: 0.01em;
+  color: #1a1a1a;
+  animation: todo-item-in 360ms ease backwards;
+}
+.todoThinkingDot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: #1a1a1a;
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.12);
+  animation: todo-think-pulse 1.4s ease-in-out infinite;
+}
+@keyframes todo-think-pulse {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+.todoList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0 0;
+}
+.todoItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  line-height: 18px;
+  color: #a1a1a1;
+  animation: todo-item-in 360ms ease backwards;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+@keyframes todo-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(-7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.todoIconWrap {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
+}
+.todoIcon {
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  color: #a1a1a1;
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+.todoIcon.on {
+  opacity: 1;
+}
+.todoIcon.strong {
+  color: #1a1a1a;
+}
+.todoLabel {
+  position: relative;
+  font-weight: 400;
+  color: #a1a1a1;
+  transition: color 360ms ease;
+}
+.todoLabel::before {
+  content: attr(data-label);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 0%,
+    #1a1a1a 30%,
+    rgba(26, 26, 26, 0.45) 45%,
+    rgba(26, 26, 26, 0.45) 55%,
+    #1a1a1a 70%,
+    #1a1a1a 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+  transition: opacity 360ms ease;
+  pointer-events: none;
+}
+.todoItem.active .todoLabel {
+  color: transparent;
+}
+.todoItem.active .todoLabel::before {
+  opacity: 1;
+  animation: todo-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+.todoItem.done .todoLabel {
+  color: #a1a1a1;
+  text-decoration: line-through;
+}
+.todoItem.failed .todoLabel {
+  color: #dc2626;
+}
+.todoItem.failed .todoLabel::before {
+  display: none;
+}
+@keyframes todo-shine {
+  0%,
+  18% {
+    background-position: 100% 0;
+  }
+  82%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+@property --todo-pie {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 0%;
+}
+.todoHeadPie {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  color: #1a1a1a;
+  transition:
+    opacity 140ms ease,
+    --todo-pie 400ms ease;
+}
+.todoHeadPieRing {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: #a1a1a1;
+}
+.todoHeadPie::after {
+  content: '';
+  position: absolute;
+  inset: 2.6px;
+  border-radius: 50%;
+  background: conic-gradient(currentColor var(--todo-pie, 0%), transparent 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .todoItem {
+    animation: none;
+  }
+  .todoIcon,
+  .todoLabel,
+  .todoLabel::before {
+    transition: none;
+  }
+  .todoItem.active .todoLabel::before {
+    animation: none;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .todo {
+    color: #f5f5f5;
+  }
+  .todoThinking {
+    color: #f5f5f5;
+  }
+  .todoThinkingDot {
+    background: #f5f5f5;
+    box-shadow: 0 0 0 3px rgba(245, 245, 245, 0.14);
+  }
+  .todoHead {
+    color: #f5f5f5;
+  }
+  .todoHeadCheck {
+    color: #34d399;
+  }
+  .todoHeadIcon {
+    color: #737373;
+  }
+  .todoCount {
+    color: #737373;
+  }
+  .todoHeadPieRing {
+    color: #737373;
+  }
+  .todoItem {
+    color: #737373;
+  }
+  .todoIcon {
+    color: #737373;
+  }
+  .todoLabel {
+    color: #737373;
+  }
+  .todoHeadPie {
+    color: #f5f5f5;
+  }
+  .todoIcon.strong {
+    color: #f5f5f5;
+  }
+  .todoItem.failed .todoLabel {
+    color: #f87171;
+  }
+  .todoLabel::before {
+    background: linear-gradient(
+      90deg,
+      #f5f5f5 0%,
+      #f5f5f5 30%,
+      rgba(245, 245, 245, 0.45) 45%,
+      rgba(245, 245, 245, 0.45) 55%,
+      #f5f5f5 70%,
+      #f5f5f5 100%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+}

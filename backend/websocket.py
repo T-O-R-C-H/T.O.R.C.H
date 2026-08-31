@@ -44,6 +44,9 @@ class ConnectionManager:
         if ws:
             try:
                 await ws.send_json(data)
+            except (ConnectionResetError, RuntimeError):
+                logger.info(f"Client {client_id} disconnected during send")
+                await self.disconnect(client_id)
             except Exception as e:
                 logger.error(f"Failed to send message to {client_id}: {e}")
                 await self.disconnect(client_id)
@@ -54,6 +57,8 @@ class ConnectionManager:
         for client_id, ws in self.active_connections.items():
             try:
                 await ws.send_json(data)
+            except (ConnectionResetError, RuntimeError):
+                disconnected.append(client_id)
             except Exception:
                 disconnected.append(client_id)
         for cid in disconnected:

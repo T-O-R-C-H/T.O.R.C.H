@@ -91,9 +91,65 @@ const torchAPI = {
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
+  getReportInfo: (): Promise<{ appVersion: string; electron: string; os: string }> =>
+    ipcRenderer.invoke('system:reportInfo'),
 
   // Desktop context
   getDesktopContext: (): Promise<DesktopContext> => ipcRenderer.invoke('context:getDesktop'),
+
+  // Backend session token — required on every REST call and the WS handshake
+  getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
+
+  // Command pill and task panel
+  setPillFocused: (focused: boolean): void => ipcRenderer.send('pill:setFocused', focused),
+  hidePill: (): void => ipcRenderer.send('pill:hide'),
+  showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
+  hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
+  getVoiceShortcut: (): Promise<string> => ipcRenderer.invoke('shortcuts:voice'),
+
+  // Overlay companion
+  showCompanion: (): void => ipcRenderer.send('companion:show'),
+  hideCompanion: (): void => ipcRenderer.send('companion:hide'),
+  toggleCompanion: (): void => ipcRenderer.send('companion:toggle'),
+  onCompanionAnimateIn: (callback: () => void): void => {
+    ipcRenderer.on('companion:animate-in', callback)
+  },
+  onCompanionAnimateOut: (callback: () => void): void => {
+    ipcRenderer.on('companion:animate-out', callback)
+  },
+  onPillActivate: (callback: (payload: { voice: boolean }) => void): void => {
+    ipcRenderer.on('pill:activate', (_event, payload) => callback(payload ?? { voice: false }))
+  },
+
+  // Desktop preferences only Electron can act on
+  getPreferences: (): Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }> =>
+    ipcRenderer.invoke('prefs:get'),
+  setPreferences: (
+    prefs: Partial<{ launchOnLogin: boolean; minimizeToTray: boolean }>
+  ): Promise<{ launchOnLogin: boolean; minimizeToTray: boolean }> =>
+    ipcRenderer.invoke('prefs:set', prefs),
+
+  // Updates — downloaded in the background, installed only when the user asks
+  onUpdateReady: (callback: (info: { version: string }) => void): void => {
+    ipcRenderer.on('update:ready', (_e, info) => callback(info))
+  },
+  installUpdate: (): void => ipcRenderer.send('update:install'),
+
+  // Credentials — encrypted by the main process, never sent to the backend
+  // from here and never read back in plaintext.
+  getCredentialStatus: (): Promise<{
+    encryptionAvailable: boolean
+    stored: Record<string, boolean>
+  }> => ipcRenderer.invoke('credentials:status'),
+  setCredentials: (updates: Record<string, string>): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke('credentials:set', updates),
+
+  // Backend readiness — the renderer holds its first requests until 'ready'
+  getBackendPhase: (): Promise<'starting' | 'ready' | 'failed'> =>
+    ipcRenderer.invoke('backend:getPhase'),
+  onBackendPhase: (callback: (phase: 'starting' | 'ready' | 'failed') => void): void => {
+    ipcRenderer.on('backend:phase', (_e, phase) => callback(phase))
+  },
 
   // Backend health
   getBackendHealth: (): Promise<BackendHealth> => ipcRenderer.invoke('backend:getHealth'),

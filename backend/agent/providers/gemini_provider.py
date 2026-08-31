@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re
 from typing import List, Dict, Any, Optional
 from google import genai
 from config.settings import settings
@@ -18,7 +19,7 @@ AVAILABLE_TOOLS = [
     {"name": "read_word", "description": "Extract text content from a Word document", "params": ["filepath"]},
     {"name": "read_excel", "description": "Extract data from an Excel spreadsheet", "params": ["filepath"]},
     {"name": "send_email", "description": "Send an email via Gmail SMTP", "params": ["to", "subject", "body", "attachment"], "hitl": True},
-    {"name": "read_inbox", "description": "Read recent emails from Gmail inbox", "params": ["count"]},
+    {"name": "read_inbox", "description": "Read recent emails from Gmail inbox. When the user asks about a specific topic, keyword, or sender, pass it as 'query' so only matching emails are returned.", "params": ["count", "query"]},
     {"name": "open_browser", "description": "Open a URL in a browser", "params": ["url"]},
     {"name": "click", "description": "Click at a screen position", "params": ["x", "y"]},
     {"name": "type_text", "description": "Type text using keyboard", "params": ["text"]},
@@ -28,8 +29,11 @@ AVAILABLE_TOOLS = [
     {"name": "download_file", "description": "Download a file from a URL", "params": ["url", "path"], "hitl": True},
     {"name": "open_app", "description": "Open an application by name", "params": ["name"]},
     {"name": "vision_control", "description": "Visually control any application by clicking, typing, scrolling, and navigating", "params": ["task"]},
-    {"name": "post_social", "description": "Post content to a social media platform", "params": ["platform", "message", "image"], "hitl": True},
-    {"name": "send_message", "description": "Send a message on a messaging platform", "params": ["platform", "contact", "message"], "hitl": True},
+    {"name": "describe_screen", "description": "List the buttons and text boxes on the focused window by name. Fast and exact - prefer this over vision_control for desktop apps.", "params": ["window_title"]},
+    {"name": "click_element", "description": "Click a button or menu item by its visible name. Always pass window_title from describe_screen so the click lands in the right app.", "params": ["name", "window_title"]},
+    {"name": "type_into", "description": "Type text into a named text box. Always pass window_title from describe_screen.", "params": ["name", "text", "window_title"]},
+    {"name": "post_social", "description": "Open a social media site with a message ready for the user to post themselves. Does NOT publish anything.", "params": ["platform", "message", "image"], "hitl": True},
+    {"name": "send_message", "description": "Open a messaging app with a message ready for the user to send themselves. Does NOT send anything.", "params": ["platform", "contact", "message"], "hitl": True},
     {"name": "run_terminal", "description": "Run a terminal/command-line command", "params": ["command"]},
     {"name": "move_file", "description": "Move a file from one location to another", "params": ["src", "dst"]},
     {"name": "delete_file", "description": "Delete a file (irreversible)", "params": ["filepath"], "hitl": True},
@@ -65,8 +69,8 @@ Available tools:
 ━━━ CRITICAL APPROVAL RULES ━━━
 requires_approval: true MUST ONLY be set for these exact 6 tools:
   - send_email    (sends a real email — cannot be undone)
-  - post_social   (posts publicly on social media — cannot be undone)
-  - send_message  (sends a message to a real person — cannot be undone)
+  - post_social   (opens a social site with the message ready; the user posts it)
+  - send_message  (opens a messaging app with the message ready; the user sends it)
   - delete_file   (permanently deletes a file — cannot be undone)
   - download_file (downloads a file from internet)
   - run_terminal  (runs a system command)
@@ -105,6 +109,16 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - To open VS Code with a folder: find_file or list_directory first, then run_terminal with: code "FULL_PATH"
 - Do not use respond to ask for a path if you can search for it with find_file or list_directory.
 
+━━━ SCREEN CONTROL: PREFER UI AUTOMATION ━━━
+For desktop applications, use describe_screen first, then click_element / type_into.
+Pass the window name that describe_screen reports as window_title on every click
+and type. Without it TORCH acts on whatever happens to be focused when the step
+runs, which may not be the app the user meant.
+They read the app's accessibility tree, so they target controls by name and take
+milliseconds. vision_control looks at pixels and takes minutes on machines
+without a graphics card, so use it only when the other tools report no readable
+controls (some games, canvas apps and remote desktops).
+
 - Use vision_control for application interactions that require visual clicking, typing, scrolling, or navigation.
 - search_web is background-only. If the user explicitly says Chrome, Google, Edge, Firefox, or
   "the browser", do not substitute search_web. Open the named browser with open_app and then use
@@ -112,10 +126,41 @@ block if provided. Never guess. If Gmail is NOT CONNECTED, say the user must add
 - For Spotify requests, first open Chrome with open_app, then use vision_control to navigate to
   open.spotify.com, search for the requested song and artist, and play it.
 
+━━━ ONLINE ORDERING ━━━
+- For "order X", "buy X online", or "go online and order X": open Chrome with open_app, then use
+  vision_control to search for the item, open the best ordering website, and work through the menu
+  until the item is added to the cart.
+- NEVER use search_web (invisible background search) for an ordering request — the whole flow must
+  visibly happen in the browser so the user can watch.
+- Never enter personal, delivery, or payment details and never complete a checkout; vision_control
+  stops before that and lets the user finish.
+
+━━━ EMAIL WRITING ━━━
+- When the user asks to email a file (PDF, Word, etc.), include ALL steps in ONE plan:
+  find_file → read_pdf/read_word (to see the content) → send_email. Never stop after reading —
+  the email must be sent as part of the same task.
+- Write a warm, specific, professional body of 2-4 short sentences. Mention the attachment by
+  name and weave in 1-2 real details from its content. Never use generic filler like
+  "Please find attached".
+- Choose a clear, specific subject line that names the topic (e.g. "Our 1-Month Curriculum — TORCH Program").
+- Use the recipient's name and any context the user gave. Sign off briefly.
+
+━━━ ASKING QUESTIONS ━━━
+- If a key detail is genuinely missing (e.g. what to write in the email, which file, who the
+  recipient is), ask ONE short clarifying question using ONLY the 'respond' tool with a message
+  that ends with a "?" — do not guess or invent content.
+- Otherwise proceed with reasonable defaults and do the task. The user prefers action over questions.
+
 Example - play music on Spotify:
 [
   {{"tool": "open_app", "label": "Opening Chrome", "args": {{"name": "chrome"}}, "requires_approval": false}},
   {{"tool": "vision_control", "label": "Finding and playing your track on Spotify", "args": {{"task": "Navigate to open.spotify.com, search for Doja by Central Cee, and play the track"}}, "requires_approval": false}}
+]
+
+Example - order food online:
+[
+  {{"tool": "open_app", "label": "Opening Chrome", "args": {{"name": "chrome"}}, "requires_approval": false}},
+  {{"tool": "vision_control", "label": "Ordering pepperoni pizza online", "args": {{"task": "Order pepperoni pizza online. Open Google, search for exactly 'pepperoni pizza delivery', open the most suitable website that sells it, find the item, and add it to the cart. Do not complete checkout.", "browser": "chrome"}}, "requires_approval": false}}
 ]
 
 Example — create folder:
@@ -168,8 +213,12 @@ class GeminiProvider(LLMProvider):
                     {"tool": "read_pdf", "label": "Reading document", "args": {"filepath": "report.pdf"}, "requires_approval": False}
                 ]
             elif "email" in cmd or "inbox" in cmd:
+                q = ""
+                about = re.search(r"\babout\s+([A-Za-z]{3,})", cmd)
+                if about:
+                    q = about.group(1)
                 return [
-                    {"tool": "read_inbox", "label": "Checking your inbox", "args": {"count": 3}, "requires_approval": False}
+                    {"tool": "read_inbox", "label": "Checking your inbox", "args": {"count": 3, "query": q}, "requires_approval": False}
                 ]
             elif "search" in cmd or "web" in cmd:
                 return [

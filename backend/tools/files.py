@@ -7,10 +7,74 @@ import os
 import shutil
 import zipfile
 import logging
+import threading
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from config.settings import settings
+
 logger = logging.getLogger("torch.tools.files")
+
+_SKIP_DIRS = {
+    'node_modules', '__pycache__', '.git', 'venv', '.venv',
+    'Windows', 'Program Files', '$Recycle.Bin', 'AppData', 'System Volume Information',
+}
+_MAX_INDEX_ENTRIES = 20000
+
+# In-memory index cache: root -> {"built_at": float, "entries": [{path, mtime, size}]}
+_FILE_INDEX_CACHE: Dict[str, Dict[str, Any]] = {}
+_INDEX_LOCK = threading.Lock()
+
+
+def _index_ttl() -> float:
+    return max(1, int(settings.file_index_ttl_seconds))
+
+
+def _load_index_for(root: Path) -> List[Dict[str, Any]]:
+    """Return cached file metadata for a directory, rebuilding it lazily.
+
+    The first search on a root walks it once (exactly like the old code);
+    repeat searches within the TTL reuse the cached list, which keeps
+    multi-step tasks and repeated lookups fast.
+    """
+    root_str = str(root)
+    now = time.time()
+    with _INDEX_LOCK:
+        cached = _FILE_INDEX_CACHE.get(root_str)
+        if cached and (now - cached["built_at"]) < _index_ttl():
+            return cached["entries"]
+
+    entries: List[Dict[str, Any]] = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in _SKIP_DIRS]
+            for f in filenames:
+                full_path = os.path.join(dirpath, f)
+                try:
+                    st = os.stat(full_path)
+                except OSError:
+                    continue
+                entries.append({"path": full_path, "mtime": st.st_mtime, "size": st.st_size})
+                if len(entries) >= _MAX_INDEX_ENTRIES:
+                    break
+            if len(entries) >= _MAX_INDEX_ENTRIES:
+                break
+    except PermissionError:
+        pass
+
+    with _INDEX_LOCK:
+        _FILE_INDEX_CACHE[root_str] = {"built_at": now, "entries": entries}
+    return entries
+
+
+def _clear_index_for(root: Optional[Path] = None) -> None:
+    """Drop cached entries (used by tests and after destructive file ops)."""
+    with _INDEX_LOCK:
+        if root is None:
+            _FILE_INDEX_CACHE.clear()
+        else:
+            _FILE_INDEX_CACHE.pop(str(root), None)
 
 def _normalize_find_inputs(name: str, path: str) -> tuple[str, Path]:
     clean_name = str(name or "").strip()
@@ -31,29 +95,69 @@ def _normalize_find_inputs(name: str, path: str) -> tuple[str, Path]:
     return clean_name, normalized
 
 
-def find_file(name: str, path: str = "~") -> str:
-    """Recursively search for a file by name."""
+# The folders people name out loud. "Find my downloads folder" used to run a
+# recursive search for a *file* called "Downloads" and return whatever
+# happened to match — on this machine, a Download.svelte from an unrelated
+# project. These are locations, not search terms.
+KNOWN_FOLDERS = {
+    "downloads": "Downloads",
+    "download": "Downloads",
+    "documents": "Documents",
+    "document": "Documents",
+    "desktop": "Desktop",
+    "pictures": "Pictures",
+    "photos": "Pictures",
+    "music": "Music",
+    "videos": "Videos",
+    "downloads folder": "Downloads",
+    "documents folder": "Documents",
+    "desktop folder": "Desktop",
+}
+
+
+def resolve_known_folder(name: str) -> Optional[Path]:
+    """
+    The real path behind a spoken folder name, or None.
+
+    Only returns a directory that actually exists, so a machine without a
+    Pictures folder does not get a confident answer about one.
+    """
+    key = str(name or "").strip().lower()
+    key = key.removeprefix("my ").strip()
+    key = key.removesuffix(" directory").removesuffix(" folder").strip() or key
+    folder = KNOWN_FOLDERS.get(key) or KNOWN_FOLDERS.get(f"{key} folder")
+    if not folder:
+        return None
+    candidate = Path.home() / folder
+    return candidate if candidate.is_dir() else None
+
+
+def find_file(name: str, path: str = "~", limit: int = 20, recent: bool = True) -> str:
+    """Recursively search for a file by name, newest modified first.
+
+    ``limit`` caps the number of results and ``recent`` (default True) sorts
+    matches by modification time so the most recently edited file is listed
+    first — which is what most "find the latest X" requests need.
+    """
+    # A folder request is answered with the folder, not with a file search.
+    known = resolve_known_folder(name)
+    if known is not None:
+        logger.info(f"'{name}' resolved to the {known.name} folder")
+        return f"Your {known.name} folder is at {known}"
+
     name, search_path = _normalize_find_inputs(name, path)
     logger.info(f"Searching for '{name}' in {search_path}")
 
     matches = []
-    try:
-        for root, dirs, files in os.walk(search_path):
-            # Skip hidden and system directories
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
-                'node_modules', '__pycache__', '.git', 'venv', '.venv'
-            )]
-            for f in files:
-                if name.lower() in f.lower():
-                    full_path = os.path.join(root, f)
-                    size = os.path.getsize(full_path)
-                    matches.append({"path": full_path, "size": size})
-                    if len(matches) >= 20:  # Limit results
-                        break
-            if len(matches) >= 20:
-                break
-    except PermissionError:
-        pass
+    for entry in _load_index_for(search_path):
+        if name.lower() in os.path.basename(entry["path"]).lower():
+            matches.append(entry)
+
+    if recent:
+        matches.sort(key=lambda e: e["mtime"], reverse=True)
+
+    max_results = max(1, int(limit or 20))
+    matches = matches[:max_results]
 
     if not matches:
         return f"No files matching '{name}' found in {search_path}"
@@ -135,6 +239,7 @@ def move_file(src: str, dst: str) -> str:
 
     dst_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src_path), str(dst_path))
+    _clear_index_for(dst_path.parent if dst_path.parent.exists() else None)
     return f"Moved {src_path} → {dst_path}"
 
 
@@ -146,9 +251,11 @@ def delete_file(filepath: str) -> str:
 
     if path.is_dir():
         shutil.rmtree(path)
+        _clear_index_for(path.parent if path.parent.exists() else None)
         return f"Deleted directory: {path}"
     else:
         path.unlink()
+        _clear_index_for(path.parent if path.parent.exists() else None)
         return f"Deleted file: {path}"
 
 
@@ -186,7 +293,7 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f}TB"
 
 
-def find_file_fuzzy(name: str, path: str = "~") -> dict:
+def find_file_fuzzy(name: str, path: str = "~", limit: int = 3) -> dict:
     """
     Search for a file with fuzzy matching when exact match fails.
     Returns: { "found": str|None, "suggestions": list[str], "exact": bool }
@@ -195,65 +302,50 @@ def find_file_fuzzy(name: str, path: str = "~") -> dict:
     from pathlib import Path
 
     name, search_path = _normalize_find_inputs(name, path)
-    all_files = []
-    
+    entries = _load_index_for(search_path)
+
     # Clean input name
     search_name = name.lower()
     search_stem = Path(search_name).stem.lower()
 
-    try:
-        for root, dirs, files in os.walk(search_path):
-            # Skip hidden and system directories
-            dirs[:] = [d for d in dirs if not d.startswith('.') and d not in (
-                'node_modules', '__pycache__', '.git', 'venv', '.venv',
-                'Windows', 'Program Files', '$Recycle.Bin', 'AppData'
-            )]
-            for f in files:
-                full_path = os.path.join(root, f)
-                all_files.append(full_path)
-                if len(all_files) > 5000:  # Increased limit for better results
-                    break
-            if len(all_files) > 5000:
-                break
-    except PermissionError:
-        pass
-
     # 1. Check for exact substring matches first (case-insensitive)
-    exact_matches = [f for f in all_files if search_name in os.path.basename(f).lower()]
-    
+    exact_matches = [
+        e for e in entries if search_name in os.path.basename(e["path"]).lower()
+    ]
+
     if exact_matches:
-        # Sort by length to find the most "exact" one (shorter names often better matches)
-        exact_matches.sort(key=lambda x: len(os.path.basename(x)))
+        # Newest, shortest-name matches first — the most "exact" recent file.
+        exact_matches.sort(key=lambda e: (len(os.path.basename(e["path"])), -e["mtime"]))
         return {
-            "found": exact_matches[0],
-            "suggestions": exact_matches[:3],
-            "exact": True
+            "found": exact_matches[0]["path"],
+            "suggestions": [e["path"] for e in exact_matches[:limit]],
+            "exact": True,
         }
 
     # 2. Fuzzy match using difflib
     fuzzy_matches = []
-    for fpath in all_files:
-        fname = os.path.basename(fpath)
+    for entry in entries:
+        fname = os.path.basename(entry["path"])
         fstem = Path(fname).stem.lower()
-        
+
         # Compare stems (filenames without extensions)
         ratio = difflib.SequenceMatcher(None, search_stem, fstem).ratio()
-        
+
         # Also check if search_stem is a substring of fstem or vice versa
         if search_stem in fstem or fstem in search_stem:
             ratio = max(ratio, 0.8)
-            
-        if ratio > 0.6:
-            fuzzy_matches.append((ratio, fpath))
 
-    # Sort by ratio (highest first)
-    fuzzy_matches.sort(key=lambda x: x[0], reverse=True)
-    top_matches = [f for _, f in fuzzy_matches[:3]]
+        if ratio > 0.6:
+            fuzzy_matches.append((ratio, entry))
+
+    # Sort by ratio (highest first), then newest modified first
+    fuzzy_matches.sort(key=lambda x: (x[0], x[1]["mtime"]), reverse=True)
+    top_matches = [e["path"] for _, e in fuzzy_matches[:max(1, int(limit or 3))]]
 
     return {
         "found": top_matches[0] if top_matches else None,
         "suggestions": top_matches,
-        "exact": False
+        "exact": False,
     }
 
 

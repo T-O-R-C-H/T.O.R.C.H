@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
+import type { EmailSummary, InboxCache } from '../types/email'
 
 // ─── TYPES ───
 
@@ -22,6 +23,8 @@ export interface Step {
   status: StepStatus
   result?: string
   error?: string
+  /** Set when the user declined this step, so it is not reported as an error. */
+  cancelled?: boolean
   requiresApproval: boolean
 }
 
@@ -31,8 +34,11 @@ export interface Message {
   content: string
   timestamp: number
   steps?: Step[]
+  emails?: EmailSummary[]
   isTyping?: boolean
   isStreaming?: boolean
+  isNew?: boolean
+  needsAnswer?: boolean
   reversible?: boolean
   undoState?: 'available' | 'undone' | 'expired'
   undoResult?: string
@@ -68,6 +74,12 @@ export interface Skill {
   command: string
   created_at: string
   run_count: number
+}
+
+export interface TaskOutcome {
+  requestId: string
+  status: 'completed' | 'failed' | 'cancelled'
+  summary: string
 }
 
 export interface TorchState {
@@ -117,16 +129,31 @@ export interface TorchState {
   setWsPhase: (phase: 'disconnected' | 'connecting' | 'connected') => void
   hasConnectedOnce: boolean
   setHasConnectedOnce: (val: boolean) => void
+  wsLatencyMs: number | null
+  setWsLatencyMs: (ms: number | null) => void
+
+  // Voice output. Off unless the user turns it on: an assistant that starts
+  // talking on its own is startling, and can be so in a room full of people.
+  speakResponses: boolean
+  setSpeakResponses: (enabled: boolean) => void
 
   // Onboarding
   onboardingComplete: boolean
   setOnboardingComplete: (complete: boolean) => void
-  pendingLaunchCommand: string | null
-  setPendingLaunchCommand: (command: string | null) => void
+  lastTaskOutcome: TaskOutcome | null
+  setLastTaskOutcome: (outcome: TaskOutcome | null) => void
 
   // Current task count (for sidebar badge)
   activeTaskCount: number
   setActiveTaskCount: (count: number) => void
+
+  // Unread inbox count (for sidebar badge)
+  inboxUnread: number
+  setInboxUnread: (count: number) => void
+
+  // Cached inbox listing (persists across page navigation)
+  inboxCache: InboxCache | null
+  setInboxCache: (cache: InboxCache | null) => void
 
   // Demo Mode
   demoMode: boolean
@@ -223,6 +250,16 @@ export const useTorchStore = create<TorchState>((set) => ({
   setWsPhase: (phase): void => set({ wsPhase: phase }),
   hasConnectedOnce: false,
   setHasConnectedOnce: (val): void => set({ hasConnectedOnce: val }),
+  wsLatencyMs: null,
+  setWsLatencyMs: (ms): void => set({ wsLatencyMs: ms }),
+
+  // Defaults to off: the absence of the key means "not opted in", so a fresh
+  // install is silent.
+  speakResponses: localStorage.getItem('torch_speak_responses') === 'true',
+  setSpeakResponses: (enabled): void => {
+    localStorage.setItem('torch_speak_responses', String(enabled))
+    set({ speakResponses: enabled })
+  },
 
   // Onboarding
   onboardingComplete: localStorage.getItem('torch_onboarding_complete') === 'true',
@@ -230,12 +267,18 @@ export const useTorchStore = create<TorchState>((set) => ({
     localStorage.setItem('torch_onboarding_complete', String(complete))
     set({ onboardingComplete: complete })
   },
-  pendingLaunchCommand: null,
-  setPendingLaunchCommand: (command): void => set({ pendingLaunchCommand: command }),
+  lastTaskOutcome: null,
+  setLastTaskOutcome: (outcome): void => set({ lastTaskOutcome: outcome }),
 
   // Tasks
   activeTaskCount: 0,
   setActiveTaskCount: (count): void => set({ activeTaskCount: count }),
+
+  inboxUnread: 0,
+  setInboxUnread: (count): void => set({ inboxUnread: count }),
+
+  inboxCache: null,
+  setInboxCache: (cache): void => set({ inboxCache: cache }),
 
   // Demo Mode — not persisted to localStorage, always starts fresh
   demoMode: false,
@@ -281,7 +324,7 @@ export const useTorchStore = create<TorchState>((set) => ({
       return
     }
     try {
-      const response = await fetch(`${API_BASE}/api/skills`)
+      const response = await torchFetch(`${API_BASE}/api/skills`)
       if (response.ok) {
         const data = await response.json()
         set({ skills: data })

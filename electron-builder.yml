@@ -1,39 +1,31 @@
-appId: com.electron.app
-productName: torch
+appId: com.torch.agent
+productName: TORCH
 directories:
   buildResources: build
+# An allowlist, deliberately. Anything not named here stays out of app.asar.
+# The previous exclusion list let the whole repository in: both virtualenvs,
+# the website and promo sub-projects with their own node_modules, build
+# scratch directories, log files, and data/ - which holds the local SQLite
+# database, so every installer would have shipped one machine's task history.
 files:
+  - 'out/**'
+  - 'resources/**'
+  - 'package.json'
+  - 'node_modules/**'
   - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!**/*.map'
+# The backend ships as a self-contained PyInstaller bundle, so the installed
+# app never needs Python present on the machine. Build it first:
+#   python backend/build_backend.py
 extraResources:
-  - from: backend
+  - from: dist-backend/torch-backend
     to: backend
     filter:
       - '**/*'
-      - '!venv/**'
-      - '!data/**'
-      - '!**/__pycache__/**'
-      - '!**/.pytest_cache/**'
-      - '!**/*.pyc'
-      - '!**/*.pyo'
-      - '!**/test_*.py'
 asarUnpack:
   - resources/**
 win:
   executableName: torch
-  extraResources:
-    - from: backend/venv
-      to: backend/venv
-      filter:
-        - '**/*'
-        - '!**/__pycache__/**'
-        - '!**/.pytest_cache/**'
-        - '!**/*.pyc'
-        - '!**/*.pyo'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -60,5 +52,6 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: T-O-R-C-H
+  repo: T.O.R.C.H

@@ -23,6 +23,11 @@ export function toPlainLanguage(raw: string | undefined): string {
   if (lower.includes('cancelled by user')) {
     return 'You cancelled this action.'
   }
+  // Backstop for tool-name jargon: the backend translates this before sending,
+  // so reaching here means a path that skipped translation.
+  if (lower.includes('unknown tool') || lower.includes('tool not registered')) {
+    return "That isn't something I know how to do yet. Want me to try a different way?"
+  }
   if (
     lower.includes('pyautogui') ||
     lower.includes('screenshot failed') ||
@@ -58,7 +63,12 @@ export function sanitizeDisplayText(text: string): string {
 }
 
 export function formatAgentContent(text: string): string {
-  let out = sanitizeDisplayText(text)
+  let out = text
+    .replace(/(?<!\*)\*(?!\*)/g, '')
+    .replace(/__/g, '')
+    .replace(/-{2,}/g, ' — ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
   out = out.replace(/^[-•]\s+/gm, '• ')
   return out
 }

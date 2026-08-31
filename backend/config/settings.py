@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
 import os
+import secrets
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,7 +13,7 @@ class TorchSettings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="AIzaSyTrialCloudKeyPlaceholder", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
@@ -30,6 +31,12 @@ class TorchSettings(BaseSettings):
     wake_word_sensitivity: float = Field(default=0.5, alias="WAKE_WORD_SENSITIVITY")
     whisper_model_size: str = Field(default="base", alias="WHISPER_MODEL_SIZE")
 
+    # Capability permissions chosen during onboarding and editable in Settings.
+    # planner.py refuses tools whose capability is switched off.
+    allow_files: bool = Field(default=True, alias="TORCH_ALLOW_FILES")
+    allow_apps: bool = Field(default=True, alias="TORCH_ALLOW_APPS")
+    allow_email: bool = Field(default=True, alias="TORCH_ALLOW_EMAIL")
+
     # Screen Watch
     screen_watch_enabled: bool = Field(default=False, alias="SCREEN_WATCH_ENABLED")
     screen_watch_interval: int = Field(default=30, alias="SCREEN_WATCH_INTERVAL")
@@ -43,9 +50,26 @@ class TorchSettings(BaseSettings):
         alias="TORCH_AGENT_RETRY_TOOLS",
     )
 
+    # Agent re-planning: when a step fails, ask the LLM once for an
+    # alternative approach instead of aborting the whole task.
+    agent_replan_enabled: bool = Field(default=True, alias="TORCH_AGENT_REPLAN_ENABLED")
+    agent_replan_attempts: int = Field(default=1, alias="TORCH_AGENT_REPLAN_ATTEMPTS")
+
+    # Email: local inbox cache keeps repeat reads fast without re-hitting IMAP.
+    email_cache_ttl_seconds: int = Field(default=60, alias="TORCH_EMAIL_CACHE_TTL_SECONDS")
+    email_cache_size: int = Field(default=120, alias="TORCH_EMAIL_CACHE_SIZE")
+
+    # File search index refresh interval
+    file_index_ttl_seconds: int = Field(default=600, alias="TORCH_FILE_INDEX_TTL_SECONDS")
+
     # Server
-    host: str = Field(default="0.0.0.0", alias="TORCH_HOST")
+    # Loopback only: TORCH drives the local machine, so exposing it on other
+    # interfaces would let anything on the network issue commands.
+    host: str = Field(default="127.0.0.1", alias="TORCH_HOST")
     port: int = Field(default=8000, alias="TORCH_PORT")
+
+    # Session auth — Electron generates this at launch and passes it in.
+    auth_token: str = Field(default="", alias="TORCH_AUTH_TOKEN")
 
     # Paths
     data_dir: str = Field(default="./data", alias="TORCH_DATA_DIR")
@@ -63,4 +87,15 @@ class TorchSettings(BaseSettings):
 
 
 # Singleton
-settings = TorchSettings() 
+settings = TorchSettings()
+
+# Running the backend directly (outside Electron) leaves no token configured.
+# Generate one rather than leaving the agent open, and print it so a developer
+# working against the API by hand can still authenticate.
+if not settings.auth_token:
+    settings.auth_token = secrets.token_hex(32)
+    print(
+        f"[TORCH] No TORCH_AUTH_TOKEN provided - generated a session token for this run:\n"
+        f"        {settings.auth_token}",
+        flush=True,
+    )

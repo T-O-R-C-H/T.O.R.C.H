@@ -1,4 +1,4 @@
-import { API_BASE } from '../config/api'
+import { API_BASE, torchFetch } from '../config/api'
 
 export interface ShortcutRunResult {
   status: string
@@ -17,7 +17,7 @@ export async function runShortcut(shortcutId: string): Promise<ShortcutRunResult
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), SHORTCUT_TIMEOUT_MS)
   try {
-    const response = await fetch(`${API_BASE}/api/skills/${shortcutId}/run`, {
+    const response = await torchFetch(`${API_BASE}/api/skills/${shortcutId}/run`, {
       method: 'POST',
       signal: controller.signal
     })

@@ -16,17 +16,19 @@ export function Clipboard(): JSX.Element {
   const [entries, setEntries] = useState<ClipboardEntry[]>([])
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  const loadEntries = async (): Promise<void> => {
-    const data = await window.torchAPI?.getClipboardEntries?.()
-    if (data) setEntries(data)
-  }
-
   useEffect(() => {
-    void loadEntries()
-    const timer = setInterval(() => {
-      void loadEntries()
-    }, 2000)
-    return () => clearInterval(timer)
+    let mounted = true
+    const fetchEntries = (): void => {
+      window.torchAPI?.getClipboardEntries?.().then((data) => {
+        if (mounted && data) setEntries(data)
+      })
+    }
+    fetchEntries()
+    const timer = setInterval(fetchEntries, 2000)
+    return () => {
+      mounted = false
+      clearInterval(timer)
+    }
   }, [])
 
   const handleCopy = (entry: ClipboardEntry): void => {

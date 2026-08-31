@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { ConversationTurn } from './ConversationTurn'
-import { useAgentWatchdog } from './AgentActivity'
+import { useAgentWatchdog } from '../../hooks/useAgentWatchdog'
 import { useTorchStore } from '../../store/torchStore'
-import { TorchLogo } from '../ui/TorchLogo'
+import { TorchMark } from '../ui/TorchMark'
 import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIcons'
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
@@ -38,7 +38,7 @@ const promptSuggestions = [
 
 interface ChatAreaProps {
   onApprove?: (messageId: string, stepId: string) => void
-  onEdit?: (messageId: string, stepId: string) => void
+  onEdit?: (messageId: string, stepId: string, editedArgs: Record<string, string>) => void
   onCancel?: (messageId: string, stepId: string) => void
   onSend?: (command: string) => void
 }
@@ -75,7 +75,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   const scrollRef = useRef<HTMLDivElement>(null)
   const previousMessageCount = useRef(messages.length)
   const { sendStopCommand } = useWebSocket()
-  
+
   const [startingUp, setStartingUp] = useState(true)
 
   useEffect(() => {
@@ -94,6 +94,10 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   const visionControlActive = Boolean(
     lastTurn?.agent?.steps?.some((step) => step.tool === 'vision_control')
   )
+  // The watchdog only counts time while the agent is actually working.
+  // Waiting on the user (approval, an answer) must never auto-cancel the task.
+  const watchdogActive =
+    (agentStatus === 'processing' || agentStatus === 'executing') && !visionControlActive
   const pendingLastTurn = Boolean(isBusy && lastTurn?.user && !lastTurn?.agent)
   const activityStartedAt = lastTurn?.user?.timestamp
 
@@ -121,17 +125,20 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
   // Local multimodal inference can legitimately take minutes on CPU. Vision
   // control already has a visible Stop button and a hard 25-step limit, so the
   // short watchdog remains for ordinary tasks but must not cancel vision work.
-  useAgentWatchdog(isBusy && !visionControlActive, activityStartedAt, handleActivityTimeout)
+  useAgentWatchdog(watchdogActive, activityStartedAt, handleActivityTimeout)
 
   useEffect(() => {
-    if (scrollRef.current) {
-      const isNewMessage = messages.length !== previousMessageCount.current
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: isNewMessage ? 'smooth' : 'auto'
+    const el = scrollRef.current
+    if (!el) return
+    const isNewMessage = messages.length !== previousMessageCount.current
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200
+    if (isNewMessage || nearBottom) {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: 'smooth'
       })
-      previousMessageCount.current = messages.length
     }
+    previousMessageCount.current = messages.length
   }, [messages, agentStatus])
 
   if (messages.length === 0) {
@@ -139,7 +146,8 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
       return (
         <div className="cmd-idle">
           <div className="cmd-idle__header">
-            <TorchLogo size={72} />
+            {/* Cycling here is literal: the backend really is starting. */}
+            <TorchMark size={72} active />
             <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
               Waking up the local agent server. This takes a few seconds.
@@ -152,11 +160,8 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchLogo size={72} />
-          <p className="cmd-idle__title">Command Center</p>
-          <p className="cmd-idle__subtitle">
-            Tell TORCH what to do, or pick a suggestion below. Every step runs live in this view.
-          </p>
+          <TorchMark size={72} active={agentStatus !== 'idle'} />
+          <p className="cmd-idle__subtitle">What do you need done?</p>
         </div>
 
         <div className="cmd-suggestions">
@@ -203,8 +208,9 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
               activityStartedAt={turn.user?.timestamp}
               onActivityTimeout={isPendingTurn ? handleActivityTimeout : undefined}
               onApprove={(stepId) => onApprove?.(agentId, stepId)}
-              onEdit={(stepId) => onEdit?.(agentId, stepId)}
+              onEdit={(stepId, edited) => onEdit?.(agentId, stepId, edited)}
               onCancel={(stepId) => onCancel?.(agentId, stepId)}
+              onSend={(command) => onSend?.(command)}
             />
           )
         })}
