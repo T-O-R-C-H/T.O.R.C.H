@@ -8,6 +8,7 @@ import re
 from typing import List, Dict, Any, Optional
 from config.settings import settings
 from agent.providers import get_provider
+from errors.plain_language import translate_error
 
 logger = logging.getLogger("torch.brain")
 
@@ -514,10 +515,18 @@ async def plan_command(
                 "requires_approval": False,
                 "error": "I couldn't reach the AI service. Check your internet connection and try again."
             }]
+        # Never put the raw exception in front of the user. This used to read
+        # "AI planning failed: 503 UNAVAILABLE. {'error': {'code': 503, ...".
+        plain = translate_error(err_msg)
         return [{
             "tool": "error",
-            "label": f"AI planning failed: {err_msg[:100]}",
+            "label": plain["what_happened"],
             "args": {},
             "requires_approval": False,
-            "error": err_msg,
+            "error": f"{plain['what_happened']} {plain['what_to_do']}",
+            # Already plain. Without this the executor translates it a second
+            # time, the wording matches none of the markers, and a specific
+            # message ("the service is busy") is replaced by the generic
+            # fallback - which is exactly what reached the user.
+            "error_is_plain": True,
         }]

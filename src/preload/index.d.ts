@@ -16,10 +16,7 @@ interface TorchAPI {
   minimizeWindow: () => void
   maximizeWindow: () => void
   closeWindow: () => void
-  showOverlay: () => void
-  hideOverlay: () => void
   openMainWindow: () => void
-  setOverlaySize: (width: number, height: number) => void
   captureScreens: () => Promise<
     Array<{
       displayId: string
@@ -33,8 +30,6 @@ interface TorchAPI {
   hideGuidance: () => void
   showControlBorder: () => void
   hideControlBorder: () => void
-  suspendOverlayForVisionCapture: () => void
-  restoreOverlayAfterVisionCapture: () => void
   completeVisionControl: () => void
   publishTaskEvent: (event: Record<string, unknown>) => void
   onTaskEvent: (callback: (_e: unknown, event: Record<string, unknown>) => void) => void
@@ -80,7 +75,6 @@ interface TorchAPI {
   getBackendHealth: () => Promise<BackendHealth>
   onBackendHealth: (callback: (_e: unknown, health: BackendHealth) => void) => void
   onBackendStatus: (callback: (status: 'online' | 'offline') => void) => void
-  onOverlayActivate: (callback: () => void) => void
   onClipboardChanged: (
     callback: (
       _e: unknown,
@@ -93,7 +87,6 @@ interface TorchAPI {
     ) => void
   ) => void
   onScreenWatchToggle: (callback: (_e: unknown, enabled: boolean) => void) => void
-  removeOverlayActivate: () => void
   removeClipboardChanged: () => void
   removeScreenWatchToggle: () => void
   removeBackendHealth: () => void
