@@ -191,8 +191,14 @@ class Executor:
             if tool_name == "error":
                 step["status"] = "failed"
                 err_text = step.get("error", "Unknown error")
-                translated = translate_error(err_text)
-                translated_err = f"{translated['what_happened']} {translated['what_to_do']}"
+                if step.get("error_is_plain"):
+                    # Translating an already-translated message loses it: the
+                    # plain wording matches no marker and falls through to the
+                    # generic fallback.
+                    translated_err = err_text
+                else:
+                    translated = translate_error(err_text)
+                    translated_err = f"{translated['what_happened']} {translated['what_to_do']}"
                 step["error"] = translated_err
                 await ws_manager.send_step_update(
                     message_id, step_id, "failed",
