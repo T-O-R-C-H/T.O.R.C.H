@@ -1,4 +1,4 @@
-"""Screen-aware computer control using Qwen2.5-VL through local Ollama."""
+"""Screen-aware computer control, using the configured AI service for vision."""
 
 import asyncio
 import base64
@@ -19,10 +19,13 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from urllib.parse import quote_plus
 
 logger = logging.getLogger("torch.vision_control")
-VISION_MODEL, MAX_STEPS, STEP_PAUSE = "qwen2.5vl:7b", 25, 0.6
+MAX_STEPS, STEP_PAUSE = 25, 0.6
+
+# Spelled out so the prompt assembly below reads without escape sequences.
+NEWLINE = chr(10)
 MAX_SCREENSHOT_WIDTH, MAX_SCREENSHOT_HEIGHT = 960, 540
 SESSION_TIMEOUT_SECONDS = 5 * 60
-MODEL_ACTION_TIMEOUT_SECONDS = 4 * 60
+MODEL_ACTION_TIMEOUT_SECONDS = 45
 MODEL_PROGRESS_INTERVAL_SECONDS = 15
 CAPTURE_OVERLAY_SETTLE_SECONDS = 0.12
 BROWSER_CHOOSER_SETTLE_SECONDS = 0.6
@@ -140,6 +143,7 @@ import pyautogui
 from mss import mss
 from PIL import Image
 
+from config.settings import settings
 from websocket import manager as ws_manager
 
 
@@ -196,6 +200,47 @@ def submit_vision_clarification(client_id: str, task_id: str, response: str) -> 
     return True
 
 
+
+def _vision_action(prompt: str, screenshot_b64: str, profile_choice_needed: bool) -> dict:
+    """
+    Ask the configured AI service what to do about the current screen.
+
+    This used to run qwen2.5vl:7b through a local Ollama. On a machine with no
+    usable GPU that is minutes per frame, and with a twenty-five step loop a
+    single task could sit "analyzing" for over an hour with nothing to show.
+    The same service that does the planning does the looking now.
+
+    Returns the same shape the caller already expected from Ollama, so the
+    parsing below it is unchanged.
+    """
+    import base64
+
+    import google.generativeai as genai
+
+    if not settings.gemini_api_key:
+        raise RuntimeError("Screen control needs an AI connection key. Add one in Settings.")
+
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(settings.gemini_model)
+
+    response = model.generate_content(
+        [
+            prompt,
+            {"mime_type": "image/png", "data": base64.b64decode(screenshot_b64)},
+        ],
+        generation_config={
+            "temperature": 0.1,
+            "max_output_tokens": 400,
+            "response_mime_type": "application/json",
+        },
+    )
+
+    text = (getattr(response, "text", "") or "").strip()
+    if not text:
+        raise RuntimeError("The AI service returned no action for this screen.")
+
+    return {"message": {"content": text}}
+
 def _raise_if_cancelled(cancel_event: threading.Event) -> None:
     if cancel_event.is_set():
         raise VisionControlCancelled("Task stopped by user")
@@ -238,7 +283,7 @@ async def _run_async_cancellable(
         _raise_if_cancelled(cancel_event)
         return await work
     finally:
-        # Also abort an Ollama HTTP request if this coroutine is cancelled by
+        # Also abort the vision HTTP request if this coroutine is cancelled by
         # its owner instead of through cancel_vision_control().
         if not work.done():
             work.cancel()
@@ -1311,7 +1356,6 @@ async def vision_loop(
     cancel_event = threading.Event()
     sessions = _active_sessions.setdefault(client_id, {})
     sessions[session_id] = cancel_event
-    ollama_client = None
 
     try:
         await ws_manager.send_message({"type": "vision_control_start"}, client_id)
@@ -1342,21 +1386,9 @@ async def vision_loop(
             if direct_result is not None:
                 return direct_result
 
-        try:
-            import ollama
-        except ImportError as exc:
+        if not settings.gemini_api_key:
             raise RuntimeError(
-                "Vision control requires Ollama and the qwen2.5vl:7b model. "
-                "Install and start Ollama, then pull qwen2.5vl:7b."
-            ) from exc
-
-        async_client_type = getattr(ollama, "AsyncClient", None)
-        if async_client_type is not None:
-            ollama_client = async_client_type()
-        else:
-            logger.warning(
-                "Installed Ollama client has no AsyncClient; using the "
-                "legacy synchronous compatibility path"
+                "Screen control needs an AI connection key. Add one in Settings."
             )
 
         history = []
@@ -1400,66 +1432,43 @@ async def vision_loop(
             )
             try:
                 if on_step:
-                    await on_step(
-                        step,
-                        "wait",
-                        "Analyzing the current screen locally with Qwen vision",
-                    )
-                request = {
-                    "model": VISION_MODEL,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Task: {task}\n{image_context}\n"
-                                f"Previous actions:\n{recent}{profile_guard}"
-                            ),
-                            "images": [screenshot],
-                        },
-                    ],
-                    "format": PROFILE_CHOICE_FORMAT if profile_choice_needed else "json",
-                    "options": {"temperature": 0.1, "num_predict": 160},
-                }
+                    await on_step(step, "wait", "Looking at your screen")
+                prompt = (
+                    SYSTEM_PROMPT
+                    + NEWLINE + NEWLINE + "Task: " + task
+                    + NEWLINE + image_context
+                    + NEWLINE + "Previous actions:" + NEWLINE
+                    + recent + profile_guard
+                )
                 model_timeout = min(
                     MODEL_ACTION_TIMEOUT_SECONDS,
                     max(0.1, session_deadline - asyncio.get_running_loop().time()),
                 )
-                if ollama_client is not None:
-                    response = await _await_model_action_with_progress(
-                        _run_async_cancellable(
-                            ollama_client.chat(**request),
-                            cancel_event,
-                        ),
+                response = await _await_model_action_with_progress(
+                    _run_blocking_cancellable(
+                        _vision_action,
                         cancel_event,
-                        model_timeout,
-                        on_step,
-                        step,
-                    )
-                else:
-                    response = await _await_model_action_with_progress(
-                        _run_blocking_cancellable(
-                            ollama.chat,
-                            cancel_event,
-                            **request,
-                        ),
-                        cancel_event,
-                        model_timeout,
-                        on_step,
-                        step,
-                    )
+                        prompt,
+                        screenshot,
+                        profile_choice_needed,
+                    ),
+                    cancel_event,
+                    model_timeout,
+                    on_step,
+                    step,
+                )
             except asyncio.TimeoutError as exc:
                 raise RuntimeError(
-                    "The local Qwen vision model reached TORCH's five-minute task limit."
+                    "Screen control waited too long for a reply and stopped."
                 ) from exc
             except Exception as exc:
                 _raise_if_cancelled(cancel_event)
                 raise RuntimeError(
-                    "Vision control couldn't connect to Ollama or load "
-                    "qwen2.5vl:7b. Start Ollama and make sure the model is installed."
+                    "Screen control couldn't reach the AI service. "
+                    "Check your connection and try again."
                 ) from exc
 
-            # A stop received while Ollama was thinking must prevent its action.
+            # A stop received while the model was thinking must prevent its action.
             _raise_if_cancelled(cancel_event)
             raw = response["message"]["content"].strip()
             if raw.startswith("```"):
@@ -1568,11 +1577,6 @@ async def vision_loop(
         pending = _pending_clarifications.pop((client_id, session_id), None)
         if pending is not None and not pending.done():
             pending.cancel()
-        if ollama_client is not None:
-            try:
-                await ollama_client.close()
-            except Exception:
-                logger.warning("Could not close the Ollama async client", exc_info=True)
         sessions.pop(session_id, None)
         if not sessions:
             _active_sessions.pop(client_id, None)
