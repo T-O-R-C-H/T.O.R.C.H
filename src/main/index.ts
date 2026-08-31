@@ -27,7 +27,6 @@ import {
   copyToClipboard
 } from './clipboardManager'
 import { getDesktopContext } from './contextService'
-import { loadOverlayState, saveOverlayState } from './overlayPosition'
 import {
   credentialEnv,
   getCredentialStatus,
@@ -37,7 +36,6 @@ import {
 } from './credentialStore'
 
 let mainWindow: BrowserWindow | null = null
-let overlayWindow: BrowserWindow | null = null
 let guidanceWindow: BrowserWindow | null = null
 let pillWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
@@ -457,89 +455,12 @@ function scheduleBackendRestart(reason: string): void {
   }, backendRestartDelayMs)
 }
 
-let overlaySaveTimer: NodeJS.Timeout | null = null
-let overlayCaptureSuspended = false
-let overlayWasVisibleBeforeCapture = false
-let overlayCaptureRestoreTimer: NodeJS.Timeout | null = null
-
 function getProjectRoot(): string {
   return is.dev ? join(__dirname, '..', '..') : join(app.getAppPath(), '..')
 }
 
-function showFloatingOverlay(): void {
-  if (!overlayWindow || overlayWindow.isDestroyed() || isQuitting) return
-  positionOverlayBottomRight()
-  // Chromium can temporarily demote an always-on-top BrowserWindow when a
-  // newly launched native application takes the foreground. Reassert the
-  // Windows z-order every time TORCH presents its compact command panel.
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  overlayWindow.show()
-  overlayWindow.moveTop()
-  overlayWindow.focus()
-  overlayWindow.webContents.send('overlay:activate')
-}
-
-function hideFloatingOverlay(): void {
-  overlayWindow?.hide()
-}
-
-let pillWasVisibleBeforeCapture = false
-
-function suspendOverlayForVisionCapture(): void {
-  // The pill is always on top, so it would appear in the screenshot the agent
-  // is about to reason about.
-  pillWasVisibleBeforeCapture = pillWindow?.isVisible() ?? false
-  if (pillWasVisibleBeforeCapture) pillWindow?.hide()
-
-  if (overlayCaptureSuspended || !overlayWindow || overlayWindow.isDestroyed()) return
-  overlayCaptureSuspended = true
-  overlayWasVisibleBeforeCapture = overlayWindow.isVisible()
-  if (overlayWasVisibleBeforeCapture) overlayWindow.hide()
-  if (overlayCaptureRestoreTimer) clearTimeout(overlayCaptureRestoreTimer)
-  // A lost renderer event must never strand the command panel off-screen.
-  overlayCaptureRestoreTimer = setTimeout(restoreOverlayAfterVisionCapture, 1500)
-}
-
-function restoreOverlayAfterVisionCapture(): void {
-  if (pillWasVisibleBeforeCapture && pillWindow && !pillWindow.isDestroyed() && !isQuitting) {
-    pillWindow.showInactive()
-  }
-  pillWasVisibleBeforeCapture = false
-
-  if (overlayCaptureRestoreTimer) {
-    clearTimeout(overlayCaptureRestoreTimer)
-    overlayCaptureRestoreTimer = null
-  }
-  if (!overlayCaptureSuspended) return
-  overlayCaptureSuspended = false
-  if (
-    overlayWasVisibleBeforeCapture &&
-    overlayWindow &&
-    !overlayWindow.isDestroyed() &&
-    !isQuitting
-  ) {
-    overlayWindow.showInactive()
-  }
-  overlayWasVisibleBeforeCapture = false
-}
-
 function completeVisionControl(): void {
-  restoreOverlayAfterVisionCapture()
   hideControlBorder()
-  if (
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    !mainWindow.isVisible() &&
-    overlayWindow &&
-    !overlayWindow.isDestroyed() &&
-    !isQuitting
-  ) {
-    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-    overlayWindow.showInactive()
-    overlayWindow.moveTop()
-  }
 }
 
 /**
@@ -569,61 +490,6 @@ function saveTrayPreference(value: boolean): void {
   } catch (error) {
     console.error('[TORCH] Could not save preference:', error)
   }
-}
-
-function minimizeToOverlay(): void {
-  if (!mainWindow || mainWindow.isDestroyed() || isQuitting) return
-  hideGuidanceOverlay()
-  mainWindow.hide()
-  // Show on the next event-loop turn, after Windows has finished processing
-  // the native minimize transition.
-  setTimeout(() => showPill(), 0)
-}
-
-const OVERLAY_DEFAULT_WIDTH = 360
-const OVERLAY_DEFAULT_HEIGHT = 180
-const OVERLAY_MIN_WIDTH = 300
-const OVERLAY_MIN_HEIGHT = 160
-
-function positionOverlayBottomRight(): void {
-  if (!overlayWindow) return
-
-  const saved = loadOverlayState()
-  if (saved) {
-    if (saved.width && saved.height) {
-      overlayWindow.setSize(
-        Math.max(OVERLAY_MIN_WIDTH, saved.width),
-        Math.max(OVERLAY_MIN_HEIGHT, saved.height)
-      )
-    }
-    const savedBounds = {
-      x: saved.x,
-      y: saved.y,
-      width: saved.width ?? OVERLAY_DEFAULT_WIDTH,
-      height: saved.height ?? OVERLAY_DEFAULT_HEIGHT
-    }
-    const isOnScreen = screen.getAllDisplays().some((display) => {
-      const area = display.workArea
-      return (
-        savedBounds.x < area.x + area.width &&
-        savedBounds.x + savedBounds.width > area.x &&
-        savedBounds.y < area.y + area.height &&
-        savedBounds.y + savedBounds.height > area.y
-      )
-    })
-    if (isOnScreen) {
-      overlayWindow.setPosition(saved.x, saved.y)
-      return
-    }
-  }
-
-  const display = screen.getPrimaryDisplay()
-  const area = display.workArea
-  const [width, height] = overlayWindow.getSize()
-  overlayWindow.setPosition(
-    Math.round(area.x + area.width - width - 24),
-    Math.round(area.y + area.height - height - 24)
-  )
 }
 
 function hideGuidanceOverlay(): void {
@@ -694,17 +560,6 @@ function showControlBorder(): void {
   if (!controlBorderWindow || controlBorderWindow.isDestroyed()) createControlBorderWindow()
   updateControlBorderBounds()
   controlBorderWindow?.showInactive()
-  if (
-    mainWindow &&
-    !mainWindow.isDestroyed() &&
-    !mainWindow.isVisible() &&
-    overlayWindow &&
-    !overlayWindow.isDestroyed() &&
-    overlayWindow.isVisible()
-  ) {
-    overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-    overlayWindow.moveTop()
-  }
 }
 
 function hideControlBorder(): void {
@@ -716,21 +571,9 @@ function quitTorch(): void {
   isQuitting = true
   hideGuidanceOverlay()
   hideControlBorder()
-  overlayWindow?.hide()
   pillWindow?.hide()
   taskPanelWindow?.hide()
   app.quit()
-}
-
-function scheduleOverlayStateSave(): void {
-  if (!overlayWindow) return
-  if (overlaySaveTimer) clearTimeout(overlaySaveTimer)
-  overlaySaveTimer = setTimeout(() => {
-    if (!overlayWindow) return
-    const [x, y] = overlayWindow.getPosition()
-    const [width, height] = overlayWindow.getSize()
-    saveOverlayState({ x, y, width, height })
-  }, 300)
 }
 
 function createMainWindow(): void {
@@ -951,6 +794,10 @@ function createPillWindow(): void {
   })
 
   positionPill()
+  // Kept out of screenshots, so TORCH's own vision never reads its own UI as
+  // part of the user's screen. Replaces the hide-for-capture pass that went
+  // with the floating overlay.
+  pillWindow.setContentProtection(true)
   pillWindow.setAlwaysOnTop(true, 'screen-saver')
   pillWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
@@ -991,6 +838,7 @@ function createTaskPanelWindow(): void {
     }
   })
 
+  taskPanelWindow.setContentProtection(true)
   taskPanelWindow.setAlwaysOnTop(true, 'screen-saver')
   taskPanelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
@@ -1043,64 +891,6 @@ function hideTaskPanel(): void {
   taskPanelWindow?.hide()
 }
 
-function createOverlayWindow(): void {
-  const saved = loadOverlayState()
-  overlayWindow = new BrowserWindow({
-    width: saved?.width ?? OVERLAY_DEFAULT_WIDTH,
-    height: saved?.height ?? OVERLAY_DEFAULT_HEIGHT,
-    minWidth: OVERLAY_MIN_WIDTH,
-    minHeight: OVERLAY_MIN_HEIGHT,
-    show: false,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: true,
-    focusable: true,
-    hasShadow: false,
-    thickFrame: false,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      contextIsolation: true,
-      nodeIntegration: false,
-      zoomFactor: 1.0
-    }
-  })
-
-  positionOverlayBottomRight()
-  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
-  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-
-  overlayWindow.on('moved', () => {
-    scheduleOverlayStateSave()
-  })
-
-  overlayWindow.on('resized', () => {
-    scheduleOverlayStateSave()
-  })
-
-  overlayWindow.webContents.on('did-finish-load', () => {
-    overlayWindow?.webContents.setZoomFactor(1.0)
-    overlayWindow?.webContents.setZoomLevel(0)
-  })
-
-  overlayWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-    console.error(`[TORCH] Overlay failed to load (${errorCode}): ${errorDescription}`)
-  })
-
-  overlayWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error(`[TORCH] Overlay renderer exited: ${details.reason}`)
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    overlayWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '#/overlay')
-  } else {
-    overlayWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/overlay' })
-  }
-}
-
 function createGuidanceWindow(): void {
   const displays = screen.getAllDisplays()
   const left = Math.min(...displays.map((display) => display.bounds.x))
@@ -1142,9 +932,7 @@ function createGuidanceWindow(): void {
 }
 
 async function captureDesktopScreens(): Promise<unknown[]> {
-  const overlayWasVisible = overlayWindow?.isVisible() ?? false
   const pillWasVisible = pillWindow?.isVisible() ?? false
-  overlayWindow?.hide()
   pillWindow?.hide()
   await new Promise((resolve) => setTimeout(resolve, 90))
 
@@ -1171,7 +959,6 @@ async function captureDesktopScreens(): Promise<unknown[]> {
       }
     })
   } finally {
-    if (overlayWasVisible) overlayWindow?.showInactive()
     if (pillWasVisible) pillWindow?.showInactive()
   }
 }
@@ -1227,7 +1014,6 @@ function createTray(): void {
     } else {
       mainWindow?.show()
       mainWindow?.focus()
-      hideFloatingOverlay()
     }
   })
 }
@@ -1265,16 +1051,11 @@ app.whenReady().then(() => {
   })
 
   // ─── POWER MONITOR (SLEEP / WAKE GUARDS) ───
-  powerMonitor.on('suspend', () => {
-    hideFloatingOverlay()
-  })
+  powerMonitor.on('suspend', () => {})
   powerMonitor.on('resume', () => {
     // Keep overlay hidden when waking from sleep unless explicitly requested by user
-    hideFloatingOverlay()
   })
-  powerMonitor.on('unlock-screen', () => {
-    hideFloatingOverlay()
-  })
+  powerMonitor.on('unlock-screen', () => {})
 
   // ─── GLOBAL SHORTCUTS ───
   // Shown to the user in Settings and onboarding; keep the two in step.
@@ -1301,7 +1082,7 @@ app.whenReady().then(() => {
   // Window controls
   ipcMain.on('window:minimize', () => {
     if (minimizeToTrayEnabled) {
-      minimizeToOverlay()
+      mainWindow?.minimize()
     } else {
       mainWindow?.minimize()
     }
@@ -1344,44 +1125,14 @@ app.whenReady().then(() => {
     mainWindow?.hide()
   })
 
-  // Overlay controls
-  ipcMain.on('overlay:show', () => {
-    showFloatingOverlay()
-  })
-  ipcMain.on('overlay:hide', () => {
-    hideFloatingOverlay()
-  })
-  ipcMain.on('vision-capture:start', () => {
-    suspendOverlayForVisionCapture()
-  })
-  ipcMain.on('vision-capture:end', () => {
-    restoreOverlayAfterVisionCapture()
-  })
   ipcMain.on('vision-control:complete', () => {
     completeVisionControl()
   })
-  ipcMain.on('overlay:openMain', () => {
+  ipcMain.on('window:openMain', () => {
     if (mainWindow?.isMinimized()) mainWindow.restore()
     mainWindow?.show()
     mainWindow?.focus()
-    hideFloatingOverlay()
     hidePill()
-  })
-  ipcMain.on('overlay:setSize', (_, size: { width: number; height: number }) => {
-    if (!overlayWindow) return
-    const previous = overlayWindow.getBounds()
-    const width = Math.max(OVERLAY_MIN_WIDTH, Math.round(size.width))
-    const height = Math.max(OVERLAY_MIN_HEIGHT, Math.round(size.height))
-    const area = screen.getDisplayMatching(previous).workArea
-    const right = previous.x + previous.width
-    const bottom = previous.y + previous.height
-    const x = Math.min(Math.max(area.x, right - width), area.x + Math.max(0, area.width - width))
-    const y = Math.min(
-      Math.max(area.y, bottom - height),
-      area.y + Math.max(0, area.height - height)
-    )
-    overlayWindow.setBounds({ x, y, width, height })
-    scheduleOverlayStateSave()
   })
   ipcMain.handle('companion:captureScreens', captureDesktopScreens)
   ipcMain.on('guidance:show', (_, guidance) => {
@@ -1389,9 +1140,10 @@ app.whenReady().then(() => {
     const displays = screen.getAllDisplays()
     const left = Math.min(...displays.map((display) => display.bounds.x))
     const top = Math.min(...displays.map((display) => display.bounds.y))
-    const overlayBounds = overlayWindow?.getBounds()
-    const homeX = overlayBounds ? overlayBounds.x + overlayBounds.width / 2 : left + 80
-    const homeY = overlayBounds ? overlayBounds.y + overlayBounds.height / 2 : top + 80
+    // The guidance pointer used to fly out from the floating overlay. With
+    // that window gone it starts from the corner of the work area instead.
+    const homeX = left + 80
+    const homeY = top + 80
     guidanceWindow?.showInactive()
     guidanceWindow?.webContents.send('guidance:update', {
       ...guidance,
@@ -1432,7 +1184,7 @@ app.whenReady().then(() => {
     ])
     if (typeof eventType !== 'string' || !relayedEventTypes.has(eventType)) return
 
-    for (const target of [mainWindow, overlayWindow]) {
+    for (const target of [mainWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
         target.webContents.send('task-event:update', taskEvent)
       }
@@ -1447,7 +1199,7 @@ app.whenReady().then(() => {
       typeof taskCommand.taskId === 'string' &&
       typeof taskCommand.response === 'string'
     if (!validStop && !validClarification) return
-    for (const target of [mainWindow, overlayWindow]) {
+    for (const target of [mainWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
         target.webContents.send('task-command:update', taskCommand)
       }
@@ -1526,7 +1278,6 @@ app.whenReady().then(() => {
   ipcMain.on('clipboard:copy', (_, text: string) => copyToClipboard(text))
 
   createMainWindow()
-  createOverlayWindow()
   createPillWindow()
   // Built up front so the first hotkey press shows an already-loaded panel
   // rather than a blank window waiting on the renderer.
@@ -1555,7 +1306,6 @@ app.on('before-quit', () => {
   isQuitting = true
   guidanceWindow?.setIgnoreMouseEvents(true, { forward: true })
   guidanceWindow?.hide()
-  overlayWindow?.hide()
   stopClipboardMonitor()
   stopBackend()
 })
@@ -1566,7 +1316,6 @@ if (gotTheLock) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
-      hideFloatingOverlay()
     }
   })
 }

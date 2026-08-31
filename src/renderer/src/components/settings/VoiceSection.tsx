@@ -13,8 +13,8 @@ import { useVoiceModel, formatBytes } from '../../hooks/useVoiceModel'
  */
 
 interface TtsStatus {
-  piper_installed?: boolean
-  piper_ready?: boolean
+  engine_installed?: boolean
+  voice_ready?: boolean
   download_bytes?: number
   state?: 'idle' | 'downloading' | 'ready' | 'error'
   downloaded_bytes?: number
@@ -164,12 +164,12 @@ export function VoiceSection(): JSX.Element {
         <Row
           label="Natural voice"
           description={
-            tts.piper_ready
+            tts.voice_ready
               ? 'Using the natural voice.'
               : `Optional ${formatBytes(tts.download_bytes ?? 0)} download. Without it TORCH uses your computer's built-in voice.`
           }
         >
-          {tts.piper_ready ? (
+          {tts.voice_ready ? (
             <span className="text-[11px] font-mono text-[var(--color-torch-text-tertiary)]">
               Installed
             </span>
@@ -181,7 +181,7 @@ export function VoiceSection(): JSX.Element {
             <button
               type="button"
               onClick={() => void downloadNaturalVoice()}
-              disabled={ttsBusy || !tts.piper_installed}
+              disabled={ttsBusy || !tts.engine_installed}
               className="text-[11px] px-2.5 py-1 border border-[var(--color-torch-border)] bg-white"
             >
               Download

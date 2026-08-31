@@ -30,4 +30,5 @@ anthropic>=0.40.0
 openai>=1.0.0
 uiautomation>=2.0.29
 faster-whisper>=1.2.1
-piper-tts>=1.7.0
+kokoro-onnx
+soundfile
