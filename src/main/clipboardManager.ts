@@ -1,5 +1,5 @@
-import { app, clipboard, BrowserWindow } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { app, clipboard, safeStorage, BrowserWindow } from 'electron'
+import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs'
 import { classifyClipboard } from './contextService'
 
 import { join } from 'path'
@@ -26,8 +26,36 @@ let lastText = ''
 let pollTimer: NodeJS.Timeout | null = null
 let storePath = ''
 
+/** Delete the pre-encryption history file if one is left over. */
+function removeLegacyPlaintextStore(): void {
+  try {
+    const legacy = join(app.getPath('userData'), 'clipboard-history.json')
+    if (existsSync(legacy)) rmSync(legacy, { force: true })
+  } catch {
+    // Nothing else to do; the file is simply never read again.
+  }
+}
+
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/*
+ * Clipboard history is encrypted at rest with the OS keystore, the same way
+ * API keys are.
+ *
+ * Whatever the user copies passes through here — passwords pasted into a
+ * form, a bank detail, a private message — so a readable JSON file in the
+ * app-data directory is the wrong place for it. On a machine where the
+ * keystore is unavailable, nothing is written at all rather than written in
+ * the clear.
+ */
+function encryptionAvailable(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable()
+  } catch {
+    return false
+  }
 }
 
 function loadStore(): void {
@@ -36,15 +64,24 @@ function loadStore(): void {
     return
   }
   try {
-    entries = JSON.parse(readFileSync(storePath, 'utf-8')) as ClipboardEntry[]
+    const raw = readFileSync(storePath)
+    if (!encryptionAvailable()) {
+      entries = []
+      return
+    }
+    entries = JSON.parse(safeStorage.decryptString(raw)) as ClipboardEntry[]
   } catch {
+    // Includes a store written before encryption, or by another machine's
+    // key. Unreadable history is dropped rather than guessed at.
     entries = []
   }
 }
 
 function saveStore(): void {
   if (!storePath) return
-  writeFileSync(storePath, JSON.stringify(entries.slice(0, MAX_ENTRIES)), 'utf-8')
+  if (!encryptionAvailable()) return
+  const payload = JSON.stringify(entries.slice(0, MAX_ENTRIES))
+  writeFileSync(storePath, safeStorage.encryptString(payload))
 }
 
 function pruneOldDays(): void {
@@ -97,7 +134,11 @@ function pollClipboard(): void {
 }
 
 export function startClipboardMonitor(): void {
-  storePath = join(app.getPath('userData'), 'clipboard-history.json')
+  // New name: the old plaintext file is neither read nor migrated, because
+  // migrating it would mean reading secrets we promised not to keep in the
+  // clear. It is removed instead.
+  storePath = join(app.getPath('userData'), 'clipboard-history.enc')
+  removeLegacyPlaintextStore()
   loadStore()
   pruneOldDays()
   lastText = clipboard.readText()?.trim() || ''
