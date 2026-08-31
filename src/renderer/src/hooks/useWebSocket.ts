@@ -119,7 +119,6 @@ function resetInterruptedTaskUi(): void {
       })
     )
   store.setAgentStatus('idle')
-  store.setOverlayStatus('idle')
   store.setClarificationRequest(null)
 }
 
@@ -323,14 +322,6 @@ export function useWebSocket(): {
           window.torchAPI?.completeVisionControl()
           break
         }
-        case 'vision_capture_start': {
-          window.torchAPI?.suspendOverlayForVisionCapture()
-          break
-        }
-        case 'vision_capture_end': {
-          window.torchAPI?.restoreOverlayAfterVisionCapture()
-          break
-        }
         case 'hitl_request': {
           store.setAgentStatus('awaiting_approval')
           break
@@ -386,10 +377,9 @@ export function useWebSocket(): {
           store.addTerminalLine(data.line as TerminalLine)
           break
         }
+        // Named 'overlay' for historical reasons: the floating overlay is
+        // gone and only its guidance payload is still used.
         case 'overlay': {
-          if (data.status)
-            store.setOverlayStatus(data.status as 'idle' | 'listening' | 'processing' | 'speaking')
-          if (data.reply) store.setOverlayReply(data.reply as string)
           if (data.guidance) {
             const guidance = {
               ...(data.guidance as {

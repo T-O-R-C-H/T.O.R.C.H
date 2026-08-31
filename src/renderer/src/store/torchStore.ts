@@ -111,12 +111,6 @@ export interface TorchState {
   clearTerminal: () => void
 
   // Overlay
-  overlayVisible: boolean
-  setOverlayVisible: (visible: boolean) => void
-  overlayStatus: 'idle' | 'listening' | 'processing' | 'speaking'
-  setOverlayStatus: (status: 'idle' | 'listening' | 'processing' | 'speaking') => void
-  overlayReply: string
-  setOverlayReply: (reply: string) => void
 
   // Screen Watch
   screenWatchEnabled: boolean
@@ -232,12 +226,6 @@ export const useTorchStore = create<TorchState>((set) => ({
   clearTerminal: (): void => set({ terminalLines: [] }),
 
   // Overlay
-  overlayVisible: false,
-  setOverlayVisible: (visible): void => set({ overlayVisible: visible }),
-  overlayStatus: 'idle',
-  setOverlayStatus: (status): void => set({ overlayStatus: status }),
-  overlayReply: '',
-  setOverlayReply: (reply): void => set({ overlayReply: reply }),
 
   // Screen Watch
   screenWatchEnabled: false,
