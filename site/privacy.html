@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy — TORCH</title>
+    <meta
+      name="description"
+      content="What TORCH does with your screenshots, voice, clipboard, passwords and commands. Everything stays on your computer unless you set up an online assistant yourself."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --surface: #131313;
+        --border: #262626;
+        --border-strong: #3a3a3a;
+        --text: #f4f4f5;
+        --text-2: #a1a1aa;
+        --text-3: #71717a;
+        --mono: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        width: 100%;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      a {
+        color: var(--text);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+      }
+      nav {
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      .wordmark {
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-decoration: none;
+      }
+      .wordmark span {
+        display: inline-block;
+        transform: scaleX(-1);
+      }
+      .nav-inner a.back {
+        font-size: 14px;
+        color: var(--text-2);
+        text-decoration: none;
+      }
+      .nav-inner a.back:hover {
+        color: var(--text);
+      }
+
+      main {
+        padding: 72px 0 96px;
+      }
+      h1 {
+        font-size: clamp(32px, 5vw, 46px);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+      }
+      .updated {
+        margin-top: 14px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-3);
+      }
+      .intro {
+        margin-top: 28px;
+        color: var(--text-2);
+      }
+      .summary {
+        margin-top: 24px;
+        padding: 18px 20px;
+        border: 1px solid var(--border-strong);
+        background: var(--surface);
+      }
+      h2 {
+        margin-top: 56px;
+        margin-bottom: 14px;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        padding-top: 28px;
+        border-top: 1px solid var(--border);
+      }
+      p {
+        margin-bottom: 16px;
+        color: var(--text-2);
+      }
+      p strong,
+      li strong {
+        color: var(--text);
+        font-weight: 500;
+      }
+      ul {
+        margin: 0 0 16px 0;
+        padding-left: 20px;
+        color: var(--text-2);
+      }
+      li {
+        margin-bottom: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 18px;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        color: var(--text-2);
+      }
+      th {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-3);
+        font-weight: 500;
+      }
+      td a {
+        word-break: break-all;
+      }
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--text-2);
+        margin-bottom: 16px;
+      }
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 34px 0;
+        text-align: center;
+        font-size: 13px;
+        color: var(--text-3);
+      }
+      footer a {
+        color: var(--text-3);
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="nav-inner">
+        <a href="index.html" class="wordmark" aria-label="TORCH">TO<span>R</span>CH</a>
+        <a class="back" href="index.html">← Back to site</a>
+      </div>
+    </nav>
+
+    <main>
+      <div class="wrap">
+        <h1>Privacy</h1>
+        <p class="updated">Last updated: 31 August 2026</p>
+
+        <p class="intro">
+          TORCH runs on your computer and can see your screen, read your files and send your email.
+          You should know exactly what happens to all of that. This page is written to be read, not
+          to protect us.
+        </p>
+
+        <div class="summary">
+          <p style="margin: 0">
+            <strong>The short version:</strong> everything stays on your computer, except the words
+            of your command — and those only leave if you have set up an online assistant yourself.
+            We collect nothing.
+          </p>
+        </div>
+
+        <h2>Screenshots</h2>
+        <p>TORCH takes screenshots while it works so it can see what it is doing.</p>
+        <p>
+          <strong>They are processed on your computer and never uploaded.</strong> They are held in
+          memory for the moments the task needs them and are not written to disk as a permanent
+          record.
+        </p>
+        <p>
+          Whenever TORCH is controlling your screen, a blue border appears around the whole display.
+          If the border is not there, TORCH is not driving your screen.
+        </p>
+
+        <h2>Your voice</h2>
+        <p>
+          If you use voice, your speech is turned into text <strong>on your own computer</strong>,
+          by a speech model TORCH downloads once and then runs offline. The recording is not
+          uploaded, not stored, and is discarded as soon as it has been turned into text.
+        </p>
+        <p>
+          TORCH is <strong>not</strong> listening in the background. There is no wake word. It
+          records only while you are holding the microphone open — after you press Ctrl+Shift+Space
+          or click the microphone — and it stops on its own when you stop speaking.
+        </p>
+        <p>
+          The same is true in reverse: when TORCH speaks a reply aloud, the speech is generated on
+          your computer.
+        </p>
+
+        <h2>Clipboard history</h2>
+        <p>
+          TORCH keeps a short history of what you have copied, so it can use it in a task, and
+          clears it daily.
+        </p>
+        <p>
+          It is stored <strong>only on your computer, encrypted</strong> using your operating
+          system's own keystore (Windows DPAPI, macOS Keychain, Linux libsecret). On a machine where
+          that keystore is unavailable, TORCH writes no history at all rather than writing it in the
+          clear.
+        </p>
+
+        <h2>Passwords and keys</h2>
+        <p>
+          Your email app password and any assistant API keys are stored
+          <strong>only on your computer, encrypted</strong> with the same operating-system keystore.
+          They are never sent anywhere except to the service they belong to — your email password
+          goes to your email provider, and nowhere else.
+        </p>
+
+        <h2>When an online assistant is involved</h2>
+        <p>
+          TORCH can run entirely offline. If you leave it that way, nothing about your commands ever
+          leaves your computer.
+        </p>
+        <p>
+          If you add an API key in Settings, TORCH uses that company's service to work out how to
+          carry out your instruction, and <strong>the text of your command is sent to them.</strong>
+          Which one depends on the key you added:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>If you add a key for</th>
+              <th>Your commands go to</th>
+              <th>Their policy</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Google Gemini</td>
+              <td>Google</td>
+              <td><a href="https://ai.google.dev/gemini-api/terms">ai.google.dev</a></td>
+            </tr>
+            <tr>
+              <td>DeepSeek</td>
+              <td>DeepSeek</td>
+              <td><a href="https://www.deepseek.com/privacy">deepseek.com</a></td>
+            </tr>
+            <tr>
+              <td>OpenAI</td>
+              <td>OpenAI</td>
+              <td><a href="https://openai.com/policies/privacy-policy">openai.com</a></td>
+            </tr>
+            <tr>
+              <td>Anthropic Claude</td>
+              <td>Anthropic</td>
+              <td><a href="https://www.anthropic.com/legal/privacy">anthropic.com</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          If you have added more than one, TORCH prefers Google Gemini, then DeepSeek, then OpenAI,
+          then Anthropic — unless you pick a specific one in the command box.
+        </p>
+        <p>
+          <strong>What is sent:</strong> the words of your instruction, and a short summary of the
+          recent conversation so it can follow context.<br />
+          <strong>What is not sent:</strong> your screenshots, your files, your clipboard, your
+          passwords, or your voice recordings.
+        </p>
+        <p>Delete the key in Settings and TORCH stops sending anything.</p>
+
+        <h2>What we collect</h2>
+        <p>
+          <strong>Nothing.</strong> There is no analytics, no telemetry, no crash reporting that
+          runs on its own, and no account.
+        </p>
+        <p>
+          If you use a "Something went wrong" button to report a problem, you will be shown exactly
+          what it would send before anything is sent, and you can decide not to.
+        </p>
+
+        <h2>Where your data lives</h2>
+        <p>Everything is in two places on your computer:</p>
+        <ul>
+          <li><strong>Your tasks, history and memory</strong> — a database file in TORCH's data folder</li>
+          <li>
+            <strong>Your clipboard history and credentials</strong> — encrypted files in your
+            operating system's application-data folder for TORCH
+          </li>
+        </ul>
+        <p>Nothing is synced. Nothing is backed up anywhere by us.</p>
+
+        <h2>Deleting everything</h2>
+        <p>
+          <strong>In the app:</strong> Settings → Preferences → Data management. There are buttons
+          to clear your task history, clear TORCH's memory, and reset everything.
+        </p>
+        <p><strong>By hand,</strong> if you would rather be certain — delete these folders:</p>
+        <pre>%APPDATA%\torch                       (clipboard history, credentials)
+&lt;where you installed TORCH&gt;\data      (tasks, history, memory, voice models)</pre>
+        <p>
+          Uninstalling TORCH removes the program. Check the two folders above afterwards if you want
+          the data gone too.
+        </p>
+
+        <h2>Children</h2>
+        <p>TORCH is not intended for children under 13.</p>
+
+        <h2>Changes</h2>
+        <p>
+          If this page changes in a way that affects what happens to your data, the date at the top
+          changes and the app tells you.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          Questions: open an issue at
+          <a href="https://github.com/T-O-R-C-H/T.O.R.C.H">github.com/T-O-R-C-H/T.O.R.C.H</a>
+        </p>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">© 2026 TORCH · Built in Nigeria 🇳🇬 · <a href="index.html">Home</a></div>
+    </footer>
+  </body>
+</html>
