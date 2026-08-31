@@ -91,7 +91,16 @@ def translate_error(error_str: str) -> dict:
         }
 
     # 4b. API Key/Quota issues
-    if any(marker in err for marker in ["api key", "quota", "rate limit", "credentials", "authentication", "unauthenticated", "429"]):
+    # Quota is worth separating from a bad key: one is a plan limit the user
+    # can lift, the other is a setting they can correct, and "check your
+    # settings" is useless advice for the first.
+    if any(marker in err for marker in ["quota", "rate limit", "resource_exhausted", "429"]):
+        return {
+            "what_happened": "This AI model has run out of allowance on your plan.",
+            "what_to_do": "Wait a minute and try again, or pick a different model in Settings."
+        }
+
+    if any(marker in err for marker in ["api key", "credentials", "authentication", "unauthenticated"]):
         return {
             "what_happened": "There was an issue connecting to the AI helper service.",
             "what_to_do": "Please verify your connection settings or try again in a few minutes."

@@ -1,7 +1,7 @@
 """
 Opt-in model downloads.
 
-Both the speech-to-text model and the Piper voice are large files fetched from
+Both the speech-to-text model and the Kokoro voice are large files fetched from
 Hugging Face, and neither may be fetched implicitly: the libraries that use
 them will happily download on first use, which would mean pressing a button
 starts a hundred-megabyte transfer on someone's metered connection.
