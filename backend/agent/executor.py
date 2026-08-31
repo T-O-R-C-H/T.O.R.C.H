@@ -14,6 +14,10 @@ from config.settings import settings
 
 logger = logging.getLogger("torch.executor")
 
+# Declining an approval is a choice, not an error. The recap looks for this
+# exact text so a cancelled task is never reported as something going wrong.
+CANCELLED_BY_USER = "You cancelled that step."
+
 NON_BLOCKING_FAILURE_TOOLS = {"screenshot"}
 
 # Tools that drive the user's mouse and keyboard. Reading the screen is not
@@ -258,22 +262,24 @@ class Executor:
 
                 if self._task_is_cancelled(client_id, message_id) or approval == "cancel":
                     step["status"] = "failed"
-                    step["error"] = "Cancelled by user"
+                    step["error"] = CANCELLED_BY_USER
+                    step["cancelled"] = True
                     await ws_manager.send_step_update(
                         message_id, step_id, "failed",
-                        error="Cancelled by user",
+                        error=CANCELLED_BY_USER,
                         client_id=client_id,
                     )
-                    await ws_manager.send_terminal_line("Cancelled by user", "warning", client_id)
+                    await ws_manager.send_terminal_line(CANCELLED_BY_USER, "warning", client_id)
                     await ws_manager.send_status("idle", client_id)
                     results.append("")
                     # Mark remaining steps as failed
                     for remaining_step in steps[i+1:]:
                         remaining_step["status"] = "failed"
-                        remaining_step["error"] = "Task stopped by user"
+                        remaining_step["error"] = "Stopped — you cancelled this task."
+                        remaining_step["cancelled"] = True
                         await ws_manager.send_step_update(
                             message_id, remaining_step["id"], "failed",
-                            error="Task stopped by user",
+                            error="Stopped — you cancelled this task.",
                             client_id=client_id,
                         )
                     break

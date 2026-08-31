@@ -24,16 +24,12 @@ export function CommandPill(): JSX.Element {
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const { sendCommand } = useWebSocket()
 
-  const audio = useAudioCapture()
   const voiceModel = useVoiceModel()
   const [transcribing, setTranscribing] = useState(false)
 
-  const busy = agentStatus !== 'idle'
-  const recording = audio.state === 'recording'
-
   /** Stop recording, transcribe, and put the words in the box. */
-  const finishRecording = async (): Promise<void> => {
-    const wav = await audio.stop()
+  const finishRecording = async (stop: () => Promise<Blob | null>): Promise<void> => {
+    const wav = await stop()
     if (!wav) return
     setTranscribing(true)
     try {
@@ -55,6 +51,12 @@ export function CommandPill(): JSX.Element {
       setTranscribing(false)
     }
   }
+
+  // Ends itself when the user stops talking, the same as the command box.
+  const audio = useAudioCapture(finishRecording)
+
+  const busy = agentStatus !== 'idle'
+  const recording = audio.state === 'recording'
 
   /*
    * The global shortcut stands in for a wake word, so when the pill is raised
@@ -142,7 +144,7 @@ export function CommandPill(): JSX.Element {
         <button
           type="button"
           className={`pill__mic no-drag ${recording ? 'pill__mic--live' : ''}`}
-          onClick={() => (recording ? void finishRecording() : void audio.start())}
+          onClick={() => (recording ? void finishRecording(audio.stop) : void audio.start())}
           disabled={busy || transcribing || !voiceModel.ready}
           aria-label={recording ? 'Stop listening' : 'Speak a command'}
           aria-pressed={recording}

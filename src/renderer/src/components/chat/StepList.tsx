@@ -78,8 +78,21 @@ function getStepPhrase(
   return fallbackLabel || (isPending ? 'Working on it...' : 'Completed.')
 }
 
+/**
+ * A step the user cancelled is not a step that went wrong.
+ *
+ * Cancelling carried the same "failed" status as a real error, so declining
+ * an approval was reported back as "That didn't work" and "What went wrong" —
+ * blaming the app for something the user chose.
+ */
+function isCancelled(step: Step): boolean {
+  if (step.cancelled) return true
+  return /you cancelled|cancelled this task/i.test(step.error || '')
+}
+
 function reasoningForStep(step: Step): string {
   const phrase = getStepPhrase(step.tool, step.args, step.status, step.label)
+  if (isCancelled(step)) return 'Cancelled.'
   if (step.status === 'failed') return `That didn't work: ${phrase}`
   const present = phrase.toLowerCase()
   if (step.status === 'active') return `Now I'm ${present}`
@@ -146,7 +159,9 @@ export function StepList({ steps, command }: StepListProps): JSX.Element {
                 )}
                 {step.error && (
                   <div className="chat-error-card chat-error-card--step">
-                    <span className="chat-error-card__title">What went wrong</span>
+                    <span className="chat-error-card__title">
+                      {isCancelled(step) ? 'Cancelled' : 'What went wrong'}
+                    </span>
                     <p className="chat-error-card__body">{toPlainLanguage(step.error)}</p>
                   </div>
                 )}

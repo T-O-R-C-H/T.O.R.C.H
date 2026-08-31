@@ -23,6 +23,8 @@ export interface Step {
   status: StepStatus
   result?: string
   error?: string
+  /** Set when the user declined this step, so it is not reported as an error. */
+  cancelled?: boolean
   requiresApproval: boolean
 }
 

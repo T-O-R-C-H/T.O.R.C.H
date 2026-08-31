@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { rmsFromTimeDomain, levelToDisplay, encodeWav } from './useAudioCapture'
+import {
+  rmsFromTimeDomain,
+  levelToDisplay,
+  encodeWav,
+  shouldStopForSilence,
+  SILENCE_HOLD_MS,
+  SILENCE_LEVEL,
+  SPEECH_LEVEL
+} from './useAudioCapture'
 
 /**
  * The level meter must be measuring, not animating.
@@ -134,5 +142,54 @@ describe('encodeWav', () => {
     expect(view.getInt16(44, true)).toBe(0)
     expect(view.getInt16(46, true)).toBeCloseTo(0.5 * 0x7fff, -2)
     expect(view.getInt16(48, true)).toBeCloseTo(-0.5 * 0x8000, -2)
+  })
+})
+
+describe('shouldStopForSilence', () => {
+  it('does not end a recording before anything has been said', () => {
+    // Someone presses the shortcut and draws breath. Closing the recording
+    // underneath them is the worst possible moment to do it.
+    expect(shouldStopForSilence(false, 5000)).toBe(false)
+  })
+
+  it('ends the recording once speech is followed by a long enough pause', () => {
+    expect(shouldStopForSilence(true, SILENCE_HOLD_MS)).toBe(true)
+    expect(shouldStopForSilence(true, SILENCE_HOLD_MS + 400)).toBe(true)
+  })
+
+  it('holds through a pause shorter than the threshold', () => {
+    // Mid-sentence breaths must not cut the user off.
+    expect(shouldStopForSilence(true, SILENCE_HOLD_MS - 1)).toBe(false)
+    expect(shouldStopForSilence(true, 200)).toBe(false)
+  })
+
+  it('waits about eight hundred milliseconds', () => {
+    expect(SILENCE_HOLD_MS).toBeGreaterThanOrEqual(600)
+    expect(SILENCE_HOLD_MS).toBeLessThanOrEqual(1000)
+  })
+
+  it('accepts a caller-supplied hold time', () => {
+    expect(shouldStopForSilence(true, 300, 250)).toBe(true)
+    expect(shouldStopForSilence(true, 200, 250)).toBe(false)
+  })
+})
+
+describe('silence thresholds', () => {
+  it('treats quiet as above absolute zero', () => {
+    // A real room has a noise floor; a threshold of zero never triggers.
+    expect(SILENCE_LEVEL).toBeGreaterThan(0)
+  })
+
+  it('needs more level to count as speech than to count as quiet', () => {
+    // The gap between them stops the detector flapping on borderline frames.
+    expect(SPEECH_LEVEL).toBeGreaterThan(SILENCE_LEVEL)
+  })
+
+  it('puts conversational speech above the speech threshold', () => {
+    expect(levelToDisplay(0.07)).toBeGreaterThan(SPEECH_LEVEL)
+  })
+
+  it('puts a silent room below the quiet threshold', () => {
+    expect(levelToDisplay(0)).toBeLessThan(SILENCE_LEVEL)
   })
 })

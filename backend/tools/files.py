@@ -95,6 +95,43 @@ def _normalize_find_inputs(name: str, path: str) -> tuple[str, Path]:
     return clean_name, normalized
 
 
+# The folders people name out loud. "Find my downloads folder" used to run a
+# recursive search for a *file* called "Downloads" and return whatever
+# happened to match — on this machine, a Download.svelte from an unrelated
+# project. These are locations, not search terms.
+KNOWN_FOLDERS = {
+    "downloads": "Downloads",
+    "download": "Downloads",
+    "documents": "Documents",
+    "document": "Documents",
+    "desktop": "Desktop",
+    "pictures": "Pictures",
+    "photos": "Pictures",
+    "music": "Music",
+    "videos": "Videos",
+    "downloads folder": "Downloads",
+    "documents folder": "Documents",
+    "desktop folder": "Desktop",
+}
+
+
+def resolve_known_folder(name: str) -> Optional[Path]:
+    """
+    The real path behind a spoken folder name, or None.
+
+    Only returns a directory that actually exists, so a machine without a
+    Pictures folder does not get a confident answer about one.
+    """
+    key = str(name or "").strip().lower()
+    key = key.removeprefix("my ").strip()
+    key = key.removesuffix(" directory").removesuffix(" folder").strip() or key
+    folder = KNOWN_FOLDERS.get(key) or KNOWN_FOLDERS.get(f"{key} folder")
+    if not folder:
+        return None
+    candidate = Path.home() / folder
+    return candidate if candidate.is_dir() else None
+
+
 def find_file(name: str, path: str = "~", limit: int = 20, recent: bool = True) -> str:
     """Recursively search for a file by name, newest modified first.
 
@@ -102,6 +139,12 @@ def find_file(name: str, path: str = "~", limit: int = 20, recent: bool = True) 
     matches by modification time so the most recently edited file is listed
     first — which is what most "find the latest X" requests need.
     """
+    # A folder request is answered with the folder, not with a file search.
+    known = resolve_known_folder(name)
+    if known is not None:
+        logger.info(f"'{name}' resolved to the {known.name} folder")
+        return f"Your {known.name} folder is at {known}"
+
     name, search_path = _normalize_find_inputs(name, path)
     logger.info(f"Searching for '{name}' in {search_path}")
 

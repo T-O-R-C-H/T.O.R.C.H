@@ -176,7 +176,6 @@ export function PromptInput({
   const [text, setText] = useState('')
   const [justSent, setJustSent] = useState(false)
 
-  const audio = useAudioCapture()
   const voiceModel = useVoiceModel()
   const [transcribing, setTranscribing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -187,6 +186,42 @@ export function PromptInput({
    */
   const [askingToDownload, setAskingToDownload] = useState(false)
 
+  /** Stop, transcribe, and put the words in the box. */
+  const finishRecording = async (stop: () => Promise<Blob | null>): Promise<void> => {
+    const wav = await stop()
+    if (!wav) return
+    setTranscribing(true)
+    try {
+      const response = await torchFetch(`${API_BASE}/api/voice/transcribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'audio/wav' },
+        body: wav
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.detail || 'transcribe-failed')
+      const transcript = (data.transcript || '').trim()
+      if (!transcript) {
+        setVoiceError("TORCH didn't catch that. Try again.")
+        return
+      }
+      // Append rather than replace: the user may have typed part of it.
+      setText((current) => (current ? `${current} ${transcript}` : transcript))
+      // Focus is not taken here on purpose: this callback is handed to the
+      // capture hook, and touching the textarea ref from inside it makes the
+      // ref unwritable everywhere else, including the height reset on send.
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : "That didn't work. Try again.")
+    } finally {
+      setTranscribing(false)
+    }
+  }
+
+  /*
+   * Recording ends itself when the user stops talking. Requiring a second
+   * press left TORCH listening at someone who had already finished.
+   */
+  const audio = useAudioCapture(finishRecording)
+
   const handleMicClick = async (): Promise<void> => {
     setVoiceError(null)
     // Never start a download without asking, and never record audio we have
@@ -195,31 +230,10 @@ export function PromptInput({
       setAskingToDownload(true)
       return
     }
+    // The button still stops early for anyone who does not want to wait for
+    // the pause to be recognised.
     if (audio.state === 'recording') {
-      const wav = await audio.stop()
-      if (!wav) return
-      setTranscribing(true)
-      try {
-        const response = await torchFetch(`${API_BASE}/api/voice/transcribe`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'audio/wav' },
-          body: wav
-        })
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.detail || 'transcribe-failed')
-        const transcript = (data.transcript || '').trim()
-        if (!transcript) {
-          setVoiceError("TORCH didn't catch that. Try again.")
-          return
-        }
-        // Append rather than replace: the user may have typed part of it.
-        setText((current) => (current ? `${current} ${transcript}` : transcript))
-        inputRef.current?.focus()
-      } catch (err) {
-        setVoiceError(err instanceof Error ? err.message : "That didn't work. Try again.")
-      } finally {
-        setTranscribing(false)
-      }
+      await finishRecording(audio.stop)
       return
     }
     await audio.start()

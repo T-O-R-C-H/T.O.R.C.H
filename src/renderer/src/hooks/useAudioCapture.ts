@@ -22,6 +22,35 @@ const FFT_SIZE = 1024
 /** Stop a runaway recording rather than filling memory forever. */
 export const MAX_RECORDING_MS = 30000
 
+/*
+ * Ending on silence.
+ *
+ * Requiring a second press to stop is the wrong shape for voice: the user has
+ * already said their piece and is waiting on a machine that is still
+ * listening. These three numbers decide when a pause becomes an ending.
+ */
+
+/** Quiet for this long after speech ends the recording. */
+export const SILENCE_HOLD_MS = 800
+
+/**
+ * Below this displayed level counts as quiet.
+ *
+ * Deliberately above zero: a real room has a noise floor, and a threshold of
+ * zero would never trigger. Sits under the level a whisper produces so quiet
+ * speech still holds the recording open.
+ */
+export const SILENCE_LEVEL = 0.12
+
+/**
+ * Silence before any speech never ends the recording.
+ *
+ * Someone who presses the shortcut and then draws breath must not have the
+ * recording closed underneath them. The timer only arms once TORCH has
+ * actually heard something.
+ */
+export const SPEECH_LEVEL = 0.2
+
 export type CaptureState = 'idle' | 'requesting' | 'recording' | 'error'
 
 export interface AudioCapture {
@@ -51,6 +80,21 @@ export function rmsFromTimeDomain(frame: Uint8Array): number {
     sumSquares += centred * centred
   }
   return Math.sqrt(sumSquares / frame.length)
+}
+
+/**
+ * Decide whether a recording should end, from the levels seen so far.
+ *
+ * Pure so the rule can be tested without a microphone: given whether speech
+ * has been heard and how long it has been quiet, should this stop?
+ */
+export function shouldStopForSilence(
+  heardSpeech: boolean,
+  quietForMs: number,
+  holdMs: number = SILENCE_HOLD_MS
+): boolean {
+  if (!heardSpeech) return false
+  return quietForMs >= holdMs
 }
 
 /**
@@ -120,7 +164,14 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
 /** How many level samples the waveform keeps. */
 export const LEVEL_HISTORY = 48
 
-export function useAudioCapture(): AudioCapture {
+/**
+ * @param onSilence Called when the user stops speaking. Receives `stop`, so
+ *   the caller never has to reference the hook's own return value to finish
+ *   the recording.
+ */
+export function useAudioCapture(
+  onSilence?: (stop: () => Promise<Blob | null>) => void | Promise<void>
+): AudioCapture {
   const [state, setState] = useState<CaptureState>('idle')
   const [level, setLevel] = useState(0)
   const [levels, setLevels] = useState<number[]>([])
@@ -133,6 +184,12 @@ export function useAudioCapture(): AudioCapture {
   const frameRef = useRef<number | undefined>(undefined)
   const chunksRef = useRef<Float32Array[]>([])
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const heardSpeechRef = useRef(false)
+  const quietSinceRef = useRef<number | null>(null)
+  const stopRef = useRef<() => Promise<Blob | null>>(async () => null)
+  const onSilenceRef = useRef<((stop: () => Promise<Blob | null>) => void | Promise<void>) | null>(
+    null
+  )
 
   const teardown = useCallback((): void => {
     if (frameRef.current !== undefined) cancelAnimationFrame(frameRef.current)
@@ -148,6 +205,15 @@ export function useAudioCapture(): AudioCapture {
     contextRef.current = null
     setLevel(0)
   }, [])
+
+  /*
+   * Held in a ref so the running capture loop always calls the latest
+   * callback without start() having to be rebuilt - rebuilding it mid-record
+   * would tear down the microphone.
+   */
+  useEffect(() => {
+    onSilenceRef.current = onSilence ?? null
+  }, [onSilence])
 
   // Releasing the microphone matters more than most cleanup: the OS shows a
   // recording indicator, and leaving it on after the component goes away
@@ -201,6 +267,9 @@ export function useAudioCapture(): AudioCapture {
       setState('recording')
 
       const frame = new Uint8Array(analyser.frequencyBinCount)
+      heardSpeechRef.current = false
+      quietSinceRef.current = null
+
       const tick = (): void => {
         const node = analyserRef.current
         if (!node) return
@@ -212,6 +281,35 @@ export function useAudioCapture(): AudioCapture {
           next.push(display)
           return next
         })
+
+        // Track the run of quiet, and only once speech has been heard.
+        const now = Date.now()
+        if (display >= SPEECH_LEVEL) {
+          heardSpeechRef.current = true
+          quietSinceRef.current = null
+        } else if (display < SILENCE_LEVEL) {
+          if (quietSinceRef.current === null) quietSinceRef.current = now
+        } else {
+          // Between the two thresholds: neither clearly speech nor clearly
+          // quiet, so hold the current state rather than flapping.
+          quietSinceRef.current = quietSinceRef.current ?? null
+        }
+
+        const quietFor = quietSinceRef.current === null ? 0 : now - quietSinceRef.current
+        if (shouldStopForSilence(heardSpeechRef.current, quietFor)) {
+          // Hand back to the caller, which stops and transcribes. Doing the
+          // stop here would leave the recording with nowhere to go.
+          const notify = onSilenceRef.current
+          quietSinceRef.current = null
+          heardSpeechRef.current = false
+          if (frameRef.current !== undefined) cancelAnimationFrame(frameRef.current)
+          frameRef.current = undefined
+          if (notify) {
+            void notify(stopRef.current)
+            return
+          }
+        }
+
         frameRef.current = requestAnimationFrame(tick)
       }
       frameRef.current = requestAnimationFrame(tick)
@@ -252,6 +350,11 @@ export function useAudioCapture(): AudioCapture {
 
     return encodeWav(resample(merged, sampleRate, TARGET_SAMPLE_RATE), TARGET_SAMPLE_RATE)
   }, [state, teardown])
+
+  // Kept current so the capture loop can hand `stop` to the silence callback.
+  useEffect(() => {
+    stopRef.current = stop
+  }, [stop])
 
   const cancel = useCallback((): void => {
     chunksRef.current = []

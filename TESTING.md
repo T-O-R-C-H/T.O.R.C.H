@@ -15,7 +15,10 @@ cannot be checked is not a pass.
 **Environment:** developer machine, Windows 11, dev server (`npm run dev`).
 **Not** a clean VM, so every INSTALL item is untested.
 
-**Result: 24 pass · 3 fail · 6 need a VM · 4 not re-tested**
+**Result: 27 pass · 0 fail · 6 need a VM · 4 not re-tested**
+
+All three failures and all three defects were fixed and re-verified against
+the running app on the same day. See "Fixed since this run" below.
 
 ---
 
@@ -42,10 +45,10 @@ cannot be checked is not a pass.
 
 | # | Item | Result | Note |
 |---|------|--------|------|
-| 10 | "find my downloads folder" → returns real results | PASS\* | Real files, no fabrication — but it searched for a *file* named "Downloads" and returned `Download.svelte` from an unrelated project. The recap said "Found your file." while the body said "No exact match found". See defects D1, D2. |
+| 10 | "find my downloads folder" → returns real results | PASS | Now answers with the folder: "Your Downloads folder is at C:\Users\USER\Downloads". |
 | 11 | "open notepad" → notepad opens | PASS | Real process confirmed running. |
 | 12 | "send an email to X" → HITL fires, nothing sent until approved | PASS | `agentStatus: awaiting_approval`, step `send_email:hitl_required`, Cancel/Edit/Approve shown. |
-| 13 | Cancel an email HITL → nothing sent, task stops cleanly | PASS\* | Nothing sent, returned to idle. Presented as a failure — "That didn't work", "Could not finish" — for something the user chose. See defect D3. |
+| 13 | Cancel an email HITL → nothing sent, task stops cleanly | PASS | Nothing sent, returned to idle, and now reported as a choice: "Cancelled — nothing was sent." |
 | 14 | "delete test.txt" → HITL → approve → deleted → Undo restores it | PASS | Full cycle verified on a throwaway file: HITL at t+4s, approved, file gone, "Undo last action" restored it. |
 | 15 | "search the web for X" → real results, or honest "I could not search" | PASS | Completed and reported. |
 
@@ -64,7 +67,7 @@ cannot be checked is not a pass.
 |---|------|--------|------|
 | 20 | Hotkey opens the pill and starts capture within 200ms | PASS\* | Ctrl+Shift+Space raises the pill and starts listening; the mic lights and 48 real bars render. Latency was **not instrumented**, so the 200ms bound is unproven. |
 | 21 | Waveform reacts to real audio level | PASS | Swept signal: RMS 0.000 / 0.015 / 0.069 / 0.279 / 0.626 for silence / whisper / speech / loud / shout, returning to 0.000. No idle animation. |
-| 22 | Silence ends capture after ~800ms | **FAIL** | **Not implemented.** There is no silence detection; recording runs until pressed again or the 30s cap. See defect D4. |
+| 22 | Silence ends capture after ~800ms | PASS | Implemented. Ends 800ms after speech stops; a pause before any speech never ends it, so pressing the shortcut and drawing breath is safe. The button still stops early. |
 | 23 | Transcript is accurate for a normal sentence | PASS | "open my downloads folder and find the invoice" came back verbatim, fully offline. |
 | 24 | TTS speaks the recap only, not the step list | PASS | One synthesize call per task, for the recap; the plan message is never marked speakable. |
 
@@ -83,26 +86,34 @@ cannot be checked is not a pass.
 | # | Item | Result | Note |
 |---|------|--------|------|
 | 30 | No raw error string ever appears in chat | PASS | Swept for `Traceback`, `Exception`, `errno`, HTTP codes across nine pages — none. |
-| 31 | No model name appears anywhere in the UI | **FAIL** | `pages/ScreenWatch.tsx` ships `description: 'Browsing Gemini API documentation'` in its demo data. See defect D5. (A second hit on the Clipboard page is the user's own copied text, not a TORCH label.) |
-| 32 | No feature visible in the UI that does nothing | **FAIL** | Screen Watch falls back to `INITIAL_DEMO_ACTIVITY` whenever it has no real activity, so it always looks like it is working. See defect D5. |
+| 31 | No model name appears anywhere in the UI | PASS | The ScreenWatch demo data is gone. Re-swept: no model name on any page. (The Clipboard hit was the user's own copied text, not a TORCH label.) |
+| 32 | No feature visible in the UI that does nothing | PASS | Screen Watch shows an empty state instead of invented activity. |
 | 33 | Metrics show real numbers or are hidden | PASS\* | Insights is fully real now and shows an empty state with no history. Screen Watch's fabricated fallback is counted under 32 rather than twice. |
 | 34 | A failed task says it failed | PASS | "That didn't work", with the plain-language reason. |
 
 ---
 
+## Fixed since this run
+
+All six were re-verified against the running app.
+
+- **D1 — folder requests.** `resolve_known_folder()` maps spoken folder names
+  to real directories, so "find my downloads folder" returns the path instead
+  of searching for a file called Downloads. Real filenames still fall through
+  to the search.
+- **D2 — recap contradicting its body.** The recap was picked from the tool
+  that ran. `_result_found_nothing()` now checks the tool's own output, so a
+  search that found nothing no longer announces a find.
+- **D3 — cancelling framed as failure.** A declined step carries a
+  `cancelled` marker; the card reads "Cancelled", and the recap reads
+  "Cancelled — nothing was sent." Verified: no "That didn't work", no "What
+  went wrong", and nothing sent.
+- **D4 — silence detection.** Recording ends 800ms after speech stops. Quiet
+  before any speech never ends it. The mic button still stops early.
+- **D5 — Screen Watch fabricated activity.** `INITIAL_DEMO_ACTIVITY` deleted
+  outright, including the entry that named a model. Empty state instead.
+
 ## Open defects found by this run
 
-- **D1 — "find my downloads folder" resolves to a file search.** The planner
-  picks `find_file` for a folder request, so a reasonable phrasing returns
-  unrelated files. Needs either a folder-aware tool or better planning.
-- **D2 — A recap can contradict its own body.** The recap said "Found your
-  file." while the result said "No exact match found for 'Downloads'". The
-  recap sentence is chosen from the tool used, not from whether it succeeded.
-- **D3 — Cancelling is reported as a failure.** Declining an approval is a
-  choice, not an error, and should not read as "That didn't work".
-- **D4 — No silence detection.** Recording ends on a second press or the 30s
-  cap. Item 22 cannot pass until this exists.
-- **D5 — Screen Watch shows fabricated activity.** `INITIAL_DEMO_ACTIVITY`
-  renders whenever there is no real activity, which also leaks a model name.
-  Fails items 31 and 32. The fix is the same one applied to Insights: show an
-  empty state instead.
+None outstanding from this run. The remaining gaps are the six VM items and
+the four not re-tested, listed above.

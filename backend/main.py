@@ -1089,6 +1089,26 @@ async def _send_task_outcome(
     )
 
 
+# Phrases a tool uses when it completed without finding anything. A step can
+# succeed and still have nothing to report, and the recap has to say so rather
+# than claim a find.
+_EMPTY_RESULT_MARKERS = (
+    "no exact match",
+    "no match",
+    "no results",
+    "couldn't find",
+    "could not find",
+    "nothing found",
+    "no files found",
+)
+
+
+def _result_found_nothing(result: str) -> bool:
+    """True when a successful step's own output says it found nothing."""
+    lowered = (result or "").lower()
+    return any(marker in lowered for marker in _EMPTY_RESULT_MARKERS)
+
+
 def _elapsed_ms(started_at: float) -> int:
     """Milliseconds since a time.monotonic() reading, floored at zero."""
     return max(0, round((time.monotonic() - started_at) * 1000))
@@ -1236,7 +1256,12 @@ async def process_command(
             # Step errors are already plain language: the executor runs them
             # through translate_error() before reporting a step as failed.
             first_error = (failed_steps[0].get("error") or "").strip()
-            if first_error:
+            if any(s.get("cancelled") for s in failed_steps):
+                # Declining an approval is a choice. Reporting it as "I
+                # couldn't finish that" tells the user something went wrong
+                # when they are the one who stopped it.
+                recap_sentence = "Cancelled — nothing was sent."
+            elif first_error:
                 recap_sentence = f"I couldn't finish that. {first_error}"
             else:
                 failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
@@ -1307,7 +1332,12 @@ async def process_command(
             elif "analyse_screen" in tools_used or "screenshot" in tools_used:
                 recap_sentence = "Here's what I saw on your screen."
             elif "find_file" in tools_used or "find_file_fuzzy" in tools_used:
-                if "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
+                if _result_found_nothing(last_result):
+                    # The recap used to be picked from the tool that ran, so a
+                    # search that found nothing still announced "I found the
+                    # file." while the body underneath said it had not.
+                    recap_sentence = "I couldn't find that. Here's the closest I got."
+                elif "read_pdf" in tools_used or "read_word" in tools_used or "read_excel" in tools_used:
                     recap_sentence = "I found your document and pulled out the key details."
                 else:
                     recap_sentence = last_result if last_result else "I found the file."
