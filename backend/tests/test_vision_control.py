@@ -772,13 +772,17 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["screenshot"], "image")
 
     async def test_vision_refuses_without_a_configured_key(self):
-        """Screen control needs the AI service; say so rather than hanging."""
+        """
+        Screen control needs a model that can see. DeepSeek is text only, so a
+        DeepSeek-only setup must be told that plainly rather than starting a
+        task that cannot work.
+        """
         with (
             patch.object(vc.settings, "gemini_api_key", ""),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
         ):
-            with self.assertRaisesRegex(RuntimeError, "AI connection key"):
+            with self.assertRaisesRegex(RuntimeError, "vision-capable"):
                 await vc.vision_loop("do it", max_steps=1, task_id="nokey")
 
     async def test_a_step_cannot_hang_for_minutes(self):

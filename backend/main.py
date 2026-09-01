@@ -270,31 +270,6 @@ async def email_mark_read(data: dict):
         raise HTTPException(status_code=400, detail=_friendly_email_error(e))
 
 
-_GREETING_MARKERS = (
-    "help you with today",
-    "help you with anything",
-    "how can i help",
-    "what can i do",
-    "anything else",
-    "anything i can help",
-    "welcome back",
-    "at your service",
-    "what's up",
-    "how are you",
-    "how's it going",
-    "good morning",
-    "good afternoon",
-    "good evening",
-)
-
-
-def _is_clarifying_question(text: str) -> bool:
-    """True when a reply is a genuine clarifying question that needs an inline
-    answer — not a greeting or chit-chat that merely happens to end with '?'."""
-    t = (text or "").strip().lower()
-    if not t.endswith("?"):
-        return False
-    return not any(marker in t for marker in _GREETING_MARKERS)
 
 
 def _connection_status_block() -> str:
@@ -1165,8 +1140,14 @@ async def process_command(
             natural_response = respond_steps[0].get("args", {}).get("message", "Hello! How can I help you today?")
             response_msg = create_response_message(natural_response, [])
             response_msg["speak"] = True
-            if _is_clarifying_question(natural_response):
-                response_msg["needsAnswer"] = True
+            # No answer box on a conversational reply. Any sentence ending in
+            # "?" used to raise one, so "What would you like to do?" after a
+            # greeting became a blocking question with its own input. A reply
+            # that merely ends politely is not TORCH waiting on the user - the
+            # normal command box is right there. The answer box belongs to the
+            # case where a running task genuinely cannot continue without an
+            # answer, which is handled by the clarification flow in
+            # vision_control, not here.
             await ws_manager.send_agent_response(response_msg, client_id)
             await ws_manager.send_status("idle", client_id)
             await _send_task_outcome(

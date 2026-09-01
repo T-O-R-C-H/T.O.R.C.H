@@ -1386,9 +1386,13 @@ async def vision_loop(
             if direct_result is not None:
                 return direct_result
 
+        # Screen control needs a model that can see. DeepSeek is text only, so
+        # a DeepSeek-only setup can plan and chat but cannot drive the screen -
+        # say so plainly rather than starting a task that cannot work.
         if not settings.gemini_api_key:
             raise RuntimeError(
-                "Screen control needs an AI connection key. Add one in Settings."
+                "Screen control needs a vision-capable AI key. DeepSeek can't "
+                "see the screen, so add a Gemini key in Settings to use this."
             )
 
         history = []

@@ -29,11 +29,13 @@ def get_provider(model: Optional[str] = None) -> Optional[LLMProvider]:
     if requested_model.startswith(("gpt-", "o1", "o3", "o4")):
         return OpenAIProvider(settings.openai_api_key, model=requested_model) if settings.openai_api_key else None
 
-    # Fall back to Gemini, DeepSeek, OpenAI, or Claude
-    if settings.gemini_api_key:
-        return GeminiProvider(settings.gemini_api_key)
-    elif settings.deepseek_api_key:
+    # DeepSeek first by preference. Any of the four still works, and the user
+    # picks one explicitly in Settings or in the command box; this only
+    # decides which is used when several keys are present.
+    if settings.deepseek_api_key:
         return DeepSeekProvider(settings.deepseek_api_key, model=settings.deepseek_model)
+    elif settings.gemini_api_key:
+        return GeminiProvider(settings.gemini_api_key)
     elif settings.openai_api_key:
         return OpenAIProvider(settings.openai_api_key)
     elif settings.anthropic_api_key:
