@@ -327,11 +327,13 @@ class Executor:
                         action_name = (action or "action").replace("_", " ")
                         live_label = str(reason or "").strip() or f"{action_name.capitalize()} on screen"
                         step["label"] = live_label
+                        step["action"] = action_name
                         await ws_manager.send_step_update(
                             message_id,
                             step_id,
                             "active",
                             label=live_label,
+                            action=action_name,
                             client_id=client_id,
                         )
                         await ws_manager.send_terminal_line(

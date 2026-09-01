@@ -76,9 +76,16 @@ class ConnectionManager:
         result: Optional[str] = None,
         error: Optional[str] = None,
         label: Optional[str] = None,
+        action: Optional[str] = None,
         client_id: str = "main",
     ) -> None:
-        """Send a step execution update."""
+        """
+        Send a step execution update.
+
+        `action` is what the model decided to do (click, type, scroll) and
+        `label` is why. They travel separately so the screen indicator can
+        show both, rather than one merged sentence.
+        """
         data = {
             "type": "step_update",
             "messageId": message_id,
@@ -91,6 +98,8 @@ class ConnectionManager:
             data["error"] = error
         if label:
             data["label"] = label
+        if action:
+            data["action"] = action
         await self.send_message(data, client_id)
 
     async def send_agent_response(self, message: dict, client_id: str = "main") -> None:

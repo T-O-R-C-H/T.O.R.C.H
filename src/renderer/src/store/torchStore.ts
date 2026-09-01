@@ -25,6 +25,8 @@ export interface Step {
   error?: string
   /** Set when the user declined this step, so it is not reported as an error. */
   cancelled?: boolean
+  /** What the model decided to do this step (click, type, scroll). */
+  action?: string
   requiresApproval: boolean
 }
 
