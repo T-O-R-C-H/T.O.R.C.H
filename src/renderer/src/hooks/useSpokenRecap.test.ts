@@ -106,3 +106,32 @@ describe('spokenForm', () => {
     expect(spoken.endsWith('…')).toBe(true)
   })
 })
+
+describe('typing is a silent conversation', () => {
+  const spoken = (overrides = {}): Message =>
+    ({
+      id: 'm1',
+      role: 'torch',
+      content: 'That is done.',
+      timestamp: Date.now(),
+      speak: true,
+      ...overrides
+    }) as Message
+
+  it('does not read a reply back when the user typed', () => {
+    // Someone typing "hi" is reading the screen, not listening to it.
+    expect(recapToSpeak([spoken()], true, null, 'type')).toBeNull()
+  })
+
+  it('reads the reply when the user spoke', () => {
+    expect(recapToSpeak([spoken()], true, null, 'voice')).not.toBeNull()
+  })
+
+  it('reads the reply in wake-word mode', () => {
+    expect(recapToSpeak([spoken()], true, null, 'heytorch')).not.toBeNull()
+  })
+
+  it('still stays silent in voice mode when the setting is off', () => {
+    expect(recapToSpeak([spoken()], false, null, 'voice')).toBeNull()
+  })
+})

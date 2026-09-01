@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useTorchStore, type Message } from '../store/torchStore'
+import { useTorchStore, type InputMode, type Message } from '../store/torchStore'
 import { speakWithNaturalVoice, stopSpeaking } from '../utils/voicePlayback'
 import { formatAgentContent } from '../utils/plainLanguage'
 
@@ -30,9 +30,19 @@ export function __resetSpokenRecapForTests(): void {
 export function recapToSpeak(
   messages: Message[],
   speakResponses: boolean,
-  alreadySpokenId: string | null
+  alreadySpokenId: string | null,
+  inputMode: InputMode = 'voice'
 ): Message | null {
   if (!speakResponses) return null
+
+  /*
+   * Typing is a silent conversation.
+   *
+   * Someone who types "hi" is reading the screen, not listening to it, and
+   * having the reply read back is an interruption rather than a feature.
+   * Speech belongs to the modes where the user spoke first.
+   */
+  if (inputMode === 'type') return null
 
   const latest = messages[messages.length - 1] as (Message & { speak?: boolean }) | undefined
   if (!latest || latest.role !== 'torch' || !latest.speak) return null
@@ -52,7 +62,8 @@ export function recapToSpeak(
 export function useSpokenRecap(): void {
   useEffect(() => {
     const speakIfReady = (messages: Message[]): void => {
-      const message = recapToSpeak(messages, useTorchStore.getState().speakResponses, lastSpokenId)
+      const state = useTorchStore.getState()
+      const message = recapToSpeak(messages, state.speakResponses, lastSpokenId, state.inputMode)
       if (!message) return
       lastSpokenId = message.id
       void speakWithNaturalVoice(formatAgentContent(message.content || ''))
