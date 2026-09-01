@@ -132,6 +132,7 @@ export function useWebSocket(): {
   ) => boolean
   reconnect: () => void
   sendStopCommand: () => void
+  sendPauseCommand: (paused: boolean) => void
   sendClarification: (taskId: string, response: string) => boolean
   sendUndoCommand: (messageId: string) => void
   sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
@@ -583,6 +584,12 @@ export function useWebSocket(): {
     []
   )
 
+  /** Hold or release the screen-control loop without ending the task. */
+  const sendPauseCommand = useCallback((paused: boolean): void => {
+    const socket = openSocket()
+    socket?.send(JSON.stringify({ type: paused ? 'pause_task' : 'resume_task' }))
+  }, [])
+
   const sendStopCommand = useCallback((): void => {
     // Only the window that started the task can stop it directly; others relay
     // the request through the main process.
@@ -622,6 +629,7 @@ export function useWebSocket(): {
     sendApproval,
     reconnect,
     sendStopCommand,
+    sendPauseCommand,
     sendClarification,
     sendUndoCommand
   }

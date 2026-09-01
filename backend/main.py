@@ -964,6 +964,19 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
             "error": None if accepted else "That question is no longer active",
         }, client_id)
 
+    elif msg_type in ("pause_task", "resume_task"):
+        # Pause holds the screen-control loop before its next action and keeps
+        # the session alive, so resuming carries on rather than starting over.
+        from tools.vision_control import pause_vision_control, resume_vision_control
+
+        paused = msg_type == "pause_task"
+        if paused:
+            pause_vision_control(client_id)
+        else:
+            resume_vision_control(client_id)
+        logger.info("Screen control %s", "paused" if paused else "resumed")
+        await ws_manager.send_message({"type": "control_paused", "paused": paused}, client_id)
+
     elif msg_type == "stop_task":
         logger.info("Stop task received")
         cancelled_channels = executor.stop_task(client_id) or set()

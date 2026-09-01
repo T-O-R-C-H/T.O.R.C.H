@@ -564,16 +564,37 @@ function createControlBorderWindow(): void {
  */
 let cursorPollTimer: NodeJS.Timeout | null = null
 
+/*
+ * Where the panel currently sits, in window coordinates.
+ *
+ * The indicator is click-through so it never swallows a click meant for the
+ * app underneath. Its buttons would be unclickable for the same reason, so
+ * the click-through is lifted only while the pointer is actually over the
+ * panel, and put straight back when it leaves.
+ */
+let panelRect: { x: number; y: number; width: number; height: number } | null = null
+let panelInteractive = false
+
 function startCursorTracking(): void {
   if (cursorPollTimer) return
   cursorPollTimer = setInterval(() => {
     if (!controlBorderWindow || controlBorderWindow.isDestroyed()) return
     const point = screen.getCursorScreenPoint()
     const bounds = controlBorderWindow.getBounds()
-    controlBorderWindow.webContents.send('control-border:cursor', {
-      x: point.x - bounds.x,
-      y: point.y - bounds.y
-    })
+    const local = { x: point.x - bounds.x, y: point.y - bounds.y }
+    controlBorderWindow.webContents.send('control-border:cursor', local)
+
+    const overPanel =
+      panelRect !== null &&
+      local.x >= panelRect.x &&
+      local.x <= panelRect.x + panelRect.width &&
+      local.y >= panelRect.y &&
+      local.y <= panelRect.y + panelRect.height
+
+    if (overPanel !== panelInteractive) {
+      panelInteractive = overPanel
+      controlBorderWindow.setIgnoreMouseEvents(!overPanel, { forward: true })
+    }
   }, 16)
 }
 
@@ -591,6 +612,11 @@ function showControlBorder(): void {
 
 function hideControlBorder(): void {
   stopCursorTracking()
+  panelRect = null
+  if (panelInteractive && controlBorderWindow && !controlBorderWindow.isDestroyed()) {
+    panelInteractive = false
+    controlBorderWindow.setIgnoreMouseEvents(true, { forward: true })
+  }
   controlBorderWindow?.hide()
 }
 
@@ -1184,6 +1210,12 @@ app.whenReady().then(() => {
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
   ipcMain.on('control-border:show', () => showControlBorder())
   ipcMain.on('control-border:hide', () => hideControlBorder())
+  ipcMain.on(
+    'control-border:panel-rect',
+    (_event, rect: { x: number; y: number; width: number; height: number }) => {
+      panelRect = rect
+    }
+  )
   ipcMain.on('task-event:publish', (ipcEvent, taskEvent: unknown) => {
     if (!taskEvent || typeof taskEvent !== 'object' || Array.isArray(taskEvent)) return
 

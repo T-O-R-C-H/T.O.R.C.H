@@ -174,8 +174,50 @@ _active_sessions: Dict[str, Dict[str, threading.Event]] = {}
 _pending_clarifications: Dict[tuple[str, str], asyncio.Future[str]] = {}
 
 
+# Paused clients. Separate from the cancel events because pausing keeps the
+# session alive: the loop stops before its next action and waits, so resuming
+# carries on rather than starting over.
+_paused_clients: Dict[str, threading.Event] = {}
+
+
+def _pause_gate(client_id: str) -> threading.Event:
+    return _paused_clients.setdefault(client_id, threading.Event())
+
+
+def pause_vision_control(client_id: str) -> bool:
+    """Hold the loop before its next action. The session stays alive."""
+    _pause_gate(client_id).set()
+    return True
+
+
+def resume_vision_control(client_id: str) -> bool:
+    _pause_gate(client_id).clear()
+    return True
+
+
+def is_vision_paused(client_id: str) -> bool:
+    return _pause_gate(client_id).is_set()
+
+
+def _wait_while_paused(client_id: str, cancel_event: threading.Event) -> None:
+    """
+    Block until the user resumes, giving up immediately on a stop.
+
+    Polled rather than waited on directly so a cancel arriving during a pause
+    is noticed at once instead of after the user happens to resume.
+    """
+    gate = _paused_clients.get(client_id)
+    if gate is None:
+        return
+    while gate.is_set():
+        _raise_if_cancelled(cancel_event)
+        time.sleep(0.1)
+
+
 def cancel_vision_control(client_id: str, task_id: Optional[str] = None) -> int:
     """Cancel active vision sessions for one client, optionally limited to one task."""
+    # A stop while paused must not leave the flag set for the next task.
+    _paused_clients.pop(client_id, None)
     sessions = _active_sessions.get(client_id, {})
     selected = (
         [sessions[task_id]]
@@ -1486,6 +1528,9 @@ async def vision_loop(
                     "reason": f"The model proposed an invalid action: {exc}",
                 })
                 continue
+
+            # Stop here rather than mid-action if the user has paused.
+            _wait_while_paused(client_id, cancel_event)
 
             kind, reason = action.get("action", ""), action.get("reason", "")
             if profile_choice_needed and kind != "ask":

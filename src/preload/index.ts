@@ -57,6 +57,8 @@ const torchAPI = {
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
+  setControlPanelRect: (rect: { x: number; y: number; width: number; height: number }): void =>
+    ipcRenderer.send('control-border:panel-rect', rect),
   onControlBorderCursor: (callback: (point: { x: number; y: number }) => void): void => {
     ipcRenderer.on('control-border:cursor', (_event, point) => callback(point))
   },
