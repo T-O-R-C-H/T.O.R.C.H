@@ -29,6 +29,7 @@ interface TorchAPI {
   showGuidance: (guidance: VisualGuidance) => void
   hideGuidance: () => void
   showControlBorder: () => void
+  onControlBorderCursor: (callback: (point: { x: number; y: number }) => void) => void
   hideControlBorder: () => void
   completeVisionControl: () => void
   publishTaskEvent: (event: Record<string, unknown>) => void

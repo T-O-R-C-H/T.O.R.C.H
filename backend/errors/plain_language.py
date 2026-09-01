@@ -75,6 +75,16 @@ def translate_error(error_str: str) -> dict:
             "what_to_do": "Please check your internet connection and try again in a moment."
         }
         
+    # 4b. API Key/Quota issues
+    # Quota is worth separating from a bad key: one is a plan limit the user
+    # can lift, the other is a setting they can correct, and "check your
+    # settings" is useless advice for the first.
+    if any(marker in err for marker in ["quota", "rate limit", "resource_exhausted", "429"]):
+        return {
+            "what_happened": "This AI model has run out of allowance on your plan.",
+            "what_to_do": "Wait a minute and try again, or pick a different model in Settings."
+        }
+
     # 4a. The AI service is up but too busy to answer.
     #
     # Separate from the credentials branch below on purpose: a 503 is not the
@@ -88,16 +98,6 @@ def translate_error(error_str: str) -> dict:
         return {
             "what_happened": "The AI service is busy right now.",
             "what_to_do": "Nothing is wrong on your side — try again in a moment."
-        }
-
-    # 4b. API Key/Quota issues
-    # Quota is worth separating from a bad key: one is a plan limit the user
-    # can lift, the other is a setting they can correct, and "check your
-    # settings" is useless advice for the first.
-    if any(marker in err for marker in ["quota", "rate limit", "resource_exhausted", "429"]):
-        return {
-            "what_happened": "This AI model has run out of allowance on your plan.",
-            "what_to_do": "Wait a minute and try again, or pick a different model in Settings."
         }
 
     if any(marker in err for marker in ["api key", "credentials", "authentication", "unauthenticated"]):

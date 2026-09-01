@@ -57,6 +57,9 @@ const torchAPI = {
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
+  onControlBorderCursor: (callback: (point: { x: number; y: number }) => void): void => {
+    ipcRenderer.on('control-border:cursor', (_event, point) => callback(point))
+  },
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
   completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),
   publishTaskEvent: (event: Record<string, unknown>): void =>

@@ -556,13 +556,41 @@ function createControlBorderWindow(): void {
   }
 }
 
+/*
+ * The indicator draws its own cursor, which means it needs to know where the
+ * real one is. A click-through window does not reliably receive mousemove, so
+ * the position is read from the OS and pushed in. Polling only while the
+ * border is up, so nothing runs when TORCH is not driving.
+ */
+let cursorPollTimer: NodeJS.Timeout | null = null
+
+function startCursorTracking(): void {
+  if (cursorPollTimer) return
+  cursorPollTimer = setInterval(() => {
+    if (!controlBorderWindow || controlBorderWindow.isDestroyed()) return
+    const point = screen.getCursorScreenPoint()
+    const bounds = controlBorderWindow.getBounds()
+    controlBorderWindow.webContents.send('control-border:cursor', {
+      x: point.x - bounds.x,
+      y: point.y - bounds.y
+    })
+  }, 16)
+}
+
+function stopCursorTracking(): void {
+  if (cursorPollTimer) clearInterval(cursorPollTimer)
+  cursorPollTimer = null
+}
+
 function showControlBorder(): void {
   if (!controlBorderWindow || controlBorderWindow.isDestroyed()) createControlBorderWindow()
   updateControlBorderBounds()
   controlBorderWindow?.showInactive()
+  startCursorTracking()
 }
 
 function hideControlBorder(): void {
+  stopCursorTracking()
   controlBorderWindow?.hide()
 }
 
