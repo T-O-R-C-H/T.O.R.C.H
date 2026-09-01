@@ -458,16 +458,12 @@ async def plan_command(
                 "requires_approval": False,
             }]
 
-# Greetings and chit-chat never need the LLM API — answer instantly and offline.
-        canned = _canned_conversational_reply(user_command)
-        if canned is not None:
-            logger.info("Using canned conversational reply")
-            return [{
-                "tool": "respond",
-                "label": "Replying to you",
-                "args": {"message": canned},
-                "requires_approval": False,
-            }]
+        # Chit-chat used to short-circuit here to a fixed table, so "hey" got
+        # the same sentence every time no matter how it was phrased or what
+        # had been said before. It reads as a script because it was one.
+        # Conversation goes to the model like everything else now; the table
+        # survives only as an offline fallback further down, for when the
+        # service cannot be reached at all.
 
         # Determine the active provider
         provider = get_provider(model)
@@ -495,6 +491,20 @@ async def plan_command(
         logger.error(f"Brain error: {e}")
         err_msg = str(e)
         lowered = err_msg.lower()
+
+        # If the service is unreachable and the user only said hello, answer
+        # anyway rather than reporting a failure for a greeting. This is the
+        # one place the fixed replies are still used: a stock sentence beats
+        # an error message when there is no way to produce a better one.
+        offline_reply = _canned_conversational_reply(user_command)
+        if offline_reply is not None:
+            logger.info("AI service unreachable; using an offline reply for chit-chat")
+            return [{
+                "tool": "respond",
+                "label": "Replying to you",
+                "args": {"message": offline_reply},
+                "requires_approval": False,
+            }]
         if "429" in lowered or "quota" in lowered or "limit" in lowered or "exhausted" in lowered:
             return [{
                 "tool": "error",

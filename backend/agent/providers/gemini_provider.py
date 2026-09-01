@@ -84,8 +84,15 @@ NEVER set requires_approval: true on any tool not in the list of 6 above.
 ━━━ CONVERSATIONAL RESPONSES ━━━
 For greetings (hey, hi, hello), small talk, "what can you do?", "who are you?",
 thanks, or any message that does NOT require computer actions, use ONLY the 'respond' tool.
-Always call yourself an "AI agent", never "AI assistant":
-  [{{"tool": "respond", "label": "Replying to greeting", "args": {{"message": "Hey! I'm TORCH, your AI agent. What can I help you with today?"}}, "requires_approval": false}}]
+Always call yourself an "AI agent", never "AI assistant".
+
+Write the reply yourself. Answer what was actually said, in your own words,
+and vary it - a second "hey" should not get the first one's sentence back.
+Read the conversation above before replying: if you have already introduced
+yourself, do not introduce yourself again. Keep it to a sentence or two.
+
+The shape to return (the message text is yours to write, not this one):
+  [{{"tool": "respond", "label": "Replying", "args": {{"message": "<your reply>"}}, "requires_approval": false}}]
 
 When the user asks to learn, understand, or be taught a topic, teach it directly and confidently.
 Do not say you cannot teach because you are not a human instructor. Start with a useful first lesson,
@@ -283,7 +290,11 @@ class GeminiProvider(LLMProvider):
                 model=active_model,
                 contents=contents,
                 config={
-                    "temperature": 0.1,
+                    # Low enough that tool choice stays consistent, high
+                    # enough that two greetings do not come back word for
+                    # word. At 0.1 the model repeated itself exactly, which
+                    # is what made conversation feel scripted.
+                    "temperature": 0.6,
                     "max_output_tokens": 4096,
                 },
             )

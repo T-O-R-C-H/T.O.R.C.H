@@ -148,3 +148,58 @@ def test_an_error_only_plan_does_not_announce_a_start():
 
     source = inspect.getsource(main.process_command)
     assert 'validated_steps[0].get("tool") == "error"' in source
+
+
+# ─── Conversation goes to the model, not to a lookup table ───
+
+
+def test_chit_chat_is_not_short_circuited_before_the_model():
+    """
+    Greetings used to return a fixed sentence without ever calling the model,
+    so "hey" got the same words every time regardless of phrasing or of what
+    had already been said. It read as a script because it was one.
+    """
+    import inspect
+    from agent import brain
+
+    source = inspect.getsource(brain.plan_command)
+    canned_at = source.find("_canned_conversational_reply")
+    provider_at = source.find("get_provider")
+
+    assert canned_at != -1, "the offline fallback should still exist"
+    assert provider_at != -1
+    assert canned_at > provider_at, (
+        "the canned reply must be a fallback after the provider call, "
+        "not a short circuit before it"
+    )
+
+
+def test_the_offline_fallback_still_answers_a_greeting():
+    """With no service reachable, a stock sentence beats an error message."""
+    from agent.brain import _canned_conversational_reply
+
+    assert _canned_conversational_reply("hey") is not None
+    assert _canned_conversational_reply("thanks") is not None
+    assert _canned_conversational_reply("delete my files") is None
+
+
+def test_the_prompt_does_not_dictate_the_greeting_sentence():
+    """
+    The provider prompt carried the exact reply as its example, so even when
+    the model did answer it parroted that sentence back.
+    """
+    import inspect
+    from agent.providers import gemini_provider
+
+    source = inspect.getsource(gemini_provider)
+    assert "Hey! I'm TORCH, your AI agent. What can I help you with today?" not in source
+    assert "<your reply>" in source
+
+
+def test_temperature_allows_variation():
+    """At 0.1 the same greeting came back word for word."""
+    import inspect
+    from agent.providers import gemini_provider
+
+    source = inspect.getsource(gemini_provider)
+    assert '"temperature": 0.6' in source
