@@ -67,3 +67,34 @@ describe('plain messages pass through', () => {
     expect(toPlainLanguage('I found **your** file.')).not.toContain('**')
   })
 })
+
+describe('a plain sentence survives, however long', () => {
+  it('keeps a quota message that runs past the old 140-character limit', () => {
+    // This exact sentence was being replaced by "Something went wrong on this
+    // step", so the user never learned their allowance had run out.
+    const recap =
+      "I couldn't finish that. This AI model has run out of allowance on your plan. " +
+      'Wait a minute and try again, or pick a different model in Settings.'
+
+    expect(recap.length).toBeGreaterThan(140)
+    expect(toPlainLanguage(recap)).toContain('run out of allowance')
+  })
+
+  it('still replaces a stack trace', () => {
+    expect(toPlainLanguage('Traceback (most recent call last): File "x.py", line 3')).toBe(
+      'Something went wrong on this step. Try rephrasing your request.'
+    )
+  })
+
+  it('still replaces a raw error object', () => {
+    expect(toPlainLanguage("503 UNAVAILABLE {'error': {'code': 503}}")).toBe(
+      'Something went wrong on this step. Try rephrasing your request.'
+    )
+  })
+
+  it('still replaces something genuinely enormous', () => {
+    expect(toPlainLanguage('word '.repeat(200))).toBe(
+      'Something went wrong on this step. Try rephrasing your request.'
+    )
+  })
+})

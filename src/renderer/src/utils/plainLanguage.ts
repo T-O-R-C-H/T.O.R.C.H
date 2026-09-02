@@ -38,12 +38,24 @@ export function toPlainLanguage(raw: string | undefined): string {
   if (lower.includes('step ') && lower.includes('failed after')) {
     return 'This step did not finish. Check the details below and try again.'
   }
-  if (
+  /*
+   * Replace text that looks like a machine wrote it for a machine.
+   *
+   * Length alone used to be enough, at 140 characters. That threw away
+   * perfectly readable sentences: "I couldn't finish that. This AI model has
+   * run out of allowance on your plan. Wait a minute and try again, or pick a
+   * different model in Settings." is 144, so the user was shown "Something
+   * went wrong on this step" instead of being told their quota had run out.
+   *
+   * Length now only counts alongside evidence that the text is actually raw.
+   */
+  const looksRaw =
     lower.includes('traceback') ||
     lower.includes('exception') ||
     lower.includes('line ') ||
-    raw.length > 140
-  ) {
+    /[{}]|0x[0-9a-f]{4}|File "/.test(raw)
+
+  if (looksRaw || raw.length > 400) {
     return 'Something went wrong on this step. Try rephrasing your request.'
   }
 
