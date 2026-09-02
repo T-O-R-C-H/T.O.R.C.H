@@ -272,13 +272,37 @@ def _vision_action(prompt: str, screenshot_b64: str, profile_choice_needed: bool
         ],
         generation_config={
             "temperature": 0.1,
-            "max_output_tokens": 400,
+            # 400 was not enough. A vision action carries a reason alongside
+            # the action itself, and the model was running out of output
+            # mid-JSON: no complete part came back, so nothing could be
+            # parsed and every screen-control task died on its first look.
+            "max_output_tokens": 1600,
             "response_mime_type": "application/json",
         },
     )
 
-    text = (getattr(response, "text", "") or "").strip()
+    # `response.text` raises when there is no usable part, and its message is
+    # a link to an enum. Read the candidate directly so the reason can be
+    # named in words the user can act on.
+    text = ""
+    try:
+        text = (getattr(response, "text", "") or "").strip()
+    except (ValueError, AttributeError):
+        text = ""
+
     if not text:
+        candidates = getattr(response, "candidates", None) or []
+        finish = getattr(candidates[0], "finish_reason", None) if candidates else None
+        reason = str(finish)
+        if "SAFETY" in reason or reason.endswith("3"):
+            raise RuntimeError(
+                "The AI service declined to describe this screen. "
+                "Try a different window or a narrower request."
+            )
+        if "MAX_TOKENS" in reason or reason.endswith("2"):
+            raise RuntimeError(
+                "The AI service ran out of room mid-answer while reading the screen."
+            )
         raise RuntimeError("The AI service returned no action for this screen.")
 
     return {"message": {"content": text}}

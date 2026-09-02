@@ -313,6 +313,13 @@ export function useWebSocket(): {
         }
         // UI Automation drives the same mouse and keyboard, so it raises the
         // same border. The user should not have to know which engine is used.
+        // The phrase was heard. The pill owns voice capture already, so it
+        // is raised the same way the shortcut raises it rather than growing
+        // a second recording path.
+        case 'wake_word': {
+          window.torchAPI?.wakeForVoice?.()
+          break
+        }
         case 'vision_control_start':
         case 'uia_control_start': {
           window.torchAPI?.showControlBorder()

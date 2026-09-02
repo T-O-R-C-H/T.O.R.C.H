@@ -58,6 +58,8 @@ interface TorchAPI {
   showCompanion: () => void
   hideCompanion: () => void
   toggleCompanion: () => void
+  wakeForVoice: () => void
+  setPillVoiceActive: (active: boolean) => void
   onCompanionAnimateIn: (callback: () => void) => void
   onCompanionAnimateOut: (callback: () => void) => void
   onPillActivate: (callback: (payload: { voice: boolean }) => void) => void

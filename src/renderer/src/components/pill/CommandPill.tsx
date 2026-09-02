@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { TorchLogo } from '../ui/TorchLogo'
 import { IconMic } from '../icons'
 import { Waveform } from '../input/Waveform'
+import { VoiceOrb } from '../voice/VoiceOrb'
 import { useAudioCapture } from '../../hooks/useAudioCapture'
 import { useVoiceModel } from '../../hooks/useVoiceModel'
 import { API_BASE, torchFetch } from '../../config/api'
@@ -77,6 +78,11 @@ export function CommandPill(): JSX.Element {
     window.torchAPI?.setPillFocused?.(focused)
   }, [focused])
 
+  // The orb needs vertical room the 44px pill does not have.
+  useEffect(() => {
+    window.torchAPI?.setPillVoiceActive?.(recording || transcribing)
+  }, [recording, transcribing])
+
   const submit = (): void => {
     const command = text.trim()
     if (!command || busy) return
@@ -102,62 +108,74 @@ export function CommandPill(): JSX.Element {
   }
 
   return (
-    <div className={`pill ${focused ? 'pill--focused' : ''}`}>
-      <button
-        type="button"
-        className="pill__mark no-drag"
-        onClick={() => window.torchAPI?.openMainWindow?.()}
-        aria-label="Open TORCH"
-        title="Open TORCH"
-      >
-        <TorchLogo width={20} />
-      </button>
-
-      {recording ? (
-        /* While listening, the level meter replaces the text box: it is the
-           only thing worth showing, and it proves TORCH is really hearing. */
-        <Waveform levels={audio.levels} />
-      ) : (
-        <input
-          ref={inputRef}
-          className="pill__input no-drag"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={
-            transcribing
-              ? 'Writing that down…'
-              : busy
-                ? 'Working…'
-                : wsConnected
-                  ? 'What do you need?'
-                  : 'Reconnecting…'
-          }
-          disabled={busy}
-          spellCheck={false}
-        />
+    <div className="pill-stack">
+      {(recording || transcribing) && (
+        <div className="pill-stack__orb">
+          <VoiceOrb
+            state={transcribing ? 'thinking' : 'listening'}
+            level={audio.level}
+            size={104}
+          />
+        </div>
       )}
 
-      {voiceModel.micVisible && (
+      <div className={`pill ${focused ? 'pill--focused' : ''}`}>
         <button
           type="button"
-          className={`pill__mic no-drag ${recording ? 'pill__mic--live' : ''}`}
-          onClick={() => (recording ? void finishRecording(audio.stop) : void audio.start())}
-          disabled={busy || transcribing || !voiceModel.ready}
-          aria-label={recording ? 'Stop listening' : 'Speak a command'}
-          aria-pressed={recording}
-          title={recording ? 'Stop listening' : 'Speak a command'}
+          className="pill__mark no-drag"
+          onClick={() => window.torchAPI?.openMainWindow?.()}
+          aria-label="Open TORCH"
+          title="Open TORCH"
         >
-          <IconMic size={13} />
+          <TorchLogo width={20} />
         </button>
-      )}
 
-      <span
-        className={`pill__dot ${busy ? 'pill__dot--busy' : wsConnected ? 'pill__dot--ready' : ''}`}
-        aria-hidden="true"
-      />
+        {recording ? (
+          /* While listening, the level meter replaces the text box: it is the
+           only thing worth showing, and it proves TORCH is really hearing. */
+          <Waveform levels={audio.levels} />
+        ) : (
+          <input
+            ref={inputRef}
+            className="pill__input no-drag"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={
+              transcribing
+                ? 'Writing that down…'
+                : busy
+                  ? 'Working…'
+                  : wsConnected
+                    ? 'What do you need?'
+                    : 'Reconnecting…'
+            }
+            disabled={busy}
+            spellCheck={false}
+          />
+        )}
+
+        {voiceModel.micVisible && (
+          <button
+            type="button"
+            className={`pill__mic no-drag ${recording ? 'pill__mic--live' : ''}`}
+            onClick={() => (recording ? void finishRecording(audio.stop) : void audio.start())}
+            disabled={busy || transcribing || !voiceModel.ready}
+            aria-label={recording ? 'Stop listening' : 'Speak a command'}
+            aria-pressed={recording}
+            title={recording ? 'Stop listening' : 'Speak a command'}
+          >
+            <IconMic size={13} />
+          </button>
+        )}
+
+        <span
+          className={`pill__dot ${busy ? 'pill__dot--busy' : wsConnected ? 'pill__dot--ready' : ''}`}
+          aria-hidden="true"
+        />
+      </div>
     </div>
   )
 }

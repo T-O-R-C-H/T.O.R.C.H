@@ -703,14 +703,23 @@ const PILL_BOTTOM_GAP = 12
 const TASK_PANEL_WIDTH = 300
 const TASK_PANEL_HEIGHT = 420
 
-function positionPill(width = PILL_WIDTH): void {
+/*
+ * Room for the orb.
+ *
+ * The pill is a 44px strip. When TORCH is woken by voice the orb sits above
+ * it, so the window has to grow upwards or the orb is simply clipped off. The
+ * pill itself stays where it was because the stack is bottom-aligned.
+ */
+const PILL_VOICE_HEIGHT = 190
+
+function positionPill(width = PILL_WIDTH, height = PILL_HEIGHT): void {
   if (!pillWindow || pillWindow.isDestroyed()) return
   const area = screen.getPrimaryDisplay().workArea
   pillWindow.setBounds({
     x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + area.height - PILL_HEIGHT - PILL_BOTTOM_GAP),
+    y: Math.round(area.y + area.height - height - PILL_BOTTOM_GAP),
     width,
-    height: PILL_HEIGHT
+    height
   })
 }
 
@@ -1146,6 +1155,16 @@ app.whenReady().then(() => {
   // The renderer shows this in Settings and onboarding rather than hardcoding
   // its own copy, so the label always matches what is registered.
   ipcMain.handle('shortcuts:voice', () => VOICE_SHORTCUT_LABEL)
+
+  // The wake word reaches main as a renderer message and raises the pill for
+  // voice, so the phrase and the shortcut end in exactly the same place.
+  ipcMain.on('voice:wake', () => showPill({ voice: true }))
+
+  // The renderer says when the orb is on screen so the window can make space
+  // for it, and shrink back when it goes.
+  ipcMain.on('pill:voice-active', (_event, active: boolean) => {
+    positionPill(PILL_WIDTH, active ? PILL_VOICE_HEIGHT : PILL_HEIGHT)
+  })
 
   ipcMain.on('companion:show', showCompanion)
   ipcMain.on('companion:hide', hideCompanion)

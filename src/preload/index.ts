@@ -109,6 +109,8 @@ const torchAPI = {
   showCompanion: (): void => ipcRenderer.send('companion:show'),
   hideCompanion: (): void => ipcRenderer.send('companion:hide'),
   toggleCompanion: (): void => ipcRenderer.send('companion:toggle'),
+  wakeForVoice: (): void => ipcRenderer.send('voice:wake'),
+  setPillVoiceActive: (active: boolean): void => ipcRenderer.send('pill:voice-active', active),
   onCompanionAnimateIn: (callback: () => void): void => {
     ipcRenderer.on('companion:animate-in', callback)
   },

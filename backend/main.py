@@ -755,6 +755,60 @@ async def listen_for_companion_voice():
     return {"transcript": transcript}
 
 
+@app.get("/api/voice/wakeword")
+async def wakeword_status():
+    """Whether the wake word can be offered, and whether it is listening."""
+    from tools import wakeword
+
+    return wakeword.status()
+
+
+@app.post("/api/voice/wakeword/model")
+async def download_wakeword_model():
+    """
+    Fetch openWakeWord's pretrained models, because the user asked for them.
+
+    Never called on startup: holding the microphone is opt-in, so the model
+    behind it is too.
+    """
+    from openwakeword import utils
+
+    await asyncio.to_thread(utils.download_models)
+    from tools import wakeword
+
+    return wakeword.status()
+
+
+@app.post("/api/voice/wakeword/listen")
+async def set_wakeword_listening(data: dict):
+    """
+    Start or stop listening for the phrase.
+
+    Detection is local: frames are scored against a small model on this
+    machine and dropped. Only the fact that the phrase was heard leaves this
+    function, as a WebSocket event.
+    """
+    from tools import wakeword
+
+    want = bool(data.get("listening"))
+    if not want:
+        return await asyncio.to_thread(wakeword.stop_listening)
+
+    loop = asyncio.get_running_loop()
+
+    def on_wake() -> None:
+        # Called from the listener thread, so the send is scheduled rather
+        # than awaited here.
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.send_message({"type": "wake_word"}, "main"), loop
+        )
+
+    try:
+        return await asyncio.to_thread(wakeword.start_listening, on_wake)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 @app.get("/api/voice/tts")
 async def tts_status():
     """Which rung of the speech ladder is available, and the voice download state."""

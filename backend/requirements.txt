@@ -31,3 +31,5 @@ uiautomation>=2.0.29
 faster-whisper>=1.2.1
 kokoro-onnx
 soundfile
+openwakeword
+sounddevice

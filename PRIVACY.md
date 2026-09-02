@@ -32,10 +32,17 @@ a speech model TORCH downloads once and then runs offline. The recording is
 not uploaded, not stored, and is discarded as soon as it has been turned into
 text.
 
-TORCH is **not** listening in the background. There is no wake word. It records
-only while you are holding the microphone open — after you press
-Ctrl+Shift+Space or click the microphone — and it stops on its own when you
-stop speaking.
+By default TORCH is **not** listening in the background. It records only while
+you are holding the microphone open — after you press Ctrl+Shift+Space or
+click the microphone — and it stops on its own when you stop speaking.
+
+TORCH can also listen for a wake phrase, and that is **off unless you turn it
+on**. When it is on, the microphone is open and every 80 milliseconds of audio
+is scored against a small model **on your computer** to see whether you said
+the phrase. Each of those fragments is scored and thrown away — nothing is
+kept, nothing is written to disk, and nothing is uploaded. Only the fact that
+the phrase was heard leaves that check. Turn it off and the microphone closes
+immediately.
 
 The same is true in reverse: when TORCH speaks a reply aloud, the speech is
 generated on your computer.
@@ -158,7 +165,9 @@ these stop being true, **this page has to change in the same commit**:
 - Screenshots are never written to disk as a permanent record.
 - `tools/voice.py` and `tools/stt.py` reach no cloud recogniser;
   `test_voice_local.py` asserts `recognize_google` appears nowhere.
-- There is no wake word; `WakeWordDetector` is deleted.
+- The wake word is off by default, detects locally with openWakeWord in
+  `tools/wakeword.py`, retains no audio, and reaches no network. The old
+  `WakeWordDetector`, which streamed every phrase to Google, stays deleted.
 - TTS is Piper or the local system voice; the old Gemini TTS call is gone.
 - `clipboardManager.ts` encrypts with `safeStorage` and writes nothing when
   the keystore is unavailable.
