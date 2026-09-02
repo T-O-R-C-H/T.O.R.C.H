@@ -977,6 +977,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Matches the query bubble's inner padding, so the reply starts on the
+     same left edge as the question that prompted it. */
+  padding: 0 12px;
 }
 
 .chat-turn__body {

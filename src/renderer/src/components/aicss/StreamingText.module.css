@@ -1,42 +1,61 @@
+/*
+ * Reply typography.
+ *
+ * The response is the thing people actually read, so it gets a longer measure
+ * and more line spacing than the surrounding chrome. 14px on a 19px line was
+ * cramped enough that paragraphs ran together.
+ */
 .prose {
-  font-size: 14px;
-  line-height: 19px;
-  color: #1a1a1a;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+  letter-spacing: -0.005em;
+  color: #1f2430;
   white-space: pre-wrap;
   word-break: break-word;
+  max-width: 68ch;
 }
-.caret {
-  display: inline-block;
-  width: 8px;
-  height: 1.05em;
-  margin-left: 2px;
-  background: #0b0d12;
-  vertical-align: text-bottom;
-  animation: caret-blink 1s step-end infinite;
+
+/*
+ * Each word fades and lifts into place, staggered by an inline delay.
+ *
+ * This replaced a blinking block caret that typed character by character and
+ * stayed on screen after the reply had finished.
+ */
+.word {
+  display: inline;
+  opacity: 0;
+  filter: blur(3px);
+  transform: translateY(2px);
+  transition:
+    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.caretSteady {
-  animation: none;
+
+.wordIn {
   opacity: 1;
+  filter: blur(0);
+  transform: translateY(0);
 }
-@keyframes caret-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
-  .caret {
-    animation: none;
+  .word {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    transition: none;
   }
 }
+
 @media (prefers-color-scheme: dark) {
   .prose {
-    color: #f5f5f5;
-  }
-  .caret {
-    background: #f5f5f5;
+    color: #e8eaed;
   }
 }

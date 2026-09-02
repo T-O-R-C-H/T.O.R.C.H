@@ -96,9 +96,8 @@ Delete the key in Settings and TORCH stops sending anything.
 **Nothing.** There is no analytics, no telemetry, no crash reporting that runs
 on its own, and no account.
 
-If you use a "Something went wrong" button to report a problem, you will be
-shown exactly what it would send before anything is sent, and you can decide
-not to.
+If you ever report a problem to us, you will be shown exactly what it would
+send before anything is sent, and you can decide not to.
 
 ---
 
@@ -168,8 +167,9 @@ these stop being true, **this page has to change in the same commit**:
 - Provider preference order is set in `agent/providers/__init__.py`.
 - There is no analytics or telemetry anywhere in the codebase.
 
-The "Something went wrong" button described under *What we collect* is built
-(`components/chat/ReportProblem.tsx`). It shows the whole report before
-anything leaves, and opening the issue is a second, separate press. Step
-results are deliberately excluded from the report — they carry the user's own
-data — and `problemReport.test.ts` asserts that.
+**Problem reporting is not currently surfaced in the app.** The machinery
+exists (`utils/problemReport.ts`, `components/chat/ReportProblem.tsx`) and
+still excludes step results, which carry the user's own data — a test asserts
+that. But the trigger was removed from the chat because it appeared under
+every result and read as noise. If it is put back anywhere, the paragraph
+under *What we collect* should name where to find it.
