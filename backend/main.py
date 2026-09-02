@@ -164,8 +164,12 @@ async def list_models():
     tiers = [{"id": "auto", "label": "Automatic"}]
 
     if settings.gemini_api_key:
-        tiers.append({"id": "gemini-2.5-flash", "label": "Faster"})
-        tiers.append({"id": "gemini-2.5-pro", "label": "More thorough"})
+        # These ids are sent verbatim to the provider, so a stale one here is
+        # a permanent 404 for anyone who picks it. gemini-2.5-pro was retired
+        # for new accounts and sat in this list as "More thorough", which meant
+        # choosing the better option broke every task until it was changed back.
+        tiers.append({"id": settings.gemini_model, "label": "Faster"})
+        tiers.append({"id": "gemini-3.1-pro-preview", "label": "More thorough"})
     elif settings.deepseek_api_key:
         tiers.append({"id": "deepseek-v4-flash", "label": "Faster"})
         tiers.append({"id": "deepseek-v4-pro", "label": "More thorough"})
@@ -1287,14 +1291,22 @@ async def process_command(
             except Exception as db_err:
                 logger.warning(f"Failed to log task failure: {db_err}")
 
-            await ws_manager.send_agent_response({
-                "id": str(uuid.uuid4()),
-                "role": "torch",
-                "content": recap_sentence,
-                "timestamp": __import__("time").time() * 1000,
-                "steps": [],
-                "speak": True,
-            }, client_id)
+            # A planning failure has no work to summarise: the plan was one
+            # error step and the message is already on screen. Repeating it as
+            # a recap showed the same sentence twice under a heading that
+            # implied a second thing had gone wrong.
+            planning_only_failure = all(
+                step.get("tool") == "error" for step in validated_steps
+            )
+            if not planning_only_failure:
+                await ws_manager.send_agent_response({
+                    "id": str(uuid.uuid4()),
+                    "role": "torch",
+                    "content": recap_sentence,
+                    "timestamp": __import__("time").time() * 1000,
+                    "steps": [],
+                    "speak": True,
+                }, client_id)
             await ws_manager.send_status("idle", client_id)
             await _send_task_outcome(
                 client_id, request_id, "failed", recap_sentence

@@ -506,31 +506,38 @@ async def plan_command(
                 "requires_approval": False,
             }]
         if "429" in lowered or "quota" in lowered or "limit" in lowered or "exhausted" in lowered:
+            plain = translate_error(err_msg)
             return [{
                 "tool": "error",
-                "label": "AI Provider rate limit hit",
+                "label": f"{plain['what_happened']} {plain['what_to_do']}",
                 "args": {},
                 "requires_approval": False,
-                "error": "Rate limit exceeded. Please try again later or configure another provider."
+                "error": f"{plain['what_happened']} {plain['what_to_do']}",
+                "error_is_plain": True,
             }]
         if any(marker in lowered for marker in [
             "getaddrinfo", "gaierror", "name or service not known",
             "failed to establish a new connection", "connection refused",
             "connection timed out", "timed out", "dns", "network is unreachable",
         ]):
+            message = (
+                "I couldn't reach the AI service. "
+                "Check your internet connection and try again."
+            )
             return [{
                 "tool": "error",
-                "label": "Could not reach the AI service",
+                "label": message,
                 "args": {},
                 "requires_approval": False,
-                "error": "I couldn't reach the AI service. Check your internet connection and try again."
+                "error": message,
+                "error_is_plain": True,
             }]
         # Never put the raw exception in front of the user. This used to read
         # "AI planning failed: 503 UNAVAILABLE. {'error': {'code': 503, ...".
         plain = translate_error(err_msg)
         return [{
             "tool": "error",
-            "label": plain["what_happened"],
+            "label": f"{plain['what_happened']} {plain['what_to_do']}",
             "args": {},
             "requires_approval": False,
             "error": f"{plain['what_happened']} {plain['what_to_do']}",

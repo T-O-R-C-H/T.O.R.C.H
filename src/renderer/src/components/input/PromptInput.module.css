@@ -1,8 +1,8 @@
 .wrap {
   width: 100%;
-  max-width: 1000px;
-  margin: 0;
-  padding: 0 20px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 24px 22px;
   font-family: 'Inter', system-ui, sans-serif;
 }
 
@@ -202,6 +202,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 
 .iconBtn {

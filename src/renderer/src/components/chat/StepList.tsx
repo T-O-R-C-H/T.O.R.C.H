@@ -114,7 +114,7 @@ function mapStatus(status: Step['status']): TodoStep['status'] {
   }
 }
 
-export function StepList({ steps, command }: StepListProps): JSX.Element {
+export function StepList({ steps, command }: StepListProps): JSX.Element | null {
   const running = steps.some(
     (s) => s.status === 'pending' || s.status === 'active' || s.status === 'hitl_required'
   )
@@ -125,6 +125,16 @@ export function StepList({ steps, command }: StepListProps): JSX.Element {
     const t = window.setTimeout(() => setHasRun(true), 0)
     return () => window.clearTimeout(t)
   }, [running])
+
+  /*
+   * A plan that is only an error is not an agenda.
+   *
+   * Planning failures rendered "Agenda 0/1" with one failed step above the
+   * message itself, so a single problem was reported three times in three
+   * shapes. The message alone is the whole story. Placed after the hooks so
+   * they run in the same order on every render.
+   */
+  if (steps.length === 1 && steps[0].tool === 'error') return null
 
   const todos: TodoStep[] = steps.map((step) => ({
     id: step.id,

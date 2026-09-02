@@ -76,6 +76,16 @@ def translate_error(error_str: str) -> dict:
         }
         
     # 4b. API Key/Quota issues
+    # A model that no longer exists, or is not on this account. Distinct from
+    # quota: waiting will never help, and the fix is to choose another one.
+    if any(marker in err for marker in [
+        "not_found", "404", "is not found for api version", "no longer available",
+    ]):
+        return {
+            "what_happened": "That AI model isn't available on your account.",
+            "what_to_do": "Pick a different model in Settings or in the command box."
+        }
+
     # Quota is worth separating from a bad key: one is a plan limit the user
     # can lift, the other is a setting they can correct, and "check your
     # settings" is useless advice for the first.
