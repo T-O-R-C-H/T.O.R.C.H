@@ -1,6 +1,8 @@
+/* Built on the approval card; only what differs for a question lives here. */
+
 .iconQuestion {
-  background: color-mix(in srgb, #3b82f6 14%, #ffffff);
-  color: #3b82f6;
+  background: var(--tint-info-bg);
+  color: var(--color-torch-blue-dark);
 }
 
 .inputRow {
@@ -14,52 +16,33 @@
   height: 32px;
   margin: 0;
   padding: 0 12px;
-  border: 0.5px solid #e6e8ec;
-  border-radius: 7px;
-  background: transparent;
-  color: #1a1a1a;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-well);
+  color: var(--text-primary);
   font: inherit;
   font-size: 13px;
-  letter-spacing: -0.005em;
   outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition:
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
 }
 
 .input::placeholder {
-  color: #a1a1a1;
+  color: var(--text-tertiary);
 }
 
 .input:focus {
-  border-color: color-mix(in srgb, #3b82f6 55%, #e6e8ec);
-  box-shadow: 0 0 0 3px color-mix(in srgb, #3b82f6 16%, transparent);
+  border-color: var(--color-torch-blue-dark);
+  box-shadow: 0 0 0 3px var(--tint-info-bg);
 }
 
 .sent {
   padding: 8px 12px;
   border-radius: 8px;
-  background: color-mix(in srgb, #16a34a 10%, transparent);
-  color: color-mix(in srgb, #16a34a 85%, #1a1a1a);
+  background: var(--tint-success-bg);
+  border: 1px solid var(--tint-success-border);
+  color: var(--text-primary);
   font-size: 12.5px;
   line-height: 1.4;
-}
-
-@media (prefers-color-scheme: dark) {
-  .iconQuestion {
-    background: color-mix(in srgb, #3b82f6 20%, #1a1a1a);
-    color: #60a5fa;
-  }
-
-  .input {
-    border-color: #303030;
-    color: #f5f5f5;
-  }
-
-  .input:focus {
-    border-color: color-mix(in srgb, #3b82f6 55%, #303030);
-  }
-
-  .sent {
-    background: color-mix(in srgb, #16a34a 16%, transparent);
-    color: #4ade80;
-  }
 }

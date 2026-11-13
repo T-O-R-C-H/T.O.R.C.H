@@ -8,6 +8,7 @@ import {
 import { useMemoryStore } from '../store/memoryStore'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
+import { describeError } from '../utils/plainLanguage'
 
 const demoCommands = [
   { command: 'Send email', count: 34 },
@@ -91,7 +92,7 @@ export function Memory(): JSX.Element {
           setHabits(data.habits || [])
         }
       } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : 'Error loading memory')
+        if (active) setError(describeError(err, "Couldn't load what TORCH remembers. Try again."))
       } finally {
         if (active) setLoading(false)
       }
@@ -108,7 +109,8 @@ export function Memory(): JSX.Element {
   const filesToDisplay = demoMode ? demoFiles : frequentFiles
   const habitsToDisplay = demoMode ? demoHabits : habits
 
-  const maxCount = commandsToDisplay.length > 0 ? Math.max(...commandsToDisplay.map((c) => c.count)) : 1
+  const maxCount =
+    commandsToDisplay.length > 0 ? Math.max(...commandsToDisplay.map((c) => c.count)) : 1
 
   return (
     <div className="page-shell page-enter">

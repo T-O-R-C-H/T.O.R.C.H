@@ -26,7 +26,9 @@ export function MailResults({ emails }: MailResultsProps): JSX.Element {
     setError('')
     setLoading(true)
     try {
-      const res = await torchFetch(`${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`)
+      const res = await torchFetch(
+        `${API_BASE}/api/email/read?uid=${encodeURIComponent(summary.uid)}`
+      )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.detail || 'Could not open that message')

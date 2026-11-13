@@ -1,8 +1,21 @@
 import { getAuthToken } from './authToken'
 
-/** Backend base URL — override with VITE_TORCH_API_URL in production builds if needed */
-export const API_BASE = import.meta.env.VITE_TORCH_API_URL ?? 'http://127.0.0.1:8000'
-export const WS_URL = API_BASE.replace(/^http/, 'ws') + '/ws'
+const BACKEND_HOST = '127.0.0.1'
+const DEFAULT_PORT = 8000
+
+/**
+ * Prefix for backend URLs, as written at call sites.
+ *
+ * Call sites build `${API_BASE}/api/...` synchronously, but the real port is
+ * only known at runtime: the main process picks a free one at launch and it
+ * can change if the backend restarts. So this constant is a stable prefix,
+ * and `torchFetch` swaps it for the live address at the moment of the call.
+ * A URL built from API_BASE and passed to anything other than `torchFetch`
+ * would miss both that and the session token - there is no supported way to
+ * do that.
+ */
+export const API_BASE =
+  import.meta.env.VITE_TORCH_API_URL ?? `http://${BACKEND_HOST}:${DEFAULT_PORT}`
 
 /**
  * Resolves once the backend is accepting requests.
@@ -27,11 +40,37 @@ function backendReady(): Promise<void> {
         if (phase === 'ready' || phase === 'failed') resolve()
       }
       api.onBackendPhase?.(settle)
-      void api.getBackendPhase().then(settle).catch(() => resolve())
+      void api
+        .getBackendPhase()
+        .then(settle)
+        .catch(() => resolve())
       setTimeout(resolve, 90000)
     })
   }
   return readyPromise
+}
+
+/**
+ * Where the backend actually is right now.
+ *
+ * Asked fresh each time rather than cached: it is one cheap IPC round-trip,
+ * and a cached port would go stale the first time the backend restarted onto
+ * a different one.
+ */
+async function liveBase(): Promise<string> {
+  if (import.meta.env.VITE_TORCH_API_URL) return API_BASE
+  try {
+    const port = await window.torchAPI?.getBackendPort?.()
+    if (typeof port === 'number' && port > 0) return `http://${BACKEND_HOST}:${port}`
+  } catch {
+    // Outside Electron (tests, a browser preview) there is no bridge.
+  }
+  return API_BASE
+}
+
+/** Point a URL written against API_BASE at the live backend. */
+export function rebase(url: string, base: string): string {
+  return url.startsWith(API_BASE) ? base + url.slice(API_BASE.length) : url
 }
 
 /**
@@ -43,10 +82,10 @@ function backendReady(): Promise<void> {
  */
 export async function torchFetch(input: string, init: RequestInit = {}): Promise<Response> {
   await backendReady()
-  const token = await getAuthToken()
+  const [token, base] = await Promise.all([getAuthToken(), liveBase()])
   const headers = new Headers(init.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  return fetch(input, { ...init, headers })
+  return fetch(rebase(input, base), { ...init, headers })
 }
 
 /**
@@ -57,6 +96,7 @@ export async function torchFetch(input: string, init: RequestInit = {}): Promise
  */
 export async function buildWsUrl(): Promise<string> {
   await backendReady()
-  const token = await getAuthToken()
-  return token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL
+  const [token, base] = await Promise.all([getAuthToken(), liveBase()])
+  const wsUrl = base.replace(/^http/, 'ws') + '/ws'
+  return token ? `${wsUrl}?token=${encodeURIComponent(token)}` : wsUrl
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconInbox as InboxIcon, IconRefresh as RefreshIcon } from '../components/icons'
 import { API_BASE, torchFetch } from '../config/api'
+import { describeError } from '../utils/plainLanguage'
 import { useTorchStore } from '../store/torchStore'
 import type { EmailDetail, EmailSummary } from '../types/email'
 import { SenderAvatar } from '../components/mail/SenderAvatar'
@@ -16,7 +17,7 @@ function friendlyError(err: unknown): string {
     return 'Sync timed out. The mail server was too slow — try again.'
   if (err instanceof TypeError)
     return 'Could not reach the mail server. Check your connection and try again.'
-  return err instanceof Error ? err.message : 'Inbox sync failed'
+  return describeError(err, "Couldn't load your inbox. Try again.")
 }
 
 export function Inbox(): JSX.Element {
@@ -92,7 +93,7 @@ export function Inbox(): JSX.Element {
     setError('')
     const current = stateRef.current
     try {
-      const res = await fetch(
+      const res = await torchFetch(
         `${API_BASE}/api/email/inbox?limit=${PAGE_SIZE}&offset=${current.offset}`
       )
       if (!res.ok) {
@@ -223,8 +224,8 @@ export function Inbox(): JSX.Element {
           <div
             className="flex items-center justify-center w-16 h-16 rounded-full mb-6"
             style={{
-              background: 'var(--color-torch-bg-secondary, rgba(255, 255, 255, 0.03))',
-              border: '1px solid var(--color-torch-border, rgba(255, 255, 255, 0.08))'
+              background: 'var(--surface-hover)',
+              border: '1px solid var(--color-torch-border)'
             }}
           >
             <InboxIcon size={24} className="text-[var(--color-torch-text-secondary)]" />
@@ -242,10 +243,10 @@ export function Inbox(): JSX.Element {
 
           <div className="flex gap-4">
             <button type="button" className="btn-primary" onClick={() => navigate('/settings')}>
-              Configure Email Settings
+              Open email settings
             </button>
             <button type="button" className="btn-secondary" onClick={() => navigate('/')}>
-              Go to Command Center
+              Go to Chat
             </button>
           </div>
         </div>

@@ -129,9 +129,7 @@ export function ConversationTurn({
 
           {agent.emails && agent.emails.length > 0 && <MailResults emails={agent.emails} />}
 
-          {agent.steps && agent.steps.length > 0 && (
-            <StepList steps={agent.steps} command={user?.content} />
-          )}
+          {agent.steps && agent.steps.length > 0 && <StepList steps={agent.steps} />}
 
           {hitlStep && agent && (
             <ApprovalCard

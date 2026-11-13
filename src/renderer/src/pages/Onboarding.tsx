@@ -8,7 +8,7 @@ import {
   ObPointer
 } from '../components/icons/cleanIcons'
 import { TorchLogo } from '../components/ui/TorchLogo'
-import { useTorchStore } from '../store/torchStore'
+import { useTorchStore, type TaskOutcome } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { permissionsFromSettings } from '../utils/permissions'
@@ -128,9 +128,23 @@ function FirstTaskResult({ result }: { result: string }): JSX.Element {
   )
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }): JSX.Element {
+function Toggle({
+  checked,
+  onChange,
+  disabled = false
+}: {
+  checked: boolean
+  onChange: () => void
+  disabled?: boolean
+}): JSX.Element {
   return (
-    <button type="button" onClick={onChange} aria-pressed={checked} className="toggle-track">
+    <button
+      type="button"
+      onClick={onChange}
+      aria-pressed={checked}
+      disabled={disabled}
+      className="toggle-track"
+    >
       <div className="toggle-knob" />
     </button>
   )
@@ -168,7 +182,6 @@ export function Onboarding(): JSX.Element {
   const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
   const setShowSettingsKeyBanner = useTorchStore((s) => s.setShowSettingsKeyBanner)
   const wsConnected = useTorchStore((s) => s.wsConnected)
-  const lastTaskOutcome = useTorchStore((s) => s.lastTaskOutcome)
   const setLastTaskOutcome = useTorchStore((s) => s.setLastTaskOutcome)
   const { sendCommand } = useWebSocket()
 
@@ -268,27 +281,40 @@ export function Onboarding(): JSX.Element {
    */
   useEffect(() => {
     let cancelled = false
-    torchFetch(`${API_BASE}/api/settings`)
-      .then((r) => r.json())
-      .then((data) => {
+    let retry: number | undefined
+
+    /*
+     * Keeps trying until it succeeds. This used to be a single attempt on
+     * mount: if the backend was still starting when onboarding opened - the
+     * normal case on a first launch - that one request failed, nothing ever
+     * asked again, and the Continue button answered every press with
+     * "couldn't read your current settings yet" until the app was restarted.
+     */
+    const load = async (): Promise<void> => {
+      try {
+        const response = await torchFetch(`${API_BASE}/api/settings`)
+        if (!response.ok) throw new Error('settings-unavailable')
+        const data = await response.json()
         if (cancelled) return
-        const seeded = permissionsFromSettings(data, {
-          files: allowFiles,
-          apps: allowApps,
-          email: allowEmail
-        })
+        const seeded = permissionsFromSettings(data, { files: true, apps: true, email: true })
+        // The toggles are locked until this lands, so there is no choice of
+        // the user's here to overwrite.
         setAllowFiles(seeded.files)
         setAllowApps(seeded.apps)
         setAllowEmail(seeded.email)
         setPermissionsLoaded(true)
-      })
-      .catch(() => {
-        // The permissions screen blocks on this rather than saving values it
-        // never read - writing guesses is how the setting got clobbered.
-        if (!cancelled) setPermissionsLoaded(false)
-      })
+        setPermissionError(null)
+      } catch {
+        // The screen waits on this rather than saving values it never read -
+        // writing guesses is how the setting got clobbered.
+        if (!cancelled) retry = window.setTimeout(() => void load(), 2000)
+      }
+    }
+
+    void load()
     return (): void => {
       cancelled = true
+      window.clearTimeout(retry)
     }
   }, [])
 
@@ -344,18 +370,33 @@ export function Onboarding(): JSX.Element {
     sendCommand(firstTaskCommand, requestId)
   }
 
+  /*
+   * The first task finishing is an event, so it is handled as one: a
+   * subscription to the store, not an effect that re-reads `lastTaskOutcome`
+   * on every render and sets state in response. That version tripped
+   * react-hooks/set-state-in-effect, which is why lint could not be a CI gate.
+   */
   useEffect(() => {
-    if (!firstTaskRequestId || lastTaskOutcome?.requestId !== firstTaskRequestId) return
+    if (!firstTaskRequestId) return
 
-    setFirstTaskRunning(false)
-    setLastTaskOutcome(null)
-    if (lastTaskOutcome.status === 'completed') {
-      setFirstTaskResult(lastTaskOutcome.summary)
-      goTo('done', 1)
-    } else {
-      setFirstTaskError(lastTaskOutcome.summary || 'That task did not finish. Try again.')
+    const settle = (outcome: TaskOutcome | null): void => {
+      if (outcome?.requestId !== firstTaskRequestId) return
+      setFirstTaskRunning(false)
+      setLastTaskOutcome(null)
+      if (outcome.status === 'completed') {
+        setFirstTaskResult(outcome.summary)
+        setDirection(1)
+        setCurrentStep('done')
+      } else {
+        setFirstTaskError(outcome.summary || 'That task did not finish. Try again.')
+      }
     }
-  }, [firstTaskRequestId, lastTaskOutcome, setLastTaskOutcome])
+
+    const unsubscribe = useTorchStore.subscribe((state) => settle(state.lastTaskOutcome))
+    // Covers an outcome that landed between the request and this subscription.
+    queueMicrotask(() => settle(useTorchStore.getState().lastTaskOutcome))
+    return unsubscribe
+  }, [firstTaskRequestId, setLastTaskOutcome])
 
   const stepIndex = ONBOARDING_STEPS.indexOf(currentStep) + 1
 
@@ -459,7 +500,11 @@ export function Onboarding(): JSX.Element {
                         </div>
                         <p className="ob-row-desc">{desc}</p>
                       </div>
-                      <Toggle checked={value} onChange={() => set(!value)} />
+                      <Toggle
+                        checked={value}
+                        disabled={!permissionsLoaded}
+                        onChange={() => set(!value)}
+                      />
                     </div>
                   )
                 })}
@@ -481,10 +526,10 @@ export function Onboarding(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => void handleNext()}
-                  disabled={permissionSaving}
+                  disabled={permissionSaving || !permissionsLoaded}
                   className="ob-btn-primary"
                 >
-                  {permissionSaving ? 'Saving…' : 'Continue'}
+                  {permissionSaving ? 'Saving…' : permissionsLoaded ? 'Continue' : 'Getting ready…'}
                   <ArrowRight size={13} />
                 </button>
               </div>

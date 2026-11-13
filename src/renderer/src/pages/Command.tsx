@@ -1,5 +1,4 @@
 import { ChatArea } from '../components/chat/ChatArea'
-import { ActivityOverlay } from '../components/chat/ActivityOverlay'
 import { PromptInput } from '../components/input/PromptInput'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
@@ -121,7 +120,8 @@ export function Command(): JSX.Element {
       {demoMode && (
         <div className="cmd-banner">
           <span className="cmd-banner__text">
-            Demo mode — add API key in Settings for live tasks
+            You&rsquo;re in demo mode. Nothing here touches your computer — connect TORCH in Settings to
+            run real tasks.
           </span>
           <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
             Settings
@@ -131,7 +131,9 @@ export function Command(): JSX.Element {
 
       {!demoMode && showSettingsKeyBanner && (
         <div className="cmd-banner">
-          <span className="cmd-banner__text">Add your Gemini API key in Settings to start</span>
+          <span className="cmd-banner__text">
+            TORCH isn&rsquo;t connected to an AI service yet. Add a key in Settings to start.
+          </span>
           <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
             Open Settings
           </button>
@@ -147,7 +149,6 @@ export function Command(): JSX.Element {
         />
         <PromptInput onSend={handleSend} />
       </div>
-      <ActivityOverlay />
     </div>
   )
 }

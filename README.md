@@ -1,6 +1,6 @@
 # T.O.R.C.H
 
-![CI](https://github.com/Muyideen-js/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/T-O-R-C-H/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)
 
 ### _Thinking, Observing, Reasoning, Creating & Handling_
 
@@ -8,67 +8,71 @@
 
 ---
 
-## Features
+## What it does
 
-- **Full Desktop Control** — Find files, send emails, post on social media, control the browser
-- **Hey TORCH** — Siri-style floating overlay responds to voice even when minimized
-- **Agent Execution** — Multi-step task execution with real-time progress streaming
-- **Human-in-the-Loop** — Approval required for irreversible actions (email, delete, post)
-- **Screen Watcher** — 24/7 screen observer that learns what you're doing
-- **Memory & Habits** — Learns your patterns and predicts your needs
-- **100% Local** — Your data stays on your machine. No telemetry.
+- **Does the task, not just the talking** — finds files, reads documents, sends email, opens apps, searches the web
+- **Sees your screen** — when no built-in tool fits, TORCH looks at the screen and uses the mouse and keyboard itself
+- **Asks first** — sending, deleting, downloading and running commands always wait for your approval
+- **Undo and Stop** — file changes can be reversed; a running task can be stopped at any time
+- **Yours** — runs on your computer, keys encrypted by the operating system, no telemetry, voice never uploaded
+- **Light and dark** — follows your system, or pick one in Settings
 
-## Tech Stack
+## Tech stack
 
-| Layer         | Technology                                                 |
-| ------------- | ---------------------------------------------------------- |
-| Desktop Shell | Electron                                                   |
-| Frontend      | React 18, TypeScript, Tailwind CSS, Framer Motion, Zustand |
-| Backend       | Python 3.11+, FastAPI, WebSockets                          |
-| AI Brain      | Gemini 2.5 Flash (free tier)                               |
-| Voice         | OpenAI Whisper (local, offline)                            |
-| Automation    | PyAutoGUI, Playwright                                      |
-| Memory        | SQLite + ChromaDB                                          |
+| Layer    | Technology                                                    |
+| -------- | ------------------------------------------------------------- |
+| Shell    | Electron 39                                                   |
+| Frontend | React 19, TypeScript, Tailwind CSS 4, Zustand 5, Framer Motion |
+| Backend  | Python 3.11, FastAPI, WebSocket                               |
+| AI       | Gemini, OpenAI, Claude, DeepSeek, or a local model via Ollama |
+| Vision   | Qwen2.5-VL via Ollama                                         |
+| Voice    | faster-whisper (speech to text) and Kokoro (speech), both local |
+| Storage  | SQLite                                                        |
 
-## Getting Started
+## Getting started
 
-### Prerequisites
-
-- Node.js 18+
-- Python 3.11+
-- npm or yarn
-
-### Frontend Setup
+Requires Node.js 20+ and Python 3.11 on Windows 10/11.
 
 ```bash
-cd TORCH
-npm install
+npm ci
+
+cd backend
+python -m venv venv
+venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
+cd ..
+
 npm run dev
 ```
 
-### Backend Setup
+`npm run dev` starts the desktop app, which starts the backend for you. Add
+an AI key in Settings → Connections; until then the app runs in demo mode.
+
+## Checks
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python main.py
+npm run typecheck && npm run lint && npm run test   # frontend
+cd backend && venv\Scripts\python -m pytest         # backend
 ```
 
-### Configuration
+## Building the installer
 
-1. Copy `.env.example` to `.env`
-2. Add your Gemini API key from [aistudio.google.com](https://aistudio.google.com)
-3. (Optional) Add Gmail credentials for email features
+```bash
+backend\venv\Scripts\python backend/build_backend.py   # bundles the backend
+npm run build:win
+```
 
 ## Architecture
 
 ```
-Frontend (Electron + React) ←→ WebSocket ←→ Backend (FastAPI + Python)
-                                               ↓
-                                          Gemini 2.5 Flash
-                                               ↓
-                                     Agent Tools (files, email, browser, etc.)
+Electron main ──spawns──► Python backend (127.0.0.1, random session token)
+      │                          ▲
+      └─► React renderer ──WebSocket + REST──┘
+                                 │
+                 plan (AI) → validate + approval policy → execute tools
 ```
+
+See `CLAUDE.md` for the full picture and `SECURITY.md` for the November 2026
+incident every contributor needs to read.
 
 ## License
 

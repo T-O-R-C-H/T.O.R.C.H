@@ -3,6 +3,13 @@ import { VoiceSection } from '../components/settings/VoiceSection'
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
+import { notify } from '../utils/notify'
+import {
+  getThemeChoice,
+  onThemeChoiceChange,
+  setThemeChoice,
+  type ThemeChoice
+} from '../utils/theme'
 
 import {
   IconKey as Key,
@@ -11,7 +18,8 @@ import {
   IconDatabase as Database,
   IconExternalLink as ExternalLink,
   IconShare as Share2,
-  IconTerminal as Terminal
+  IconTerminal as Terminal,
+  IconPalette as Palette
 } from '../components/icons'
 
 interface SettingRowProps {
@@ -43,6 +51,42 @@ function ToggleSwitch({
     <button type="button" onClick={onChange} aria-pressed={checked} className="toggle-track">
       <div className="toggle-knob" />
     </button>
+  )
+}
+
+const THEME_OPTIONS: { id: ThemeChoice; label: string }[] = [
+  { id: 'system', label: 'System' },
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' }
+]
+
+/**
+ * Light, dark, or whatever the computer is set to.
+ *
+ * An earlier Theme setting changed a piece of component state and nothing
+ * else - the app stayed light whatever it said. This one writes the choice
+ * `utils/theme.ts` applies, and every TORCH window follows it.
+ */
+function ThemePicker(): JSX.Element {
+  const [choice, setChoice] = useState<ThemeChoice>(getThemeChoice)
+
+  useEffect(() => onThemeChoiceChange(setChoice), [])
+
+  return (
+    <div className="segmented" role="radiogroup" aria-label="Theme">
+      {THEME_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          role="radio"
+          aria-checked={choice === option.id}
+          className={`segmented__option ${choice === option.id ? 'active' : ''}`}
+          onClick={() => setThemeChoice(option.id)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }
 
@@ -239,7 +283,10 @@ export function Settings(): JSX.Element {
       if (Object.keys(secrets).length > 0) {
         const stored = await window.torchAPI?.setCredentials(secrets)
         if (stored && !stored.ok) {
-          alert(stored.reason || 'Could not save your credentials securely.')
+          notify(
+            stored.reason || "Couldn't save your details securely. Nothing was changed.",
+            'error'
+          )
           return
         }
       }
@@ -255,7 +302,10 @@ export function Settings(): JSX.Element {
         setGeminiKey('********')
       }
     } catch {
-      alert('Failed to save. Make sure TORCH is running and the backend is online.')
+      notify(
+        "Couldn't save your settings. TORCH may still be starting. Try again in a moment.",
+        'error'
+      )
     }
   }
 
@@ -435,7 +485,16 @@ export function Settings(): JSX.Element {
            ══════════════════════════════════════════════════════════════ */}
           {activeTab === 'preferences' && (
             <>
-              {/* Voice */}
+              <div>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <Palette size={13} className="text-[var(--color-torch-text-tertiary)]" />
+                  <span className="t-label">APPEARANCE</span>
+                </div>
+                <SettingRow label="Theme" description="System follows your computer's setting">
+                  <ThemePicker />
+                </SettingRow>
+              </div>
+
               {/* Permissions — enforced by the planner, not cosmetic */}
               <div>
                 <div className="flex items-center gap-2.5 mb-4">

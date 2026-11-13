@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { useTorchStore, type Message, type TerminalLine } from '../store/torchStore'
+import { useTorchStore, type Message, type Metrics, type TerminalLine } from '../store/torchStore'
 import { buildWsUrl } from '../config/api'
 import { formatAgentContent } from '../utils/plainLanguage'
 import { streamMessageContent } from '../utils/streamContent'
@@ -134,6 +134,7 @@ export function useWebSocket(): {
   sendStopCommand: () => void
   sendClarification: (taskId: string, response: string) => boolean
   sendUndoCommand: (messageId: string) => void
+  sendNewConversation: () => void
   sendCompanionCommand: (command: string, screenshots: unknown[], audio?: unknown) => void
 } {
   const wsRef = useRef<WebSocket | null>(null)
@@ -396,7 +397,7 @@ export function useWebSocket(): {
           break
         }
         case 'metrics': {
-          store.setMetrics(data.metrics as Record<string, number>)
+          store.setMetrics(data.metrics as Partial<Metrics>)
           break
         }
         case 'task_outcome': {
@@ -611,6 +612,12 @@ export function useWebSocket(): {
     openSocket()?.send(JSON.stringify({ type: 'undo_task', messageId }))
   }, [])
 
+  /** Forget the conversation so far. Safe to call while disconnected: the
+      backend also drops a client's context when its socket closes. */
+  const sendNewConversation = useCallback((): void => {
+    openSocket()?.send(JSON.stringify({ type: 'new_conversation' }))
+  }, [])
+
   const reconnect = useCallback((): void => {
     wsRef.current?.close()
     connect()
@@ -623,6 +630,7 @@ export function useWebSocket(): {
     reconnect,
     sendStopCommand,
     sendClarification,
-    sendUndoCommand
+    sendUndoCommand,
+    sendNewConversation
   }
 }

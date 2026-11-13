@@ -15,7 +15,8 @@ interface ApprovalCardProps {
   onCancel: () => void
 }
 
-const TerminalIcon = (): JSX.Element => (
+/** A shield, not a terminal: most approvals are emails and deletions. */
+const ShieldIcon = (): JSX.Element => (
   <svg
     className={styles.iconSvg}
     viewBox="0 0 24 24"
@@ -26,8 +27,9 @@ const TerminalIcon = (): JSX.Element => (
     strokeLinejoin="round"
     aria-hidden="true"
   >
-    <path d="m4 17 6-6-6-6" />
-    <path d="M12 19h8" />
+    <path d="M12 3 5 6v5c0 4.5 2.9 8.4 7 10 4.1-1.6 7-5.5 7-10V6l-7-3Z" />
+    <path d="M12 9v4" />
+    <path d="M12 16h.01" />
   </svg>
 )
 
@@ -53,7 +55,7 @@ export function ApprovalCard({
   summary,
   warning,
   command,
-  title = 'Run this action?',
+  title = 'TORCH needs your OK',
   approveLabel = 'Approve',
   rejectLabel = 'Edit',
   args,
@@ -91,10 +93,11 @@ export function ApprovalCard({
     <div className={styles.card} data-variant="command">
       <div className={styles.head}>
         <span className={styles.icon} data-variant="command">
-          <TerminalIcon />
+          <ShieldIcon />
         </span>
         <div className={styles.headText}>
           <div className={styles.title}>{title}</div>
+          <div className={styles.subtitle}>Nothing happens until you approve.</div>
         </div>
       </div>
 
@@ -105,6 +108,21 @@ export function ApprovalCard({
         </div>
       ) : (
         <div className={styles.body}>{summary}</div>
+      )}
+
+      {/* Shown read-only until the user chooses Edit, so the recipient or the
+          path can be checked at a glance before approving. */}
+      {!editing && editableArgs.length > 0 && (
+        <dl className={styles.details}>
+          {editableArgs
+            .filter(([, value]) => value.trim().length > 0)
+            .map(([key, value]) => (
+              <div key={key} style={{ display: 'contents' }}>
+                <dt>{key.replace(/_/g, ' ')}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+        </dl>
       )}
 
       {warning && <div className={styles.warn}>{warning}</div>}

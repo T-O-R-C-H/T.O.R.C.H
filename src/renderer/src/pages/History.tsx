@@ -8,6 +8,8 @@ import {
 import { useMemoryStore, type HistoryEntry } from '../store/memoryStore'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
+import { describeError } from '../utils/plainLanguage'
+import { notify } from '../utils/notify'
 
 const demoHistory: HistoryEntry[] = [
   {
@@ -79,7 +81,7 @@ export function History(): JSX.Element {
         const data = await res.json()
         if (active) setHistory(data)
       } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : 'Error loading history')
+        if (active) setError(describeError(err, "Couldn't load your history. Try again."))
       } finally {
         if (active) setLoading(false)
       }
@@ -102,11 +104,11 @@ export function History(): JSX.Element {
       if (res.ok) {
         clearHistory()
       } else {
-        alert('Failed to clear history on server')
+        notify("Couldn't clear your history. Try again.", 'error')
       }
     } catch (err) {
       console.error('Error clearing history:', err)
-      alert('Error clearing history')
+      notify(describeError(err, "Couldn't clear your history. Try again."), 'error')
     }
   }
 
@@ -166,64 +168,66 @@ export function History(): JSX.Element {
           <div className="flex flex-col items-center justify-center text-center p-12">
             <p className="text-sm text-[var(--color-torch-text-secondary)] mb-2">No history yet</p>
             <p className="text-xs text-[var(--color-torch-text-tertiary)]">
-              Run a task in the Command Center to see it here.
+              Run a task in Chat to see it here.
             </p>
           </div>
         )}
 
-        {!loading && !error && entries.map((entry) => (
-          <div key={entry.id}>
-            <button
-              type="button"
-              onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
-              className="page-list-row group"
-            >
-              {statusBadge(entry.status)}
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] text-[var(--color-torch-text)] truncate">
-                  {entry.command}
-                </p>
-              </div>
-              <div className="flex items-center gap-5 flex-shrink-0">
-                <span className="t-mono-xs">{entry.stepsCount} steps</span>
-                <span className="t-mono-xs">{entry.duration}s</span>
-                <span className="t-mono-xs">
-                  {new Date(entry.timestamp).toLocaleTimeString('en-US', {
-                    hour12: false,
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-                <span style={{ color: 'var(--color-torch-text-tertiary)' }}>
-                  {expanded === entry.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </span>
-              </div>
-            </button>
-
-            {expanded === entry.id && (
-              <div className="px-6 pb-4 pl-[52px]">
-                <div className="border-l border-[var(--color-torch-border)] pl-4 space-y-1">
-                  {entry.steps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-3 py-1.5">
-                      <span className="t-mono-xs w-5">{String(i + 1).padStart(2, '0')}</span>
-                      <span
-                        className={`text-[12px] ${
-                          step.status === 'done'
-                            ? 'text-[var(--color-torch-text-secondary)]'
-                            : step.status === 'failed'
-                              ? 'text-[var(--color-torch-error)]'
-                              : 'text-[var(--color-torch-text-tertiary)]'
-                        }`}
-                      >
-                        {step.label}
-                      </span>
-                    </div>
-                  ))}
+        {!loading &&
+          !error &&
+          entries.map((entry) => (
+            <div key={entry.id}>
+              <button
+                type="button"
+                onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}
+                className="page-list-row group"
+              >
+                {statusBadge(entry.status)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-[var(--color-torch-text)] truncate">
+                    {entry.command}
+                  </p>
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
+                <div className="flex items-center gap-5 flex-shrink-0">
+                  <span className="t-mono-xs">{entry.stepsCount} steps</span>
+                  <span className="t-mono-xs">{entry.duration}s</span>
+                  <span className="t-mono-xs">
+                    {new Date(entry.timestamp).toLocaleTimeString('en-US', {
+                      hour12: false,
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                  <span style={{ color: 'var(--color-torch-text-tertiary)' }}>
+                    {expanded === entry.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  </span>
+                </div>
+              </button>
+
+              {expanded === entry.id && (
+                <div className="px-6 pb-4 pl-[52px]">
+                  <div className="border-l border-[var(--color-torch-border)] pl-4 space-y-1">
+                    {entry.steps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-3 py-1.5">
+                        <span className="t-mono-xs w-5">{String(i + 1).padStart(2, '0')}</span>
+                        <span
+                          className={`text-[12px] ${
+                            step.status === 'done'
+                              ? 'text-[var(--color-torch-text-secondary)]'
+                              : step.status === 'failed'
+                                ? 'text-[var(--color-torch-error)]'
+                                : 'text-[var(--color-torch-text-tertiary)]'
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
       </div>
     </div>
   )

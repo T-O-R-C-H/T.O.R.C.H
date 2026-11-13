@@ -10,7 +10,10 @@ export interface OverlayContext {
   focusLabel?: string
 }
 
-export function getContextSuggestions(appName: string, clipboardKind?: string): OverlaySuggestion[] {
+export function getContextSuggestions(
+  appName: string,
+  clipboardKind?: string
+): OverlaySuggestion[] {
   const app = appName.toLowerCase()
 
   if (app.includes('vs code') || app.includes('code')) {
@@ -93,9 +96,8 @@ export function enrichOverlayCommand(command: string, context: OverlayContext): 
     enriched = `[${parts.join(' · ')}] ${enriched}`
   }
 
-  const wantsClipboard = /\b(this|selected|clipboard|copied|highlighted|page|file|post|article|code)\b/i.test(
-    command
-  )
+  const wantsClipboard =
+    /\b(this|selected|clipboard|copied|highlighted|page|file|post|article|code)\b/i.test(command)
   if (wantsClipboard && context.clipboardText) {
     enriched += `\n\nSelected/copied content:\n${context.clipboardText.slice(0, 2000)}`
   }

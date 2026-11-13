@@ -1,0 +1,917 @@
+/* ═══════════════════════════════════════════════════
+   TORCH agent shell
+
+   The window chrome and the conversation: title bar, sidebar, the chat
+   column, and the pieces that appear inside a turn. Loaded after globals.css
+   and built only on the tokens in tokens.css, so every rule here holds in
+   both themes.
+
+   Layout idea: the chrome (title bar + sidebar) is one quiet surface, and
+   the page sits inside it as a slightly lifted panel. The conversation runs
+   down a single centred column with the composer pinned beneath it.
+   ═══════════════════════════════════════════════════ */
+
+:root {
+  --titlebar-height: 38px;
+  --sidebar-width: 236px;
+  --chat-column: 780px;
+  --shimmer-highlight: rgba(255, 255, 255, 0.8);
+}
+
+:root[data-theme='dark'] {
+  --shimmer-highlight: #ffffff;
+}
+
+html {
+  color-scheme: light;
+}
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* Text sizes were tuned for a 13px root; nudge body copy up for comfort. */
+body,
+#root {
+  background: var(--surface-chrome);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-torch-blue-dark);
+  outline-offset: 2px;
+}
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+input:focus,
+textarea:focus {
+  box-shadow: var(--focus-ring);
+}
+
+/* ─── Logo ───
+   The wordmark is a black raster. On a dark surface it is inverted rather
+   than swapped for a second asset, so the two can never drift apart. */
+.torch-logo-wordmark {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.torch-logo-wordmark--light,
+:root[data-theme='dark'] .torch-logo-wordmark:not(.torch-logo-wordmark--light) {
+  filter: invert(1);
+}
+.torch-logo-wordmark--animated {
+  animation: torch-pulse-soft 2s ease-in-out infinite;
+}
+
+/* ─── App shell ─── */
+.app-root,
+.app-shell {
+  background: var(--surface-chrome);
+}
+
+.app-main {
+  background: var(--color-torch-bg);
+  border-top: 1px solid var(--border-subtle);
+  border-left: 1px solid var(--border-subtle);
+  border-top-left-radius: 10px;
+  overflow: hidden;
+}
+
+/* ─── Title bar ─── */
+.topbar {
+  height: var(--titlebar-height);
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 0 0 0 16px;
+  background: var(--surface-chrome);
+  border-bottom: 0;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  width: calc(var(--sidebar-width) - 16px);
+  flex-shrink: 0;
+  opacity: 0.92;
+}
+
+.topbar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  margin-right: 8px;
+  height: 22px;
+  padding: 0 9px 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  white-space: nowrap;
+  transition:
+    color var(--dur-base) ease,
+    background var(--dur-base) ease;
+}
+
+.topbar-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  transition: background var(--dur-base) ease;
+}
+
+.topbar-status[data-tone='ready'] .topbar-status__dot {
+  background: var(--color-torch-success);
+}
+.topbar-status[data-tone='working'] {
+  color: var(--text-primary);
+}
+.topbar-status[data-tone='working'] .topbar-status__dot {
+  background: var(--brand);
+  animation: torch-breathe 1.2s ease-in-out infinite;
+}
+.topbar-status[data-tone='waiting'] {
+  color: var(--tint-warning-text);
+  background: var(--tint-warning-bg-strong);
+}
+.topbar-status[data-tone='waiting'] .topbar-status__dot {
+  background: var(--color-torch-warning);
+}
+.topbar-status[data-tone='connecting'] .topbar-status__dot {
+  background: var(--color-torch-warning);
+  animation: torch-pulse-soft 1.2s ease-in-out infinite;
+}
+
+.topbar-controls {
+  gap: 0;
+}
+.win-btn {
+  height: var(--titlebar-height);
+}
+
+/* ─── Sidebar ─── */
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--surface-chrome);
+  border-right: 0;
+}
+
+.sidebar-top {
+  padding: 6px 10px 8px;
+}
+
+.sidebar-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition:
+    background var(--dur-instant) ease,
+    border-color var(--dur-instant) ease,
+    opacity var(--dur-fast) ease;
+}
+.sidebar-new svg {
+  width: 15px;
+  height: 15px;
+  opacity: 0.75;
+}
+.sidebar-new:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.sidebar-new:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+.sidebar-new:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.sidebar-body {
+  padding: 4px 0 12px;
+}
+
+.sidebar-nav-group {
+  margin-bottom: 4px;
+}
+
+.sidebar-section-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-tertiary);
+  padding: 14px 20px 6px;
+}
+
+.sidebar-nav-item {
+  height: 30px;
+  gap: 10px;
+  margin: 1px 10px;
+  width: calc(100% - 20px);
+  padding: 0 10px;
+  font-weight: 400;
+  border-left: 0;
+  border-radius: 7px;
+  color: var(--text-secondary);
+}
+
+.sidebar-nav-item:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.sidebar-nav-item.active {
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font-weight: 500;
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.sidebar-nav-item svg {
+  opacity: 0.8;
+}
+.sidebar-nav-item.active svg {
+  opacity: 1;
+}
+
+.sidebar-nav-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sidebar-nav-item--shortcut {
+  justify-content: flex-start;
+}
+.sidebar-nav-item--shortcut span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-nav-item--shortcut svg {
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  opacity: 0.55;
+}
+.sidebar-nav-item--shortcut:hover svg {
+  opacity: 1;
+  color: var(--brand);
+}
+
+.sidebar-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-shortcut-form {
+  margin: 6px 10px 4px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+.sidebar-shortcut-form input {
+  font-size: 12px;
+  padding: 6px 9px;
+  background: var(--surface-well);
+}
+.sidebar-shortcut-form .btn-primary {
+  padding: 6px 10px;
+}
+
+.sidebar-footer {
+  background: transparent;
+  border-top: 1px solid var(--border-subtle);
+  padding: 10px 12px;
+}
+
+.sidebar-user__avatar {
+  border: 0;
+  border-radius: 50%;
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sidebar-user__tier {
+  font-size: 11px;
+}
+
+.sidebar-settings-btn:hover,
+.sidebar-settings-btn.active {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+/* ─── Buttons ─── */
+.btn-primary,
+.btn-secondary {
+  border-radius: 8px;
+  transition:
+    opacity var(--dur-instant) ease,
+    background var(--dur-instant) ease,
+    border-color var(--dur-instant) ease,
+    transform var(--dur-instant) ease;
+}
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-secondary {
+  color: var(--text-primary);
+}
+.btn-secondary:hover {
+  background: var(--surface-hover);
+}
+
+/* ─── Conversation page ─── */
+.cmd-page,
+.cmd-idle {
+  background: transparent;
+}
+
+/* A notice strip, not an alarm: it sits inside the column like a message. */
+.cmd-banner {
+  width: calc(100% - 48px);
+  max-width: calc(var(--chat-column) - 48px);
+  margin: 12px auto 0;
+  padding: 8px 8px 8px 14px;
+  gap: 12px;
+  background: var(--tint-warning-bg);
+  border: 1px solid var(--tint-warning-border);
+  border-radius: 10px;
+}
+.cmd-banner__text {
+  font-size: 12.5px;
+  color: var(--tint-warning-text);
+}
+.cmd-banner__btn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  color: var(--tint-warning-text);
+  border-color: var(--tint-warning-border);
+}
+.cmd-banner__btn:hover {
+  background: var(--tint-warning-bg-strong);
+}
+
+/* ─── Empty state ─── */
+.cmd-idle {
+  padding: 24px 24px 32px;
+  overflow-y: auto;
+}
+
+.cmd-idle__header {
+  max-width: 560px;
+  margin-bottom: 28px;
+  animation: torch-fade-up var(--dur-slower) var(--ease-out) both;
+}
+
+.cmd-idle__title {
+  margin-top: 18px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.cmd-idle__subtitle {
+  margin-top: 8px;
+  max-width: 400px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.cmd-suggestions {
+  max-width: 600px;
+  gap: 10px;
+}
+
+.cmd-suggestion {
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  animation: torch-fade-up var(--dur-slower) var(--ease-out) both;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+.cmd-suggestion:nth-child(1) {
+  animation-delay: 60ms;
+}
+.cmd-suggestion:nth-child(2) {
+  animation-delay: 100ms;
+}
+.cmd-suggestion:nth-child(3) {
+  animation-delay: 140ms;
+}
+.cmd-suggestion:nth-child(4) {
+  animation-delay: 180ms;
+}
+.cmd-suggestion:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.cmd-suggestion__icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  border-radius: 9px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.cmd-suggestion:hover .cmd-suggestion__icon {
+  color: var(--text-primary);
+}
+.cmd-suggestion__title {
+  font-size: 13px;
+  margin-bottom: 1px;
+}
+.cmd-suggestion__desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.torch-mark__ring {
+  stroke: var(--border-default);
+}
+.torch-mark--active .torch-mark__node {
+  animation-name: torch-node-cycle-brand;
+}
+@keyframes torch-node-cycle-brand {
+  0%,
+  70%,
+  100% {
+    fill: var(--color-torch-text-tertiary);
+    transform: scale(1);
+  }
+  20% {
+    fill: var(--brand);
+    transform: scale(1.3);
+  }
+}
+
+/* ─── Conversation feed ─── */
+.cmd-feed {
+  padding: 28px 24px 32px;
+  scroll-padding-bottom: 32px;
+}
+
+.cmd-feed__inner {
+  width: 100%;
+  max-width: calc(var(--chat-column) - 48px);
+  margin: 0 auto;
+  gap: 28px;
+}
+
+.chat-turn {
+  gap: 14px;
+}
+
+/* The request: a bubble on the right, so the two voices never share an edge. */
+.chat-turn__query {
+  align-self: flex-end;
+  max-width: min(85%, 620px);
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--text-primary);
+  background: var(--surface-active);
+  border: 0;
+  border-radius: 16px 16px 4px 16px;
+}
+.chat-turn__query-scroll {
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-turn__response {
+  gap: 14px;
+  min-width: 0;
+}
+
+.chat-turn__body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.chat-link {
+  text-decoration-color: color-mix(in srgb, var(--color-torch-link) 40%, transparent);
+}
+
+/* "Working…" line shown before the first step arrives. */
+.chat-turn__activity {
+  min-height: 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.chat-turn__activity-label,
+.chat-turn__activity-text {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.chat-turn__activity-text {
+  background:
+    linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 40%,
+        var(--shimmer-highlight) 50%,
+        transparent 60%,
+        transparent 100%
+      )
+      0 0 / 250% 100% no-repeat,
+    currentColor;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: agent-shimmer 1.8s linear infinite;
+}
+@keyframes agent-shimmer {
+  from {
+    background-position:
+      140% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -40% 0,
+      0 0;
+  }
+}
+.chat-turn__activity--warn {
+  color: var(--tint-warning-text);
+}
+
+.chat-activity-stop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 26px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.chat-activity-stop button {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.chat-activity-stop button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.chat-system {
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+/* Steps */
+.step-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Errors: a tinted panel with a rule on the leading edge. */
+.chat-error-card {
+  padding: 10px 14px;
+  background: var(--tint-error-bg);
+  border: 1px solid var(--tint-error-border);
+  border-left-width: 3px;
+  border-radius: 10px;
+}
+.chat-error-card__title {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tint-error-text);
+  margin-bottom: 2px;
+}
+.chat-error-card__body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* Undo */
+.chat-undo {
+  margin-top: 0;
+  padding: 8px 8px 8px 14px;
+  justify-content: space-between;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+.chat-undo__muted,
+.chat-undo__success {
+  font-size: 12.5px;
+}
+.chat-undo .btn-secondary {
+  padding: 5px 10px;
+}
+
+/* "Something went wrong" - a quiet link at the foot of a result. */
+.report-problem__trigger {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 0;
+  text-decoration: none;
+  cursor: pointer;
+}
+.report-problem__trigger:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.report-problem {
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-raised);
+}
+.report-problem__body {
+  background: var(--surface-well);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+
+/* ─── Secondary pages ─── */
+.page-shell,
+.page-list {
+  background: transparent;
+}
+
+.page-shell__header,
+.page-toolbar {
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.card {
+  border-radius: 12px;
+}
+
+.update-notice {
+  border-radius: 0;
+}
+
+/* ─── Toggle ─── */
+.toggle-track {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-turn__activity-text {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* ─── Settings ─── */
+.settings-tabs {
+  gap: 2px;
+  padding: 10px 24px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+}
+
+/* Tabs sit on the rule they belong to, marked by an underline. */
+.settings-tab {
+  position: relative;
+  padding: 8px 12px 10px;
+  font-size: 13px;
+  border: 0;
+  border-radius: 7px 7px 0 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.settings-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.settings-tab.active {
+  background: transparent;
+  color: var(--text-primary);
+}
+.settings-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--text-primary);
+}
+
+.t-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.setting-row__label {
+  font-weight: 500;
+}
+.setting-row__desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* One choice out of a few: a sunken track with a raised thumb. */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--surface-active);
+}
+.segmented__option {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+.segmented__option:hover {
+  color: var(--text-primary);
+}
+.segmented__option.active {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-card);
+}
+
+/* The knob used the surface colour, which vanished into the track when the
+   switch was off in the dark theme. */
+.toggle-track {
+  background: var(--surface-active);
+  border-color: transparent;
+}
+.toggle-knob {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.toggle-track[aria-pressed='true'] {
+  background: var(--color-torch-success);
+  border-color: transparent;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ─── Notices ─── */
+.toaster {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(380px, calc(100vw - 40px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  pointer-events: auto;
+  animation: torch-slide-in-right var(--dur-base) var(--ease-out) both;
+}
+.toast__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+.toast[data-tone='error'] .toast__dot {
+  background: var(--color-torch-error);
+}
+.toast[data-tone='success'] .toast__dot {
+  background: var(--color-torch-success);
+}
+.toast__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast__close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.toast__close:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.toggle-track:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

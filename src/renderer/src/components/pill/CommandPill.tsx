@@ -22,6 +22,7 @@ export function CommandPill(): JSX.Element {
 
   const agentStatus = useTorchStore((s) => s.agentStatus)
   const wsConnected = useTorchStore((s) => s.wsConnected)
+  const hasConnectedOnce = useTorchStore((s) => s.hasConnectedOnce)
   const { sendCommand } = useWebSocket()
 
   const voiceModel = useVoiceModel()
@@ -133,7 +134,9 @@ export function CommandPill(): JSX.Element {
                 ? 'Working…'
                 : wsConnected
                   ? 'What do you need?'
-                  : 'Reconnecting…'
+                  : hasConnectedOnce
+                    ? 'Reconnecting…'
+                    : 'Connecting…'
           }
           disabled={busy}
           spellCheck={false}

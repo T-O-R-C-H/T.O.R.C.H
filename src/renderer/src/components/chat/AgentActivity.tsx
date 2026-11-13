@@ -190,7 +190,7 @@ export function AgentActivity({
                 {/* The cycling mark is the app's "work is happening" signal.
                     The label carries which kind of work, so the mark does not
                     need a per-status variant of its own. */}
-                <TorchMark size={18} active />
+                <TorchMark size={16} active />
                 <span className="chat-turn__activity-text">{label}</span>
               </span>
             </motion.span>
@@ -199,14 +199,9 @@ export function AgentActivity({
       </div>
 
       {verySlow && !timedOut && onStop && (
-        <div className="flex items-center gap-3 text-xs pl-8 text-[var(--color-torch-text-secondary)]">
-          <span>You can stop the task if needed.</span>
-          <button
-            type="button"
-            onClick={onStop}
-            className="px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-semibold border border-[var(--color-torch-border)] hover:bg-[rgba(255,255,255,0.05)] transition-colors"
-            style={{ color: 'var(--color-torch-error, #ef4444)' }}
-          >
+        <div className="chat-activity-stop">
+          <span>Taking a while. You can stop it if you need to.</span>
+          <button type="button" onClick={onStop}>
             Stop task
           </button>
         </div>

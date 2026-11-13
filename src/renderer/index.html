@@ -8,12 +8,27 @@
       content="Thinking, Observing, Reasoning, Creating & Handling — Your personal AI agent"
     />
     <script>
-      if (location.hash.startsWith('#/guide')) document.documentElement.classList.add('transparent-route')
+      if (location.hash.startsWith('#/guide'))
+        document.documentElement.classList.add('transparent-route')
+        // Apply the saved theme before first paint so a dark-theme launch never
+        // flashes white. Must agree with resolveTheme() in src/utils/theme.ts.
+      ;(function () {
+        var choice = 'system'
+        try {
+          choice = localStorage.getItem('torch_theme') || 'system'
+        } catch (e) {}
+        var dark =
+          choice === 'dark' ||
+          (choice !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      })()
     </script>
     <style>
       html.transparent-route,
       html.transparent-route body,
-      html.transparent-route #root { background: transparent !important; }
+      html.transparent-route #root {
+        background: transparent !important;
+      }
     </style>
   </head>
 
