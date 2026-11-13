@@ -14,7 +14,7 @@ logger = logging.getLogger("torch.providers.deepseek")
 
 
 class DeepSeekProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "deepseek-v4-flash"):
+    def __init__(self, api_key: str, model: str = "deepseek-flash"):
         self.model = model
         self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 

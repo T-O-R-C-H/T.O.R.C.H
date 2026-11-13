@@ -43,6 +43,8 @@ export type VisualGuidance = {
   homeY?: number
   label?: string
   transcript?: string
+  /** 'physical' when x/y are raw screen pixels rather than scaled ones. */
+  space?: 'physical'
 }
 
 // TORCH API exposed to renderer
@@ -56,6 +58,7 @@ const torchAPI = {
   captureScreens: (): Promise<ScreenCapture[]> => ipcRenderer.invoke('companion:captureScreens'),
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
+  notifyAttention: (message: string): void => ipcRenderer.send('attention:notify', message),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
   completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),

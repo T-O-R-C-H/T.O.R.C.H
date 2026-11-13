@@ -20,6 +20,21 @@ def _ollama_module(action):
     )
 
 
+def _as_model(fake):
+    """Adapt a fake with a chat(**kwargs) method to ask_vision_sync's shape."""
+
+    def ask(system, text, images, *_args, **_kwargs):
+        reply = fake.chat(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": text, "images": images},
+            ]
+        )
+        return reply["message"]["content"]
+
+    return ask
+
+
 class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         vc._active_sessions.clear()
@@ -37,7 +52,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_action_raises_and_always_emits_end(self):
         ollama = _ollama_module({"action": "failed", "reason": "button missing"})
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
         ):
@@ -50,7 +65,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     async def test_max_steps_raises_instead_of_returning_success(self):
         ollama = _ollama_module({"action": "wait", "reason": "still loading"})
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc, "execute_action"),
             patch.object(vc, "STEP_PAUSE", 0),
@@ -72,7 +87,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc, "virtual_screen_bounds", return_value=(0, 0, 1920, 1080)),
             patch.object(vc.pyautogui, "click") as click,
@@ -95,7 +110,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         ollama = types.SimpleNamespace(chat=chat)
         execute = Mock()
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc, "execute_action", new=execute),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
@@ -114,53 +129,6 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         execute.assert_not_called()
         self.assertEqual(send.await_args_list[-1].args[0]["type"], "vision_control_end")
 
-    async def test_stop_cancels_async_ollama_request_and_closes_client(self):
-        request_started = asyncio.Event()
-        request_cancelled = asyncio.Event()
-        clients = []
-
-        class FakeAsyncClient:
-            def __init__(self):
-                self.closed = False
-                clients.append(self)
-
-            async def chat(self, **_kwargs):
-                request_started.set()
-                try:
-                    await asyncio.Future()
-                except asyncio.CancelledError:
-                    request_cancelled.set()
-                    raise
-
-            async def close(self):
-                self.closed = True
-
-        sync_chat = Mock()
-        ollama = types.SimpleNamespace(
-            AsyncClient=FakeAsyncClient,
-            chat=sync_chat,
-        )
-        with (
-            patch.dict(sys.modules, {"ollama": ollama}),
-            patch.object(vc, "take_screenshot", return_value="image"),
-            patch.object(vc, "execute_action") as execute,
-            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
-        ):
-            task = asyncio.create_task(
-                vc.vision_loop("click it", client_id="alpha", task_id="async-task")
-            )
-            await asyncio.wait_for(request_started.wait(), timeout=0.5)
-            self.assertEqual(vc.cancel_vision_control("alpha", "async-task"), 1)
-
-            with self.assertRaises(vc.VisionControlCancelled):
-                await asyncio.wait_for(task, timeout=0.5)
-
-        self.assertTrue(request_cancelled.is_set())
-        self.assertEqual(len(clients), 1)
-        self.assertTrue(clients[0].closed)
-        sync_chat.assert_not_called()
-        execute.assert_not_called()
-
     async def test_cancellation_is_scoped_to_client_and_task(self):
         release = threading.Event()
         started_count = 0
@@ -175,7 +143,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
 
         ollama = types.SimpleNamespace(chat=chat)
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
         ):
@@ -192,10 +160,101 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
                 await alpha
             self.assertEqual(await beta, "Done: complete")
 
-    def test_ollama_error_translation_stays_actionable(self):
-        translated = translate_error("connection refused by Ollama for qwen2.5vl:7b")
-        self.assertIn("Ollama", translated["what_happened"])
-        self.assertIn("ollama pull qwen2.5vl:7b", translated["what_to_do"])
+    async def test_no_ai_key_stops_with_a_message_the_user_can_act_on(self):
+        from agent import vision_model
+
+        with (
+            patch.object(vision_model, "vision_providers", return_value=[]),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action") as execute,
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+        ):
+            with self.assertRaises(vc.UserFacingError) as raised:
+                await vc.vision_loop("click it", max_steps=1, task_id="no-key")
+
+        self.assertIn("Settings", str(raised.exception))
+        self.assertNotIn("ollama", str(raised.exception).lower())
+        execute.assert_not_called()
+        self.assertEqual(send.await_args_list[-1].args[0]["type"], "vision_control_end")
+
+    async def test_handoff_waits_for_the_user_then_carries_on(self):
+        actions = iter(
+            [
+                {"action": "handoff", "message": "Please enter your card details."},
+                {"action": "done", "reason": "order 4471 is confirmed"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_kwargs: {"message": {"content": json.dumps(next(actions))}}
+        )
+        wait = AsyncMock(return_value=True)
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "_wait_for_user_to_act", new=wait),
+            patch.object(vc, "execute_action") as execute,
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+            patch.object(vc.ws_manager, "send_status", new=AsyncMock()) as status,
+            patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
+        ):
+            result = await vc.vision_loop("order a pizza", max_steps=3, task_id="pay")
+
+        self.assertEqual(result, "Done: order 4471 is confirmed")
+        # TORCH never performed the user's step.
+        execute.assert_not_called()
+        wait.assert_awaited_once()
+        notices = [
+            call.args[0]
+            for call in send.await_args_list
+            if call.args[0].get("type") == "attention_needed"
+        ]
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0]["message"], "Please enter your card details.")
+        self.assertEqual(
+            [call.args[0] for call in status.await_args_list],
+            ["awaiting_input", "executing"],
+        )
+
+    async def test_handoff_that_nobody_answers_stops_and_says_so(self):
+        fake = types.SimpleNamespace(
+            chat=lambda **_kwargs: {
+                "message": {
+                    "content": json.dumps(
+                        {"action": "handoff", "message": "Pick your video."}
+                    )
+                }
+            }
+        )
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "_wait_for_user_to_act", new=AsyncMock(return_value=False)),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
+            patch.object(vc.ws_manager, "send_status", new=AsyncMock()),
+            patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),
+        ):
+            with self.assertRaises(vc.UserFacingError) as raised:
+                await vc.vision_loop("import a video", max_steps=3, task_id="idle")
+
+        self.assertIn("waited", str(raised.exception))
+        self.assertEqual(send.await_args_list[-1].args[0]["type"], "vision_control_end")
+
+    def test_handoff_needs_a_message_and_screens_are_compared_locally(self):
+        with self.assertRaises(ValueError):
+            vc._validate_action({"action": "handoff"})
+        self.assertEqual(
+            vc._validate_action({"action": "handoff", "message": " Pay now. "})["message"],
+            "Pay now.",
+        )
+        from PIL import Image
+
+        blank = Image.new("L", (96, 54), 0)
+        caret = blank.copy()
+        caret.putpixel((10, 10), 255)
+        dialog = blank.copy()
+        dialog.paste(255, (20, 10, 70, 40))
+        self.assertFalse(vc._screens_differ(blank, caret))
+        self.assertTrue(vc._screens_differ(blank, dialog))
 
     def test_executor_cancellation_is_client_and_task_scoped(self):
         executor = Executor()
@@ -451,7 +510,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             monitor_bounds=((0, 0, 1920, 1080),),
         )
         with (
-            patch.dict(sys.modules, {"ollama": types.SimpleNamespace(chat=chat)}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
             patch.object(vc, "take_screenshot", return_value=frame),
             patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
@@ -478,8 +537,6 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(await task, "Done: Google results are visible")
 
-        self.assertEqual(requests[0]["format"], vc.PROFILE_CHOICE_FORMAT)
-        self.assertEqual(requests[1]["format"], "json")
         self.assertIn("ONLY permitted action is ask", requests[0]["messages"][1]["content"])
         event_types = [call.args[0]["type"] for call in send.await_args_list]
         self.assertIn("vision_capture_start", event_types)
@@ -722,7 +779,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             }
         )
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc, "STEP_PAUSE", 0),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
@@ -759,7 +816,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("awaiting_input", [call.args[0] for call in status.await_args_list])
         self.assertIn("executing", [call.args[0] for call in status.await_args_list])
 
-    async def test_ollama_request_uses_system_role_and_json_mode(self):
+    async def test_model_request_carries_the_rules_and_the_task(self):
         captured_request = {}
 
         def chat(**kwargs):
@@ -773,14 +830,15 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch.dict(sys.modules, {"ollama": types.SimpleNamespace(chat=chat)}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
         ):
             result = await vc.vision_loop("do it", max_steps=1, task_id="json")
 
         self.assertEqual(result, "Done: already complete")
-        self.assertEqual(captured_request["format"], "json")
+        self.assertIn("handoff", captured_request["messages"][0]["content"])
+        self.assertIn("Task: do it", captured_request["messages"][1]["content"])
         self.assertEqual(captured_request["messages"][0]["role"], "system")
         self.assertEqual(captured_request["messages"][1]["role"], "user")
 
@@ -789,7 +847,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             {"action": "click", "x": 10, "y": 10, "reason": "target"}
         )
         with (
-            patch.dict(sys.modules, {"ollama": ollama}),
+            patch.object(vc, "ask_vision_sync", new=_as_model(ollama)),
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(
                 vc,

@@ -333,11 +333,11 @@ class ProviderThreadingTests(unittest.IsolatedAsyncioTestCase):
         claude.model = "claude-sonnet-4-6"
         await self._assert_planning_uses_worker_thread(
             claude,
-            SimpleNamespace(content=[SimpleNamespace(text="[]")]),
+            SimpleNamespace(content=[SimpleNamespace(type="text", text="[]")]),
         )
         await self._assert_generation_uses_worker_thread(
             claude,
-            SimpleNamespace(content=[SimpleNamespace(text="hello")]),
+            SimpleNamespace(content=[SimpleNamespace(type="text", text="hello")]),
         )
 
 

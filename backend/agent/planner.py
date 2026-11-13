@@ -91,12 +91,21 @@ CAPABILITY_TOOLS = {
         "read_screen", "click_element", "type_into", "describe_screen",
     },
     "email": {"send_email", "read_inbox"},
+    # These send a picture of the screen to the user's AI service.
+    "screen": {"vision_control", "analyse_screen"},
 }
+
+SCREEN_OFF_MESSAGE = (
+    "I need to look at your screen for that, and that is switched off. "
+    "Turn on \"Look at my screen\" in Settings. While it is on, a picture of your "
+    "screen goes to your AI service only when I am helping you with something."
+)
 
 CAPABILITY_REFUSALS = {
     "files": "File access is switched off, so I can't look through your files. You can turn it back on in Settings.",
     "apps": "Opening apps is switched off, so I can't do that. You can turn it back on in Settings.",
     "email": "Email access is switched off, so I can't reach your inbox. You can turn it back on in Settings.",
+    "screen": SCREEN_OFF_MESSAGE,
 }
 
 
@@ -108,6 +117,7 @@ def _disabled_capability(tool: str) -> Optional[str]:
         "files": settings.allow_files,
         "apps": settings.allow_apps,
         "email": settings.allow_email,
+        "screen": settings.allow_screen,
     }
     for capability, tools in CAPABILITY_TOOLS.items():
         if tool in tools and not enabled[capability]:

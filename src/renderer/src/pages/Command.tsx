@@ -120,8 +120,8 @@ export function Command(): JSX.Element {
       {demoMode && (
         <div className="cmd-banner">
           <span className="cmd-banner__text">
-            You&rsquo;re in demo mode. Nothing here touches your computer — connect TORCH in Settings to
-            run real tasks.
+            You&rsquo;re in demo mode. Nothing here touches your computer — connect TORCH in
+            Settings to run real tasks.
           </span>
           <button type="button" className="cmd-banner__btn" onClick={goToSettings}>
             Settings

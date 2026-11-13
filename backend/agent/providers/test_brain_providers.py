@@ -14,7 +14,7 @@ from agent.providers.openai_provider import OpenAIProvider
 from agent.providers import AnthropicProvider
 
 
-def test_auto_prefers_gemini_while_explicit_deepseek_remains_available():
+def test_auto_prefers_the_users_deepseek_key_over_an_older_gemini_one():
     original = (
         settings.gemini_api_key,
         settings.deepseek_api_key,
@@ -27,8 +27,8 @@ def test_auto_prefers_gemini_while_explicit_deepseek_remains_available():
         settings.openai_api_key = ""
         settings.anthropic_api_key = ""
 
-        assert isinstance(get_provider("auto"), GeminiProvider)
-        assert get_provider("deepseek-v4-flash").__class__.__name__ == "DeepSeekProvider"
+        assert get_provider("auto").__class__.__name__ == "DeepSeekProvider"
+        assert get_provider("deepseek-flash").__class__.__name__ == "DeepSeekProvider"
     finally:
         (
             settings.gemini_api_key,

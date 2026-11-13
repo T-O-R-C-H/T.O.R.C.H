@@ -11,7 +11,8 @@ import {
   desktopCapturer,
   session,
   globalShortcut,
-  powerMonitor
+  powerMonitor,
+  Notification
 } from 'electron'
 import { join } from 'path'
 import os from 'os'
@@ -1194,16 +1195,40 @@ app.whenReady().then(() => {
     // that window gone it starts from the corner of the work area instead.
     const homeX = left + 80
     const homeY = top + 80
+    // The backend measures the screen in physical pixels; Electron lays
+    // windows out in scaled ones. On a display set to 125% the two differ,
+    // and the pointer would land beside its target.
+    let target = { x: Number(guidance.x), y: Number(guidance.y) }
+    if (guidance.space === 'physical' && process.platform === 'win32') {
+      target = screen.screenToDipPoint({ x: Math.round(target.x), y: Math.round(target.y) })
+    }
     guidanceWindow?.showInactive()
     guidanceWindow?.webContents.send('guidance:update', {
       ...guidance,
-      x: Number(guidance.x) - left,
-      y: Number(guidance.y) - top,
+      x: target.x - left,
+      y: target.y - top,
       homeX: homeX - left,
       homeY: homeY - top
     })
   })
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
+  // TORCH has stopped and is waiting for the user (a payment, a file to
+  // pick). If they are looking at another app they would never know, so tell
+  // them through Windows. Skipped when a TORCH window already has focus.
+  ipcMain.on('attention:notify', (_, message: unknown) => {
+    if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return
+    const notification = new Notification({
+      title: 'TORCH needs you',
+      body: String(message ?? '').slice(0, 240)
+    })
+    notification.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    })
+    notification.show()
+  })
   ipcMain.on('control-border:show', () => showControlBorder())
   ipcMain.on('control-border:hide', () => hideControlBorder())
   ipcMain.on('task-event:publish', (ipcEvent, taskEvent: unknown) => {

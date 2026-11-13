@@ -103,6 +103,8 @@ export function Settings(): JSX.Element {
   const setOnboardingComplete = useTorchStore((s) => s.setOnboardingComplete)
 
   const [geminiKey, setGeminiKey] = useState('')
+  const [deepseekKey, setDeepseekKey] = useState('')
+  const [claudeKey, setClaudeKey] = useState('')
   const [gmailAddress, setGmailAddress] = useState('')
   const [gmailPassword, setGmailPassword] = useState('')
   const [emailTest, setEmailTest] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
@@ -114,6 +116,8 @@ export function Settings(): JSX.Element {
   const [allowFiles, setAllowFiles] = useState(true)
   const [allowApps, setAllowApps] = useState(true)
   const [allowEmail, setAllowEmail] = useState(true)
+  // Off by default: when on, pictures of the screen go to the AI service.
+  const [allowScreen, setAllowScreen] = useState(false)
   const [launchOnLogin, setLaunchOnLogin] = useState(false)
   const [minimizeToTray, setMinimizeToTray] = useState(true)
   const [browserAutomation, setBrowserAutomation] = useState<{
@@ -167,11 +171,14 @@ export function Settings(): JSX.Element {
         })
         .then((data) => {
           if (data.gemini_configured) setGeminiKey('********')
+          if (data.deepseek_configured) setDeepseekKey('********')
+          if (data.anthropic_configured) setClaudeKey('********')
           setGmailAddress(data.gmail_address || '')
           if (data.gmail_password_set) setGmailPassword('********')
           setAllowFiles(data.allow_files !== false)
           setAllowApps(data.allow_apps !== false)
           setAllowEmail(data.allow_email !== false)
+          setAllowScreen(data.allow_screen === true)
         })
         .catch(() => {
           if (retries > 0) {
@@ -263,7 +270,8 @@ export function Settings(): JSX.Element {
         gmail_address: gmailAddress,
         allow_files: allowFiles,
         allow_apps: allowApps,
-        allow_email: allowEmail
+        allow_email: allowEmail,
+        allow_screen: allowScreen
       }
 
       const res = await torchFetch(`${API_BASE}/api/settings`, {
@@ -277,6 +285,8 @@ export function Settings(): JSX.Element {
       // '********' means the field was left untouched.
       const secrets: Record<string, string> = {}
       if (geminiKey && geminiKey !== '********') secrets.gemini_api_key = geminiKey
+      if (deepseekKey && deepseekKey !== '********') secrets.deepseek_api_key = deepseekKey
+      if (claudeKey && claudeKey !== '********') secrets.anthropic_api_key = claudeKey
       if (gmailPassword && gmailPassword !== '********') {
         secrets.gmail_app_password = gmailPassword
       }
@@ -291,7 +301,7 @@ export function Settings(): JSX.Element {
         }
       }
 
-      if (geminiKey) {
+      if (geminiKey || deepseekKey || claudeKey) {
         useTorchStore.getState().setShowSettingsKeyBanner(false)
         useTorchStore.getState().setDemoMode(false)
       }
@@ -301,6 +311,8 @@ export function Settings(): JSX.Element {
       if (geminiKey && geminiKey !== '********') {
         setGeminiKey('********')
       }
+      if (deepseekKey && deepseekKey !== '********') setDeepseekKey('********')
+      if (claudeKey && claudeKey !== '********') setClaudeKey('********')
     } catch {
       notify(
         "Couldn't save your settings. TORCH may still be starting. Try again in a moment.",
@@ -345,20 +357,39 @@ export function Settings(): JSX.Element {
                     ? "This computer has no secure storage available, so TORCH can't encrypt your keys here. They won't be saved."
                     : 'Keys are encrypted by your operating system and never stored in plain text.'}
                 </p>
-                <SettingRow
-                  label="AI Connection Key"
-                  description="Powers all AI reasoning — get your key to start"
-                >
+                <p className="text-[11px] text-[var(--color-torch-text-secondary)] mb-3 leading-relaxed">
+                  TORCH uses your own key, so you pay the AI service directly. One key is enough. If
+                  you add both, TORCH uses the first and falls back to the second.
+                </p>
+                <SettingRow label="DeepSeek key" description="The low-cost option">
                   <input
                     type="password"
-                    value={geminiKey}
-                    onChange={(e) => setGeminiKey(e.target.value)}
-                    placeholder="Enter API key"
+                    value={deepseekKey}
+                    onChange={(e) => setDeepseekKey(e.target.value)}
+                    placeholder="Paste your key"
                     className="w-[300px] text-[12px]"
                   />
                   <button
                     type="button"
-                    onClick={() => window.torchAPI?.openExternal('https://aistudio.google.com')}
+                    aria-label="Get a DeepSeek key"
+                    onClick={() => window.torchAPI?.openExternal('https://platform.deepseek.com')}
+                    className="btn-secondary p-2.5"
+                  >
+                    <ExternalLink size={12} />
+                  </button>
+                </SettingRow>
+                <SettingRow label="Claude key" description="The premium option">
+                  <input
+                    type="password"
+                    value={claudeKey}
+                    onChange={(e) => setClaudeKey(e.target.value)}
+                    placeholder="Paste your key"
+                    className="w-[300px] text-[12px]"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Get a Claude key"
+                    onClick={() => window.torchAPI?.openExternal('https://platform.claude.com')}
                     className="btn-secondary p-2.5"
                   >
                     <ExternalLink size={12} />
@@ -513,6 +544,15 @@ export function Settings(): JSX.Element {
                 </SettingRow>
                 <SettingRow label="Read and send your email">
                   <ToggleSwitch checked={allowEmail} onChange={() => setAllowEmail(!allowEmail)} />
+                </SettingRow>
+                <SettingRow
+                  label="Look at my screen"
+                  description="Lets TORCH point things out and work in apps for you. While this is on, a picture of your screen is sent to your AI service whenever TORCH needs to look."
+                >
+                  <ToggleSwitch
+                    checked={allowScreen}
+                    onChange={() => setAllowScreen(!allowScreen)}
+                  />
                 </SettingRow>
               </div>
 

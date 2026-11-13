@@ -17,7 +17,11 @@ class TorchSettings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     deepseek_api_key: str = Field(default="", alias="DEEPSEEK_API_KEY")
-    deepseek_model: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL")
+    deepseek_model: str = Field(default="deepseek-flash", alias="DEEPSEEK_MODEL")
+    anthropic_model: str = Field(default="claude-sonnet-5", alias="ANTHROPIC_MODEL")
+    # Which of the user's keys to try first: "deepseek" or "claude". Empty
+    # means "whichever key exists". The other one is the fallback.
+    active_provider: str = Field(default="", alias="TORCH_ACTIVE_PROVIDER")
 
     # Gmail
     gmail_address: str = Field(default="", alias="GMAIL_ADDRESS")
@@ -36,6 +40,9 @@ class TorchSettings(BaseSettings):
     allow_files: bool = Field(default=True, alias="TORCH_ALLOW_FILES")
     allow_apps: bool = Field(default=True, alias="TORCH_ALLOW_APPS")
     allow_email: bool = Field(default=True, alias="TORCH_ALLOW_EMAIL")
+    # Off until the user turns it on: with this on, a picture of the screen is
+    # sent to their AI service whenever TORCH has to look at it.
+    allow_screen: bool = Field(default=False, alias="TORCH_ALLOW_SCREEN")
 
     # Screen Watch
     screen_watch_enabled: bool = Field(default=False, alias="SCREEN_WATCH_ENABLED")

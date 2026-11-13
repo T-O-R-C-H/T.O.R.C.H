@@ -167,7 +167,7 @@ async def list_models():
         tiers.append({"id": "gemini-2.5-flash", "label": "Faster"})
         tiers.append({"id": "gemini-2.5-pro", "label": "More thorough"})
     elif settings.deepseek_api_key:
-        tiers.append({"id": "deepseek-v4-flash", "label": "Faster"})
+        tiers.append({"id": "deepseek-flash", "label": "Faster"})
         tiers.append({"id": "deepseek-v4-pro", "label": "More thorough"})
     elif settings.anthropic_api_key:
         tiers.append({"id": "claude-haiku-4-5", "label": "Faster"})
@@ -354,6 +354,7 @@ EDITABLE_SETTINGS = {
     "allow_files": "TORCH_ALLOW_FILES",
     "allow_apps": "TORCH_ALLOW_APPS",
     "allow_email": "TORCH_ALLOW_EMAIL",
+    "allow_screen": "TORCH_ALLOW_SCREEN",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -421,6 +422,7 @@ async def get_settings():
         "allow_files": settings.allow_files,
         "allow_apps": settings.allow_apps,
         "allow_email": settings.allow_email,
+        "allow_screen": settings.allow_screen,
     }
 
 
@@ -1128,6 +1130,64 @@ def _elapsed_ms(started_at: float) -> int:
     return max(0, round((time.monotonic() - started_at) * 1000))
 
 
+async def _teach_on_screen(
+    command: str,
+    context: list,
+    client_id: str,
+    planning_id: str,
+    request_id: str | None,
+) -> None:
+    """Answer a how-do-I question by looking at the screen and pointing."""
+    from agent import teaching
+    from agent.context import ConversationContext
+    from errors.plain_language import UserFacingError
+
+    await ws_manager.send_terminal_line("Looking at your screen...", "info", client_id)
+    guidance: dict = {"type": "none"}
+    outcome = "completed"
+    try:
+        result = await teaching.look_and_teach(command, context, client_id)
+        reply = result["speech"]
+        guidance = result["guidance"]
+    except UserFacingError as error:
+        reply, outcome = str(error), "failed"
+    except Exception:
+        logger.exception("Teaching from the screen failed")
+        reply = "I couldn't look at your screen just now. Try again in a moment."
+        outcome = "failed"
+
+    # Stop pressed while TORCH was looking: say nothing further.
+    if await _discard_cancelled_plan(
+        client_id, planning_id, "command", request_id=request_id
+    ):
+        return
+    executor.finish_planning(client_id, planning_id)
+
+    response_msg = create_response_message(reply, [])
+    response_msg["speak"] = True
+    await ws_manager.send_agent_response(response_msg, client_id)
+    if guidance.get("type") == "point":
+        await ws_manager.send_overlay_event(
+            reply=reply, guidance=guidance, client_id=client_id
+        )
+    await ws_manager.send_status("idle", client_id)
+    await _send_task_outcome(client_id, request_id, outcome, reply)
+    if outcome == "completed":
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=reply,
+            step_results=[
+                {
+                    "tool": teaching.TEACH_TOOL,
+                    "label": str(guidance.get("label") or "Explained a step"),
+                    "status": "done",
+                    "result": reply,
+                }
+            ],
+        )
+
+
 async def process_command(
     command: str,
     client_id: str,
@@ -1159,13 +1219,39 @@ async def process_command(
 
         connection_status = _connection_status_block()
 
-        # 2. Plan with Gemini
-        await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
-        raw_steps = await plan_command(
-            f"{command}\n\n{connection_status}",
-            context=context,
-            model=model,
-        )
+        # 1b. Teaching. "How do I...", "show me...", "where is..." are answered
+        # by looking at the screen and pointing, never by acting. Decided here,
+        # before any plan exists, so a question cannot turn into an action.
+        from agent import teaching
+        from agent.planner import SCREEN_OFF_MESSAGE
+
+        if teaching.is_teaching_request(command):
+            if settings.allow_screen:
+                await _teach_on_screen(
+                    command, context, client_id, planning_id, request_id
+                )
+                return
+            if teaching.needs_screen(command):
+                executor.finish_planning(client_id, planning_id)
+                await ws_manager.send_agent_response(
+                    create_response_message(SCREEN_OFF_MESSAGE, []), client_id
+                )
+                await ws_manager.send_status("idle", client_id)
+                await _send_task_outcome(
+                    client_id, request_id, "failed", SCREEN_OFF_MESSAGE
+                )
+                return
+
+        # 2. Plan. "Do it for me" straight after a lesson means the step TORCH
+        # just explained; anything else goes to the planner.
+        raw_steps = teaching.follow_up_plan(command, context)
+        if raw_steps is None:
+            await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
+            raw_steps = await plan_command(
+                f"{command}\n\n{connection_status}",
+                context=context,
+                model=model,
+            )
 
         if await _discard_cancelled_plan(
             client_id, planning_id, "command", request_id=request_id
@@ -1548,46 +1634,42 @@ async def process_companion_command(
     client_id: str,
     audio: dict | None = None,
 ) -> None:
-    """Answer a contextual question and optionally point to a visible desktop element."""
+    """Answer a contextual question and optionally point to a visible desktop element.
+
+    `audio` is accepted for older clients and ignored: voice never leaves the
+    machine, so it is not forwarded to any AI service.
+    """
+    from agent.companion import answer_with_screen
+    from agent.context import ConversationContext
+    from agent.planner import SCREEN_OFF_MESSAGE
+    from errors.plain_language import UserFacingError
+
+    guidance: dict = {"type": "none"}
     try:
         await ws_manager.send_overlay_event(status="processing", client_id=client_id)
-        from agent.companion import answer_with_screen
-        from agent.context import ConversationContext
-
+        if not settings.allow_screen:
+            raise UserFacingError(SCREEN_OFF_MESSAGE)
         context = ConversationContext.get_context(client_id)
-        result = await answer_with_screen(command, screenshots, context, audio)
+        result = await answer_with_screen(command, screenshots, context)
         reply = result["speech"]
-        await ws_manager.send_overlay_event(
-            status="speaking",
-            reply=reply,
-            guidance=result.get("guidance"),
-            client_id=client_id,
-        )
+        guidance = result.get("guidance") or guidance
         ConversationContext.add_exchange(
             client_id=client_id,
             user_command=command,
             reply_summary=reply,
             step_results=[],
         )
-    except Exception as error:
-        logger.error(f"Visual companion failed: {error}", exc_info=True)
-        error_text = str(error).lower()
-        if "gemini api 401" in error_text or "gemini api 403" in error_text:
-            reply = "Gemini rejected the API key. Replace it in Settings, then try again."
-        elif "gemini api 429" in error_text:
-            reply = "Gemini is rate-limiting this key right now. Wait briefly and try again."
-        elif "timeout" in error_text or "timed out" in error_text:
-            reply = "Gemini took too long to respond. I stopped the request so TORCH stays responsive."
-        elif "connection" in error_text or "resolve" in error_text:
-            reply = "I could not reach Gemini. Check this laptop's internet connection and try again."
-        else:
-            reply = "I read the screen but could not finish the visual answer. Please try that once more."
-        await ws_manager.send_overlay_event(
-            status="speaking",
-            reply=reply,
-            guidance={"type": "none"},
-            client_id=client_id,
-        )
+    except UserFacingError as error:
+        reply = str(error)
+    except Exception:
+        logger.exception("Visual companion failed")
+        reply = "I couldn't look at your screen just now. Try again in a moment."
+    await ws_manager.send_overlay_event(
+        status="speaking",
+        reply=reply,
+        guidance=guidance,
+        client_id=client_id,
+    )
 
 
 # ─── ENTRY POINT ───

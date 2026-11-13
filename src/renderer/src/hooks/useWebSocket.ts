@@ -349,6 +349,19 @@ export function useWebSocket(): {
           }
           break
         }
+        case 'attention_needed': {
+          // TORCH stopped at a step that is the user's to do (paying, picking
+          // a file) and is watching for them to finish it.
+          const message = String(data.message ?? '')
+          store.addMessage({
+            id: crypto.randomUUID(),
+            role: 'torch',
+            content: `Attention needed. ${message}`,
+            timestamp: Date.now()
+          })
+          window.torchAPI?.notifyAttention(message)
+          break
+        }
         case 'clarification_request': {
           const { taskId, question, options } = data as {
             taskId: string

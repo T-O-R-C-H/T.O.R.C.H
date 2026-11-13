@@ -234,10 +234,12 @@ def _online_order_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
                     f"Order {query} online. Open Google, search for exactly '{query}', "
                     f"then open the most suitable website that sells it. Browse that site, "
                     f"find the item that matches '{query}', and add it to the cart. "
-                    "Do not enter any personal, delivery, or payment information and do NOT "
-                    "complete the checkout. When the item is in the cart, stop and report "
-                    "exactly what you added. If you are unsure which result or item to pick, "
-                    "ask the user instead of guessing."
+                    "Then go to the checkout. Never type card, bank, password or other "
+                    "payment details and never press the final button that places the order: "
+                    "hand that step off to the user and wait. Once the order confirmation "
+                    "page is visible, report done with the order number if one is shown. "
+                    "If you are unsure which result or item to pick, ask the user instead "
+                    "of guessing."
                 ),
                 "browser": "chrome",
             },

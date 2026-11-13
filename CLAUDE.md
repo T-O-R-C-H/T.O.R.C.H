@@ -11,7 +11,7 @@ TORCH is an autonomous PC automation agent for Windows. The user types or speaks
 It is built for everyone — non-technical users, students, developers, freelancers, small business owners. The non-technical user experience is the design constraint that governs every decision.
 
 **The two core modes:**
-- **Do Mode** — TORCH executes tasks by calling named tool functions (find_file, send_email, open_app etc.) or by using a vision loop (Qwen2.5-VL via Ollama) that literally sees the screen and controls the mouse/keyboard like a human
+- **Do Mode** — TORCH executes tasks by calling named tool functions (find_file, send_email, open_app etc.) or by using a vision loop that looks at a screenshot through the user's own AI key and controls the mouse/keyboard like a human
 - **See Mode** — TORCH takes a screenshot, analyzes what's on screen, and guides the user or acts on what it sees directly (Clicky-style screen-aware assistant)
 
 ---
@@ -21,8 +21,8 @@ It is built for everyone — non-technical users, students, developers, freelanc
 **Frontend:** React 19 + TypeScript + Tailwind CSS 4 + Zustand 5 + Framer Motion + React Router 7
 **Backend:** Python 3.11 + FastAPI + WebSocket
 **Shell:** Electron 39 (wraps the whole app as a Windows desktop application)
-**AI providers:** Gemini, DeepSeek, OpenAI, Claude, and explicit Ollama model selection through the provider abstraction. Automatic selection currently prefers configured cloud providers in that order; there is no implemented fast/reasoning local-tier router.
-**Vision model:** Qwen2.5-VL 7B via Ollama (screen control — sees screen and generates mouse/keyboard actions)
+**AI providers:** bring-your-own-key. DeepSeek and Claude are the two supported services; `TORCH_ACTIVE_PROVIDER` picks which goes first and the other is the fallback. Gemini, OpenAI and Ollama provider classes still exist for older setups but are no longer offered in Settings - do not build on them (see `VISION.md`).
+**Vision:** `backend/agent/vision_model.py` is the only place a screenshot is sent to an AI service. Screen control, screen answers and `analyse_screen` all go through it. Local Qwen via Ollama was dropped (minutes per step without a graphics card).
 **Voice:** capture runs in the renderer (`hooks/useAudioCapture.ts` — Web Audio,
 real level metering, 16 kHz mono WAV). Transcription is local-only via Whisper
 through SpeechRecognition; **the `whisper` package is not currently installed**,
@@ -55,7 +55,7 @@ T.O.R.C.H/
 │   │   ├── browser.py       # web search, open_browser (Playwright)
 │   │   ├── screen.py        # screenshot, analyse_screen
 │   │   ├── voice.py         # speak(), listen(), WakeWordDetector
-│   │   └── vision_control.py # Qwen2.5-VL vision loop — sees screen, clicks/types
+│   │   └── vision_control.py # Vision loop — sees screen, clicks/types, hands off to the user
 │   ├── errors/
 │   │   └── plain_language.py # Converts all raw errors to plain-English user messages
 │   ├── memory/
@@ -186,11 +186,26 @@ When no named tool covers the task (e.g. "play Doja on Spotify", "fill in this f
 ```python
 # backend/tools/vision_control.py
 # 1. Take screenshot with mss
-# 2. Send screenshot + task to Qwen2.5-VL:7b via Ollama
+# 2. Send screenshot + task through agent/vision_model.py (the user's DeepSeek or Claude key)
 # 3. Model returns JSON: {"action": "click", "x": 450, "y": 230, "reason": "..."}
 # 4. Execute with PyAutoGUI
 # 5. Repeat until model returns {"action": "done"} or max 25 steps
 ```
+
+`handoff` is the action for steps that belong to the user - paying, the final
+order/send/post/delete button, picking one of their own files, a CAPTCHA. The
+model decides this from the screen. TORCH then emits `attention_needed` (chat
+message + Windows notification), drops the blue border, watches the screen
+locally until it changes, and looks again. It never performs that step.
+
+## Teaching and doing in one chat
+
+`backend/agent/teaching.py`. "How do I...", "show me...", "where is..." are
+answered by looking at the screen and pointing at the real screen (guidance
+window) - never by acting, and decided before any plan exists. "Do it for me"
+straight after such an answer runs that one step through `vision_control`.
+Not built yet: TORCH noticing by itself that the user followed a pointed-at
+step, and a visible Action / Thought panel.
 
 When vision control starts: emit `vision_control_start` WS message → frontend shows blue border window
 When vision control ends: emit `vision_control_end` WS message → frontend hides blue border window
@@ -212,6 +227,11 @@ When vision control ends: emit `vision_control_end` WS message → frontend hide
 - **Vision control** gets a second check: `_vision_task_requires_approval` flags
   tasks that imply purchases, sending/uploading, deleting, terminal access, or
   security-setting changes.
+- **Looking at the screen is opt-in.** `allow_screen` (Settings → "Look at my
+  screen") is off by default and gates `vision_control`, `analyse_screen`,
+  teaching and the companion, because each sends a picture of the screen to
+  the user's AI service. The switch's own text says so. Never send a
+  screenshot from a path that does not check it.
 - **HITL never fires** for read-only tools: find_file, read_file, search_web,
   screenshot, open_app. Prompting on these trains users to click through.
 - **move_file, create_folder, zip_files** are covered by Undo rather than a

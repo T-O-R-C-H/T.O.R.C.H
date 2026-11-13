@@ -28,6 +28,7 @@ interface TorchAPI {
   >
   showGuidance: (guidance: VisualGuidance) => void
   hideGuidance: () => void
+  notifyAttention: (message: string) => void
   showControlBorder: () => void
   hideControlBorder: () => void
   completeVisionControl: () => void
