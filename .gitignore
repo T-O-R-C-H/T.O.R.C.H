@@ -12,12 +12,14 @@ dist/
 dist-electron/
 
 # Environment
+.env
 
 # OS files
 .DS_Store
 Thumbs.db
 
 # Editor
+.vscode/
 .idea/
 *.swp
 *.swo
@@ -55,7 +57,3 @@ build-backend/
 
 # uiautomation writes this next to the process
 @AutomationLog.txt
-branch_structure.json
-temp_auto_push.bat
-temp_interactive_push.bat
-config.bat
