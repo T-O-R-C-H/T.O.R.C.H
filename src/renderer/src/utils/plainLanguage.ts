@@ -50,6 +50,25 @@ export function toPlainLanguage(raw: string | undefined): string {
   return sanitizeDisplayText(raw)
 }
 
+/**
+ * Turn a caught error from a page load or a button press into a sentence.
+ *
+ * Pages used to print `err.message` directly, so a backend that was still
+ * starting produced a red "Failed to fetch" in the middle of the screen. A
+ * request that never reached TORCH is by far the commonest failure and has
+ * nothing to do with the internet, so it gets its own wording rather than
+ * the generic "check your internet" from toPlainLanguage.
+ */
+export function describeError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
+  if (!message.trim()) return fallback
+  if (/failed to fetch|networkerror|load failed|err_connection|aborted/i.test(message)) {
+    return "TORCH isn't ready yet. Give it a moment and try again."
+  }
+  if (/^(http )?\d{3}|status code|unexpected token|json/i.test(message)) return fallback
+  return toPlainLanguage(message)
+}
+
 export function sanitizeDisplayText(text: string): string {
   return text
     .replace(/\*\*/g, '')

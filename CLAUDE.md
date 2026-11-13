@@ -98,47 +98,59 @@ T.O.R.C.H/
 
 ## Design System
 
-TORCH uses a **light theme**. The single source of truth is the `@theme` token
-block at the top of `src/renderer/src/styles/globals.css` — read it before
-adding any color, and use the `--color-torch-*` tokens rather than hardcoding
-hex values, so a future theme change stays a one-file edit.
+TORCH has a **dark and a light theme**. The user picks System / Light / Dark
+in Settings → Preferences; System follows the OS and is the default.
 
-**Colors:**
-- Background: `#f4f4f5` — surfaces `#ffffff`
-- Text: muted greys, defined as `--color-torch-text*` tokens
-- Status dots may use color (`#10b981` connected, `#ef4444` disconnected) — this
-  is the one place color carries meaning
-- The blue border (`#3b82f6`) appears full-screen during vision control
+- `styles/globals.css` — base styles; the `@theme` block holds the light palette.
+- `styles/tokens.css` — every non-colour token, the state tints, and the dark
+  palette (`:root[data-theme='dark']`), which overrides the same names.
+- `styles/agent.css` — the window chrome and the conversation. Loads last.
+- `utils/theme.ts` — reads/applies the choice as `data-theme` on `<html>`.
+  `index.html` applies it inline before first paint; the two must agree.
 
-**Typography:**
-- UI text: Inter or system sans-serif
-- Labels, status, mono: `JetBrains Mono` or `Courier New` (monospace)
+**The one rule: never write a literal colour.** Use `--color-torch-*`,
+`--surface-*`, `--text-*`, `--border-*`, `--tint-*`, `--shadow-*`. A component
+built only on tokens works in both themes without knowing which is active.
+Do not use `@media (prefers-color-scheme)` in component CSS — the theme is
+`data-theme`, and the two disagree whenever the user pins a theme.
 
-**Shape and depth:**
-- The floating overlay companion is deliberately glassmorphic (translucent
-  white + `backdrop-filter` blur). This is intentional design, not a bug.
-- Everything else stays flat and calm — compact type, restrained hierarchy.
+**Colour carries meaning, so it is rare.** Neutral greys everywhere; green =
+done/ready, amber = waiting on the user, red = failed or recording,
+`--brand` (the flame orange) = work in progress. Never a large fill.
 
-> Historical note: this project began with a near-black, zero-radius,
-> no-glassmorphism design system. It was deliberately replaced by the current
-> light aesthetic in Aug 2026. If you find a component that still looks dark,
-> that is legacy, not the target.
+**Typography:** the operating system's fonts (`--font-sans`, `--font-mono`).
+Nothing is downloaded — the app used to import Inter from Google Fonts on
+every launch, which contradicted "nothing leaves your machine".
+
+**Layout:** title bar + sidebar are one quiet "chrome" surface; the page sits
+in it as a lifted panel. The conversation is a single centred column
+(`--chat-column`) with the composer (`components/input/PromptInput.tsx`)
+pinned beneath it. User messages are bubbles on the right; TORCH's replies
+are plain text on the left, followed by `components/chat/StepTimeline.tsx`.
+
+**Status is reported once**, by the chip in the title bar (`Topbar.tsx`).
+Do not add a second connection/activity indicator anywhere else.
+
+**Notices:** use `notify()` from `utils/notify.ts`, never `alert()`.
+**Errors from a fetch:** pass them through `describeError()` in
+`utils/plainLanguage.ts`, never print `err.message`.
 
 ---
 
-## UI Architecture — The Current Four Windows
 
-`src/main/index.ts` currently creates four Electron windows:
+## UI Architecture — Windows
 
-**1. Main window** — the full Command Center with sidebar and chat. It is frameless and uses the custom `Topbar` controls.
+`src/main/index.ts` creates these Electron windows, each a route in `App.tsx`:
 
-**2. Floating overlay** — a resizable 360×180 glassmorphic command companion. It is positioned at the saved location or the bottom-right of the active work area and appears when the main window is minimized or the global shortcut is pressed.
-
-**3. Guidance overlay** — a click-through, full virtual-desktop window used to point at or narrate screen locations during companion guidance.
-
-**4. Control border** — a click-through, full virtual-desktop window with a blue pulsing border. It appears only while vision control is active.
-
-The production master plan replaces the floating overlay with a bottom-center command pill plus a task-scoped right panel during the later UI milestone. Those windows do not exist yet; do not describe them as implemented.
+- **Main window** (`/`) — frameless; title bar, sidebar, and the pages.
+- **Command pill** (`/pill`) — small always-on-top input, shown when the main
+  window is minimized or the global shortcut is pressed.
+- **Task panel** (`/task-panel`) — live steps for the running task.
+- **Companion** (`/companion`) — the screen-aware side panel. Deliberately
+  dark in both themes (see `TORCH_overlay_companion_spec.md`).
+- **Guidance overlay** (`/guide`) and **control border** (`/control-border`) —
+  click-through, full-desktop; pointing during guidance, and the blue border
+  while vision control is driving the screen.
 
 ---
 
@@ -239,31 +251,6 @@ TORCH is used by non-technical users. Every string visible to the user must pass
 
 ---
 
-## Planned Floating Pill + Right Panel
-
-This is a later production-plan milestone, not the current implementation. It will replace the current floating overlay with two Electron windows:
-
-**Pill window** (`createPillWindow()`):
-- Always-on-top, frameless, transparent, not in taskbar
-- Positioned: bottom-center of screen, just above taskbar (y = screenHeight - taskbarHeight - pillHeight - 8px)
-- Size: ~220px wide, ~40px tall
-- Contains: TORCH logo mark (R), text input, mic button
-- Shows when main window is minimized, hides when main window is focused
-- Clicking input or sending a command works exactly like Command Center — same WS pipeline
-
-**Right details panel** (`createRightPanel()`):
-- Always-on-top, frameless, transparent, not in taskbar
-- Positioned: right edge of screen, vertically centered
-- Width: 220px, slides in from right
-- Shows ONLY when a task is running (agentStatus !== 'idle')
-- Hidden when task completes (after 3 second delay showing the recap)
-- Contains: task name, live step list with status indicators, elapsed time, Stop button
-- Receives the same step_update WS messages as the main window
-
-Do not implement this before the ordered packaging, cold-start, and honesty milestones are complete.
-
----
-
 ## Tests
 
 ```bash
@@ -288,95 +275,63 @@ reaches a shell), `test_planner_hitl.py` (the approval policy), and
 
 **Open:**
 
-1. **Status label inconsistency** — the floating overlay shows a colored status
-   dot, the main Command Center input shows the word "Ready". Pick one and use
-   it in both places.
-2. **Standalone backend + Electron collide** — Electron reuses an already-running
-   backend only if it can authenticate to it. A backend started by hand (with its
-   own generated token) is not reusable, and Electron's health check hardcodes
-   port 8000, so the fallback spawn lands on a different port and reports
-   unhealthy. Only affects the run-the-backend-in-a-terminal dev workflow.
-3. **`useWebSocket.ts` still keeps its socket in module-level singletons**
-   (`sharedSocket`, `sharedReconnectTimer`, …), shared by every consumer
-   rather than scoped per hook instance. That design is deliberate — one
-   socket for the whole renderer — but it is sharp, and it is now covered:
-   `useWebSocket.test.tsx` drives the real hook against a fake `WebSocket`
-   using `react-dom/client` + `act` (no testing-library in the stack).
-   `__resetSocketStateForTests()` clears the singletons between tests.
+1. **No code-signing certificate.** The installer is unsigned, so Windows
+   SmartScreen will warn on install. See `CODE_SIGNING.md`.
+2. **Clean-machine install is unverified.** The PyInstaller backend bundle
+   (`backend/build_backend.py`) and the electron-builder config exist, but the
+   installer has not been run on a Windows VM with no Python. Playwright's
+   Chromium is still not provisioned by the installer.
+3. **Social posting does not post.** `tools/social.py` opens the site with the
+   text ready; the UI says so. Do not describe it as posting.
+4. **Screen Watch has no capture worker.** The page shows real log entries or
+   an empty state, never invented activity, but nothing records yet.
+5. **`useWebSocket.ts` keeps its socket in module-level singletons** by design
+   (one socket per renderer). Anything added there must guard on
+   `isCurrent(ws)` before touching shared state; see `useWebSocket.test.tsx`.
+6. **The JS bundle is one 1.2 MB chunk.** Fine for a desktop app loading from
+   disk; split it if cold start becomes a problem.
 
-   **Anything added here must guard on `isCurrent(ws)` before touching shared
-   state.** `close()` is asynchronous, so a replaced socket's `onclose` runs
-   after its successor is already open; unguarded, it cleared `wsConnected`,
-   killed the live ping timer, and failed the running task's steps.
-4. **Windows packaging is not production-ready** — `build:win` copies the full
-   development virtual environment twice (about 2.6 GB unpacked on the Aug 26 audit),
-   and the normal local build is blocked when electron-builder cannot create
-   symlinks while extracting its signing helper. Replace this with the planned
-   PyInstaller runtime before release.
-5. **Cold-start REST calls are not gated** — Electron creates all renderer
-   windows before starting the backend, and `torchFetch` does not wait for the
-   published backend-health state.
-6. **Visible honesty gaps remain** — Screen Watch still falls back to
-   `INITIAL_DEMO_ACTIVITY` when it has no real activity, and several tool
-   pages are shells (`pages/tools/Files.tsx` has a Find button with no
-   handler and is still styled for the old dark theme; `pages/FollowUps.tsx`
-   describes a feature that does not exist). Both were removed from the
-   sidebar rather than left advertised. Multiple Settings controls are still
-   not wired. See `PRODUCTION_READINESS_AUDIT.md` for the verified inventory.
-   Insights is **no longer** in this list — see below.
-7. **Credentials are plaintext** — `/api/settings` persists API keys and the
-   Gmail app password directly to the root `.env`; Electron `safeStorage` is
-   not implemented.
-8. **`npm run lint` does not pass clean** — `pages/Onboarding.tsx` has one
-   `react-hooks/set-state-in-effect` error, in the effect that reacts to
-   `lastTaskOutcome` to end the first task and advance the screen. The effect
-   is doing state-machine work that belongs in the WS message handler or a
-   reducer, not in a render effect. Fix it there rather than suppressing the
-   rule. Until then `lint` is not a usable gate, so **`npm run lint` is not
-   wired into CI** — do not assume a green build means lint passed.
+**Fixed (Nov 2026) — do not "re-fix" these:**
 
-   Note also that a full `npm run lint` takes well over 8 minutes on this
-   repo; lint the files you touched (`npx eslint <path>`) while working.
+- **Supply-chain malware removed.** Merge `eb30254` added an obfuscated
+  payload in `init`, `website/init` and the last line of `eslint.config.mjs`,
+  prefixed `node init &&` onto every npm script, and removed `.env` and
+  `.vscode/` from `.gitignore`. All reverted to `b94c510`. If `init` or a
+  `node init` script ever reappears, treat the machine that pushed it as
+  compromised. See `SECURITY.md`.
+- Backend port — the main process now picks a free port, passes it as
+  `TORCH_PORT`, and the renderer asks for it (`config/api.ts`). Never hardcode
+  8000 again; build URLs from `API_BASE` and send them through `torchFetch`.
+- Lint — `npm run lint` passes with 0 errors and runs in CI.
+- Dark theme — implemented properly (see Design System).
+- Fake pages — Files, Follow-ups, Web Search, Browser, Messaging and Tasks
+  were shells and are deleted; unknown routes redirect to Chat.
+- "Reasoned for Ns" panel — removed. It restated the step list as if it were
+  model reasoning. Elapsed time now sits in the step timeline header.
+- Model picker — no vendor logos or raw model ids; labels only.
+- Today page — "time saved" (tasks × 8 minutes, invented) is gone from the UI
+  and from `/api/metrics`; success rate is `null`, shown as "—", until a task
+  has run. `test_new_conversation.py` asserts both.
+- New chat — clears the screen *and* the backend's conversation context
+  (`new_conversation` WS message).
+- Inbox "Load more" — goes through `torchFetch` (it used to 401).
+- An approval step is drawn as *waiting* (amber), not as a failure (red).
 
-**Fixed (Aug 2026) — do not "re-fix" these:**
-
-- Cat mascot — gone. The logo component is `ui/TorchLogo.tsx` (there is no `TorchMark.tsx`).
-- Overlay is white — **not a bug.** The light glassmorphic overlay is the intended design.
-- Native menu bar — `frame: false` + `Menu.setApplicationMenu(null)`; the custom title bar is `layout/Topbar.tsx`.
-- Model picker option text — `/api/models` returns speed/depth labels ("Automatic", "Faster", "More thorough"). The selected non-auto id still leaks through the input metadata and remains an open honesty issue.
-- False success on failure — `process_command` returns before the success recap; a failure now sends its own plain-language message.
-- Raw error in chat — `validate_plan` translates unknown-tool errors before the plan is sent, with a frontend backstop in `utils/plainLanguage.ts`.
-- Stop button — `executor.stop_task()` exists and releases pending approvals.
-- Session token — implemented; see the auth bullet in Safety Rules.
-- Onboarding gating — `onboardingComplete` is checked before routing.
-- Insights fabricated data — the page read from a hardcoded array (a literal
-  `87%` "accuracy", an invented weekly chart, "4.2 hours saved"). It now
-  renders `GET /api/insights`, backed by `storage.get_insights()`, which
-  derives everything from rows in `tasks`. **Accuracy and time-saved are
-  deliberately absent** — nothing in TORCH measures either, and
-  `test_insights.py` asserts those keys never come back. `success_rate` and
-  `avg_duration_ms` are `None` rather than `0` when there is nothing to
-  divide, so the page shows an empty state instead of a confident 0%.
-- Task durations were never recorded — `save_task` accepted `duration_ms` but
-  all three call sites in `process_command` omitted it, so every row held 0.
-  Now timed from command arrival via `_elapsed_ms`.
-- Onboarding clobbering capability settings — the permissions screen writes
-  all three capabilities on Continue, and its toggles were seeded from
-  constants, so re-running onboarding silently switched off whatever the user
-  had enabled (it turned `TORCH_ALLOW_EMAIL` off twice during development).
-  It now seeds from `GET /api/settings` via `utils/permissions.ts` and
-  refuses to save if that read has not landed.
-
-  Note that the backend does **not** re-read `.env` while running: editing
-  that file by hand does nothing until restart, and the next settings write
-  will overwrite your edit from memory. Change capabilities through
-  `/api/settings`, not the file.
+**Fixed (Aug 2026):** session-token auth, HITL policy in Python, Stop button,
+false-success recap, onboarding gating, encrypted credentials
+(`src/main/credentialStore.ts`), cold-start gating in `torchFetch`, honest
+Insights, real task durations, onboarding no longer clobbering capability
+settings. Note the backend does **not** re-read `.env` while running — change
+capabilities through `/api/settings`, not the file.
 
 ---
 
+
 ## What NOT to Do
 
-- Do not hardcode colors — use the `--color-torch-*` tokens in `globals.css`
+- Do not hardcode colors — use the tokens (see Design System); every rule must hold in both themes
+- Do not call `alert()` or print `err.message` — use `notify()` and `describeError()`
+- Do not hardcode the backend port
 - Do not show any model/tier/technical name to the user
 - Do not let any raw Python exception reach the chat UI
 - Do not make HITL fire for read-only operations

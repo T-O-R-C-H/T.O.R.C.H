@@ -107,7 +107,10 @@ export function classifyClipboard(text: string): ClipboardKind {
   if (!trimmed) return 'text'
   if (/^https?:\/\//i.test(trimmed)) return 'url'
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) || trimmed.includes('@')) return 'email'
-  if (/(\bfunction\b|\bclass\b|\bimport\b|\bconst\b|\bdef\b|=>|\{[\s\S]*\}|;\s*$)/m.test(trimmed) && trimmed.length > 20) {
+  if (
+    /(\bfunction\b|\bclass\b|\bimport\b|\bconst\b|\bdef\b|=>|\{[\s\S]*\}|;\s*$)/m.test(trimmed) &&
+    trimmed.length > 20
+  ) {
     return 'code'
   }
   return 'text'

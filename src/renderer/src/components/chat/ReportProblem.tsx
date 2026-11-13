@@ -3,7 +3,10 @@ import type { Message } from '../../store/torchStore'
 import { buildProblemReport, issueUrl, type ReportInfo } from '../../utils/problemReport'
 
 /**
- * "Something went wrong" — on every task result.
+ * "Report a problem" — on every task result.
+ *
+ * It used to read "Something went wrong", which under a task that had just
+ * succeeded looked like an error message rather than a link.
  *
  * TORCH collects nothing on its own, so this is the only route a problem has
  * to reach us, and it is entirely the user's decision. Pressing the button
@@ -38,7 +41,7 @@ export function ReportProblem({
   if (!open) {
     return (
       <button type="button" className="report-problem__trigger" onClick={() => void reveal()}>
-        Something went wrong
+        Report a problem
       </button>
     )
   }

@@ -28,7 +28,9 @@ export function ClarificationPrompt(): JSX.Element | null {
       setSubmitted(true)
       setSendError('')
     } else {
-      setSendError('Could not send that choice from this window. Return to the window where the task started and try again.')
+      setSendError(
+        'Could not send that choice from this window. Return to the window where the task started and try again.'
+      )
     }
   }
 
@@ -37,20 +39,11 @@ export function ClarificationPrompt(): JSX.Element | null {
       <p>{clarification.question}</p>
       <div className="narration-question__options">
         {clarification.options.map((option, index) => (
-          <button
-            key={option}
-            type="button"
-            disabled={submitted}
-            onClick={() => answer(option)}
-          >
+          <button key={option} type="button" disabled={submitted} onClick={() => answer(option)}>
             <span>{String.fromCharCode(65 + index)}.</span> {option}
           </button>
         ))}
-        <button
-          type="button"
-          disabled={submitted}
-          onClick={() => setShowOtherInput(true)}
-        >
+        <button type="button" disabled={submitted} onClick={() => setShowOtherInput(true)}>
           <span>{String.fromCharCode(65 + clarification.options.length)}.</span> Other…
         </button>
       </div>

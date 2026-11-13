@@ -1,0 +1,197 @@
+/* The list of steps for one request. A rail down the left ties the rows
+   together so they read as one piece of work rather than loose lines. */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+
+.head {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  height: 24px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--dur-instant) ease,
+    color var(--dur-instant) ease;
+}
+.head:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.headLabel {
+  font-variant-numeric: tabular-nums;
+}
+.chevron {
+  opacity: 0.7;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.head[aria-expanded='false'] .chevron {
+  transform: rotate(-90deg);
+}
+
+.collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--dur-base) var(--ease-out),
+    opacity var(--dur-fast) ease;
+}
+.collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.list {
+  min-height: 0;
+  overflow: hidden;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--text-tertiary);
+  animation: timeline-in var(--dur-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.item:first-child {
+  padding-top: 8px;
+}
+@keyframes timeline-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* The rail: a hairline from each icon to the next. */
+.item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 26px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--border-default);
+}
+.item:first-child:not(:last-child)::before {
+  top: 30px;
+}
+
+.icon {
+  flex: none;
+  width: 14px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-ghost);
+}
+
+.label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.item[data-status='done'] {
+  color: var(--text-secondary);
+}
+.item[data-status='done'] .icon {
+  color: var(--color-torch-success);
+}
+
+.item[data-status='active'] {
+  color: var(--text-primary);
+}
+.item[data-status='active'] .icon {
+  color: var(--brand);
+}
+
+.item[data-status='failed'] {
+  color: var(--tint-error-text);
+}
+.item[data-status='failed'] .icon {
+  color: var(--color-torch-error);
+}
+
+.item[data-status='waiting'] {
+  color: var(--text-primary);
+}
+.item[data-status='waiting'] .icon {
+  color: var(--color-torch-warning);
+}
+
+.item[data-status='cancelled'] .label {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-ghost);
+}
+
+.spin {
+  animation: timeline-spin 0.9s linear infinite;
+}
+@keyframes timeline-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A highlight sweeping across the text: the "still working" signal used by
+   the header and the active row. The base colour stays readable, so the row
+   never dims to nothing between sweeps. */
+.shimmer {
+  background:
+    linear-gradient(
+        90deg,
+        transparent 0%,
+        transparent 40%,
+        var(--shimmer-highlight, rgba(255, 255, 255, 0.85)) 50%,
+        transparent 60%,
+        transparent 100%
+      )
+      0 0 / 250% 100% no-repeat,
+    currentColor;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: timeline-shimmer 1.8s linear infinite;
+}
+@keyframes timeline-shimmer {
+  from {
+    background-position:
+      140% 0,
+      0 0;
+  }
+  to {
+    background-position:
+      -40% 0,
+      0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}

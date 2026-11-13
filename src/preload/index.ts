@@ -92,6 +92,7 @@ const torchAPI = {
 
   // Backend session token — required on every REST call and the WS handshake
   getAuthToken: (): Promise<string> => ipcRenderer.invoke('backend:getAuthToken'),
+  getBackendPort: (): Promise<number> => ipcRenderer.invoke('backend:getPort'),
 
   // Command pill and task panel
   setPillFocused: (focused: boolean): void => ipcRenderer.send('pill:setFocused', focused),

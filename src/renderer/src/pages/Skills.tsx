@@ -9,11 +9,13 @@ import {
 } from '../components/icons'
 import { useTorchStore } from '../store/torchStore'
 import { API_BASE, torchFetch } from '../config/api'
+import { describeError } from '../utils/plainLanguage'
+import { notify } from '../utils/notify'
 import { runShortcut } from '../utils/runShortcut'
 
 function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
+  if (err instanceof Error) return describeError(err, '')
+  return ''
 }
 
 interface Skill {
@@ -75,7 +77,7 @@ export function Skills(): JSX.Element {
       await fetchSkills()
       navigate('/chat', { state: { runCommand: data.command } })
     } catch (err) {
-      alert(getErrorMessage(err) || 'Error executing skill')
+      notify(getErrorMessage(err) || "Couldn't run that shortcut. Try again.", 'error')
     } finally {
       runningSkillIds.current.delete(skill.id)
       setRunningSkillIdsState((current) => {
@@ -107,7 +109,7 @@ export function Skills(): JSX.Element {
       }
       await fetchSkills()
     } catch (err) {
-      alert(getErrorMessage(err) || 'Error deleting skill')
+      notify(getErrorMessage(err) || "Couldn't delete that shortcut. Try again.", 'error')
     }
   }
 
@@ -115,7 +117,7 @@ export function Skills(): JSX.Element {
     e.preventDefault()
 
     if (!newName.trim() || !newCommand.trim()) {
-      alert('Name and command cannot be empty')
+      notify('Give the shortcut a name and say what it should do.')
       return
     }
 
@@ -154,7 +156,7 @@ export function Skills(): JSX.Element {
       setNewCommand('')
       setShowAddForm(false)
     } catch (err) {
-      alert(getErrorMessage(err) || 'Error creating skill')
+      notify(getErrorMessage(err) || "Couldn't save that shortcut. Try again.", 'error')
     }
   }
 

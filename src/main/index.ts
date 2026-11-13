@@ -16,6 +16,7 @@ import {
 import { join } from 'path'
 import os from 'os'
 import { randomBytes } from 'crypto'
+import { createServer } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { spawn, ChildProcess } from 'child_process'
@@ -57,7 +58,40 @@ const backendHealthIntervalMs = Number(process.env['TORCH_BACKEND_HEALTH_INTERVA
 const backendHealthTimeoutMs = Number(process.env['TORCH_BACKEND_HEALTH_TIMEOUT_MS'] ?? 3000)
 const backendMaxFailedChecks = Number(process.env['TORCH_BACKEND_MAX_FAILED_CHECKS'] ?? 3)
 const backendRestartDelayMs = Number(process.env['TORCH_BACKEND_RESTART_DELAY_MS'] ?? 1000)
-const backendStatusUrl = 'http://127.0.0.1:8000/api/status'
+const BACKEND_HOST = '127.0.0.1'
+const BACKEND_DEFAULT_PORT = 8000
+/*
+ * The port the backend is on for this launch. It used to be a constant, while
+ * the backend quietly moved itself to the next free port whenever 8000 was
+ * taken - so on any machine already using 8000 the backend came up healthy on
+ * 8001 and the app sat on "Connecting…" forever, checking a port nothing of
+ * ours was listening on. The main process now chooses the port, tells the
+ * backend to use it, and tells the renderer where to find it.
+ */
+let backendPort = BACKEND_DEFAULT_PORT
+const backendStatusUrl = (): string => `http://${BACKEND_HOST}:${backendPort}/api/status`
+
+function canListenOn(port: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    const probe = createServer()
+    probe.unref()
+    probe.once('error', () => resolve(null))
+    probe.listen(port, BACKEND_HOST, () => {
+      const address = probe.address()
+      const bound = typeof address === 'object' && address ? address.port : port
+      probe.close(() => resolve(bound))
+    })
+  })
+}
+
+/** The port we last used if it is still free, else the default, else any free port. */
+async function pickBackendPort(): Promise<number> {
+  for (const candidate of new Set([backendPort, BACKEND_DEFAULT_PORT])) {
+    const free = await canListenOn(candidate)
+    if (free !== null) return free
+  }
+  return (await canListenOn(0)) ?? BACKEND_DEFAULT_PORT
+}
 // Session token for this launch. Handed to the Python backend via env var and
 // to the renderer over IPC, so only this app instance can drive the agent.
 const backendAuthToken = randomBytes(32).toString('hex')
@@ -142,7 +176,7 @@ async function isBackendReachable(): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
 
   try {
-    const response = await fetch(backendStatusUrl, {
+    const response = await fetch(backendStatusUrl(), {
       signal: controller.signal,
       headers: backendAuthHeaders
     })
@@ -242,7 +276,7 @@ async function startBackend(): Promise<void> {
   }
 
   if (backendAlreadyReachable) {
-    console.log('[TORCH] Reusing backend already listening at http://127.0.0.1:8000')
+    console.log(`[TORCH] Reusing backend already listening on port ${backendPort}`)
     backendExternal = true
     backendFailedChecks = 0
     publishBackendHealth({
@@ -258,9 +292,15 @@ async function startBackend(): Promise<void> {
 
   backendExternal = false
 
+  backendPort = await pickBackendPort()
+  if (backendStopping || isQuitting) {
+    return
+  }
+
   const { exe, args, cwd } = resolveBackendCommand()
   console.log('[TORCH] Starting backend from:', cwd)
   console.log('[TORCH] Backend executable:', exe)
+  console.log('[TORCH] Backend port:', backendPort)
 
   backendProcess = spawn(exe, args, {
     cwd,
@@ -270,6 +310,7 @@ async function startBackend(): Promise<void> {
       PYTHONUNBUFFERED: '1',
       TORCH_RELOAD: 'false',
       TORCH_AUTH_TOKEN: backendAuthToken,
+      TORCH_PORT: String(backendPort),
       // Decrypted here and handed over the same way as the session token.
       // The backend cannot read the encrypted store itself.
       ...credentialEnv()
@@ -375,7 +416,7 @@ async function checkBackendHealth(): Promise<void> {
   const timeout = setTimeout(() => controller.abort(), backendHealthTimeoutMs)
 
   try {
-    const response = await fetch(backendStatusUrl, {
+    const response = await fetch(backendStatusUrl(), {
       signal: controller.signal,
       headers: backendAuthHeaders
     })
@@ -406,7 +447,16 @@ async function checkBackendHealth(): Promise<void> {
     })
 
     if (backendFailedChecks >= backendMaxFailedChecks) {
-      const startupGracePeriodMs = 60000 // 60s grace period for cold start
+      /*
+       * How long a freshly started backend gets before it is judged dead.
+       * This was 60s, but the first launch after an install has to load every
+       * Python module from a cold disk and regularly takes longer on an
+       * ordinary laptop - so the app killed a backend that was seconds from
+       * ready, started over, and only connected on the second try. A process
+       * that has genuinely died is caught by its 'exit' event straight away,
+       * so a long allowance here costs nothing in the normal failure case.
+       */
+      const startupGracePeriodMs = 180000
       // Judge "still starting" by elapsed time, not by backendHealth.status:
       // the failure was just published as 'unhealthy' above, so the status can
       // never read 'starting' here. Checking it restarted every cold start.
@@ -1273,6 +1323,7 @@ app.whenReady().then(() => {
     return result
   })
   ipcMain.handle('backend:getAuthToken', () => backendAuthToken)
+  ipcMain.handle('backend:getPort', () => backendPort)
 
   ipcMain.handle('clipboard:list', () => getClipboardEntries())
   ipcMain.on('clipboard:copy', (_, text: string) => copyToClipboard(text))

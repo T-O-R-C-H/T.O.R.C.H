@@ -47,12 +47,11 @@ export interface Message {
 export interface Metrics {
   tasksCompleted: number
   tasksDelta: number
-  timeSaved: number
-  timeDelta: number
   actionsExecuted: number
   actionsDelta: number
-  successRate: number
-  successDelta: number
+  /** Null until a task has run today - there is nothing to take a rate of. */
+  successRate: number | null
+  successDelta: number | null
 }
 
 export interface TerminalLine {
@@ -210,12 +209,10 @@ export const useTorchStore = create<TorchState>((set) => ({
   metrics: {
     tasksCompleted: 0,
     tasksDelta: 0,
-    timeSaved: 0.0,
-    timeDelta: 0.0,
     actionsExecuted: 0,
     actionsDelta: 0,
-    successRate: 100,
-    successDelta: 0
+    successRate: null,
+    successDelta: null
   },
   setMetrics: (updates): void => set((state) => ({ metrics: { ...state.metrics, ...updates } })),
 

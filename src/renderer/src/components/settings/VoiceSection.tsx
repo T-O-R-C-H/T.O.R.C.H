@@ -182,7 +182,7 @@ export function VoiceSection(): JSX.Element {
               type="button"
               onClick={() => void downloadNaturalVoice()}
               disabled={ttsBusy || !tts.engine_installed}
-              className="text-[11px] px-2.5 py-1 border border-[var(--color-torch-border)] bg-white"
+              className="btn-secondary btn-sm"
             >
               Download
             </button>
@@ -212,18 +212,14 @@ export function VoiceSection(): JSX.Element {
           <button
             type="button"
             onClick={() => void voiceTyping.accept()}
-            className="text-[11px] px-2.5 py-1 border border-[var(--color-torch-border)] bg-white"
+            className="btn-secondary btn-sm"
           >
             Download
           </button>
         ) : (
           /* The way back for anyone who said no during onboarding. Without
              this the microphone is gone for good. */
-          <button
-            type="button"
-            onClick={voiceTyping.reset}
-            className="text-[11px] px-2.5 py-1 border border-[var(--color-torch-border)] bg-white"
-          >
+          <button type="button" onClick={voiceTyping.reset} className="btn-secondary btn-sm">
             Turn on
           </button>
         )}

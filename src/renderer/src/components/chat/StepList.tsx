@@ -1,12 +1,9 @@
 import type { Step } from '../../store/torchStore'
 import { toPlainLanguage } from '../../utils/plainLanguage'
-import { TodoList, type TodoStep } from '../aicss/TodoList'
-import { ThinkingReasoning } from '../aicss/ThinkingReasoning'
-import { useEffect, useState } from 'react'
+import { StepTimeline, type TimelineStep } from './StepTimeline'
 
 interface StepListProps {
   steps: Step[]
-  command?: string
 }
 
 function getStepPhrase(
@@ -90,89 +87,53 @@ function isCancelled(step: Step): boolean {
   return /you cancelled|cancelled this task/i.test(step.error || '')
 }
 
-function reasoningForStep(step: Step): string {
-  const phrase = getStepPhrase(step.tool, step.args, step.status, step.label)
-  if (isCancelled(step)) return 'Cancelled.'
-  if (step.status === 'failed') return `That didn't work: ${phrase}`
-  const present = phrase.toLowerCase()
-  if (step.status === 'active') return `Now I'm ${present}`
-  if (step.status === 'pending' || step.status === 'hitl_required') return `Up next: ${present}`
-  return `Done — ${phrase}`
-}
-
-function mapStatus(status: Step['status']): TodoStep['status'] {
-  switch (status) {
+/*
+ * A step waiting on the user is its own state. It used to be drawn as a
+ * failure - red text, an X - so the approval prompt always arrived looking
+ * like something had already gone wrong.
+ */
+function mapStatus(step: Step): TimelineStep['status'] {
+  if (isCancelled(step)) return 'cancelled'
+  switch (step.status) {
     case 'done':
       return 'done'
     case 'active':
       return 'active'
     case 'failed':
-    case 'hitl_required':
       return 'failed'
+    case 'hitl_required':
+      return 'waiting'
     default:
       return 'pending'
   }
 }
 
-export function StepList({ steps, command }: StepListProps): JSX.Element {
-  const running = steps.some(
-    (s) => s.status === 'pending' || s.status === 'active' || s.status === 'hitl_required'
-  )
-  const [hasRun, setHasRun] = useState(running)
-
-  useEffect(() => {
-    if (!running) return
-    const t = window.setTimeout(() => setHasRun(true), 0)
-    return () => window.clearTimeout(t)
-  }, [running])
-
-  const todos: TodoStep[] = steps.map((step) => ({
+export function StepList({ steps }: StepListProps): JSX.Element {
+  const timeline: TimelineStep[] = steps.map((step) => ({
     id: step.id,
-    label: getStepPhrase(step.tool, step.args, step.status, step.label),
-    status: mapStatus(step.status)
+    label: isCancelled(step)
+      ? step.label || 'Cancelled.'
+      : getStepPhrase(step.tool, step.args, step.status, step.label),
+    status: mapStatus(step)
   }))
 
-  const reasoningSentences: string[] = []
-  if (command) {
-    const cmd = command.replace(/\s+/g, ' ').trim()
-    reasoningSentences.push(
-      cmd.length > 160
-        ? `The user asked me to ${cmd.slice(0, 160)}…`
-        : `The user asked me to ${cmd}`
-    )
-  }
-  steps.forEach((step) => reasoningSentences.push(reasoningForStep(step)))
-
   return (
-    <div>
-      {hasRun && <ThinkingReasoning running={running} sentences={reasoningSentences} />}
-      <TodoList steps={todos} />
+    <div className="step-block">
+      <StepTimeline steps={timeline} />
       {steps.map((step) => {
-        const isFailed = step.status === 'failed' || step.status === 'hitl_required'
+        const isFailed = step.status === 'failed'
+        if (!step.error && !(isFailed && step.result)) return null
+
+        // A cancelled step is already marked as such in the timeline; a card
+        // repeating "You cancelled this" underneath adds nothing.
+        if (isCancelled(step)) return null
 
         return (
-          <div key={step.id}>
-            {(step.error || isFailed || (step.status === 'active' && !step.result)) && (
-              <div className="step-preview">
-                {step.status === 'active' && !step.result && !step.error && (
-                  <span className="step-preview__line">Working on this step…</span>
-                )}
-                {step.error && (
-                  <div className="chat-error-card chat-error-card--step">
-                    <span className="chat-error-card__title">
-                      {isCancelled(step) ? 'Cancelled' : 'What went wrong'}
-                    </span>
-                    <p className="chat-error-card__body">{toPlainLanguage(step.error)}</p>
-                  </div>
-                )}
-                {!step.error && isFailed && step.result && (
-                  <div className="chat-error-card chat-error-card--step">
-                    <span className="chat-error-card__title">What went wrong</span>
-                    <p className="chat-error-card__body">{toPlainLanguage(step.result)}</p>
-                  </div>
-                )}
-              </div>
-            )}
+          <div key={step.id} className="chat-error-card chat-error-card--step">
+            <span className="chat-error-card__title">What went wrong</span>
+            <p className="chat-error-card__body">
+              {toPlainLanguage(step.error || step.result || '')}
+            </p>
           </div>
         )
       })}

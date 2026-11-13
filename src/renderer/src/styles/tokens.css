@@ -9,8 +9,11 @@
    not own — spacing, motion, type scale — plus semantic aliases so components
    can say what a value means rather than what it looks like.
 
-   The palette is light. An earlier dark system was deliberately replaced; see
-   the note in CLAUDE.md before reintroducing dark values.
+   Two palettes, one set of names. Light is defined in `@theme`; the dark
+   palette at the bottom of this file overrides the same custom properties
+   under `:root[data-theme='dark']`. A component that only ever uses tokens
+   therefore works in both without knowing which is active. The theme is
+   chosen in Settings (System / Light / Dark) and applied by `utils/theme.ts`.
    ═══════════════════════════════════════════════════ */
 
 :root {
@@ -20,8 +23,43 @@
   --surface-base: var(--color-torch-bg);
   --surface-raised: var(--color-torch-surface);
   --surface-muted: var(--color-torch-muted);
-  --surface-hover: #f4f4f5;
-  --surface-active: #ebebed;
+  --surface-hover: rgba(0, 0, 0, 0.045);
+  --surface-active: rgba(0, 0, 0, 0.08);
+  /* Sits behind the sidebar and title bar, one step back from the page. */
+  --surface-chrome: #f7f7f8;
+  /* Translucent surface for the windows that float over the desktop. */
+  --surface-glass: rgba(255, 255, 255, 0.86);
+  --surface-glass-border: rgba(0, 0, 0, 0.08);
+  /* Inset wells: code, command previews, quoted results. */
+  --surface-well: #f4f4f5;
+
+  /* ─── State tints ───
+     Background / border / text triples for the three states that carry
+     colour. Defined as tokens so they can darken with the theme instead of
+     glowing pastel on a dark page. */
+  --tint-warning-bg: #fffbeb;
+  --tint-warning-bg-strong: #fef3c7;
+  --tint-warning-border: #fde68a;
+  --tint-warning-text: #92400e;
+  --tint-error-bg: #fef2f2;
+  --tint-error-bg-strong: #fee2e2;
+  --tint-error-border: #fecaca;
+  --tint-error-text: #b91c1c;
+  --tint-success-bg: #f0fdf4;
+  --tint-success-border: #bbf7d0;
+  --tint-info-bg: #eff6ff;
+  --tint-info-border: #bfdbfe;
+
+  /* ─── Elevation ─── */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-raised: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --focus-ring: 0 0 0 3px rgba(0, 0, 0, 0.06);
+
+  /* The brand flame. Used for one thing at a time: the live caret, the
+     working shimmer, the focused composer. Never for large fills. */
+  --brand: #e8590c;
+  --brand-soft: rgba(232, 89, 12, 0.12);
 
   --border-subtle: var(--color-torch-border-subtle);
   --border-default: var(--color-torch-border);
@@ -81,6 +119,64 @@
 
   /* ─── Chrome ─── */
   --titlebar-height: 32px;
+}
+
+/* ─── Dark palette ───
+   Neutral greys with no blue cast, so colour only ever appears where it
+   means something. The page is one step lighter than the chrome around it,
+   which is what makes the conversation read as the foreground. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-torch-bg: #181818;
+  --color-torch-surface: #1f1f1f;
+  --color-torch-muted: #1c1c1c;
+  --color-torch-border: #2e2e2e;
+  --color-torch-border-subtle: #262626;
+  --color-torch-border-hover: #404040;
+  --color-torch-text: #e4e4e4;
+  --color-torch-text-secondary: #a3a3a3;
+  --color-torch-text-tertiary: #737373;
+  --color-torch-text-ghost: #4a4a4a;
+  --color-torch-accent: #ededed;
+  --color-torch-accent-fg: #171717;
+  --color-torch-blue: #60a5fa;
+  --color-torch-blue-dark: #3b82f6;
+  --color-torch-blue-light: rgba(59, 130, 246, 0.14);
+  --color-torch-blue-muted: #3b6fb5;
+  --color-torch-link: #f0916b;
+  --color-torch-link-hover: #f7ad8e;
+  --color-torch-success: #4ade80;
+  --color-torch-error: #f87171;
+  --color-torch-warning: #e5b93c;
+
+  --surface-hover: rgba(255, 255, 255, 0.055);
+  --surface-active: rgba(255, 255, 255, 0.09);
+  --surface-chrome: #141414;
+  --surface-glass: rgba(28, 28, 28, 0.86);
+  --surface-glass-border: rgba(255, 255, 255, 0.1);
+  --surface-well: #141414;
+
+  --tint-warning-bg: rgba(229, 185, 60, 0.09);
+  --tint-warning-bg-strong: rgba(229, 185, 60, 0.16);
+  --tint-warning-border: rgba(229, 185, 60, 0.28);
+  --tint-warning-text: #e5b93c;
+  --tint-error-bg: rgba(248, 113, 113, 0.09);
+  --tint-error-bg-strong: rgba(248, 113, 113, 0.16);
+  --tint-error-border: rgba(248, 113, 113, 0.28);
+  --tint-error-text: #f87171;
+  --tint-success-bg: rgba(74, 222, 128, 0.09);
+  --tint-success-border: rgba(74, 222, 128, 0.26);
+  --tint-info-bg: rgba(59, 130, 246, 0.12);
+  --tint-info-border: rgba(59, 130, 246, 0.3);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-raised: 0 6px 20px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --focus-ring: 0 0 0 3px rgba(255, 255, 255, 0.07);
+
+  --brand: #ff7a3d;
+  --brand-soft: rgba(255, 122, 61, 0.14);
 }
 
 /* ─── Shared animations ─── */

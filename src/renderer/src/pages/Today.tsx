@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom'
 import { useTorchStore } from '../store/torchStore'
-import { TorchLogo } from '../components/ui/TorchLogo'
 
 const quickActions = [
   { label: 'Find a file', command: 'Find my latest report in Documents' },
@@ -25,31 +24,28 @@ export function Today(): JSX.Element {
     <div className="page-shell page-enter">
       <div className="page-shell__body today-page">
         <div className="today-hero">
-          <TorchLogo size={36} />
           <h1 className="today-hero__title">
             {greeting}, {userName}
           </h1>
           <p className="today-hero__subtitle">
-            Your desktop agent is ready. Pick a quick action or open Chat to give TORCH a task.
+            Pick something below, or open Chat and tell TORCH what you need.
           </p>
         </div>
 
         <div className="today-stats">
           <div className="today-stat card">
-            <span className="today-stat__label">Tasks done</span>
+            <span className="today-stat__label">Tasks done today</span>
             <span className="today-stat__value">{metrics.tasksCompleted}</span>
           </div>
           <div className="today-stat card">
-            <span className="today-stat__label">Time saved</span>
-            <span className="today-stat__value">{metrics.timeSaved.toFixed(1)}h</span>
-          </div>
-          <div className="today-stat card">
-            <span className="today-stat__label">Actions</span>
+            <span className="today-stat__label">Steps taken</span>
             <span className="today-stat__value">{metrics.actionsExecuted}</span>
           </div>
           <div className="today-stat card">
             <span className="today-stat__label">Success rate</span>
-            <span className="today-stat__value">{metrics.successRate}%</span>
+            <span className="today-stat__value">
+              {metrics.successRate === null ? '—' : `${metrics.successRate}%`}
+            </span>
           </div>
         </div>
 
@@ -76,7 +72,7 @@ export function Today(): JSX.Element {
           <h2 className="today-section__title">Jump in</h2>
           <div className="today-links">
             <button type="button" className="btn-secondary" onClick={() => navigate('/chat')}>
-              Open Command Center
+              Open chat
             </button>
             <button
               type="button"

@@ -78,21 +78,29 @@ export function GuidanceOverlay(): JSX.Element {
   useEffect(() => {
     const words = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
     if (words.length === 0) return
-    const interval = window.setInterval(() => {
-      setSpokenWords((count) => {
-        if (count >= words.length) {
-          window.clearInterval(interval)
-          return count
-        }
-        return count + 1
-      })
-    }, Math.max(90, Math.min(190, 5200 / words.length)))
+    const interval = window.setInterval(
+      () => {
+        setSpokenWords((count) => {
+          if (count >= words.length) {
+            window.clearInterval(interval)
+            return count
+          }
+          return count + 1
+        })
+      },
+      Math.max(90, Math.min(190, 5200 / words.length))
+    )
     return () => window.clearInterval(interval)
   }, [guidance?.transcript])
 
   const transcriptWords = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
   const pointerAngle = guidance
-    ? Math.atan2((guidance.y ?? 0) - (guidance.homeY ?? 0), (guidance.x ?? 0) - (guidance.homeX ?? 0)) * 180 / Math.PI
+    ? (Math.atan2(
+        (guidance.y ?? 0) - (guidance.homeY ?? 0),
+        (guidance.x ?? 0) - (guidance.homeX ?? 0)
+      ) *
+        180) /
+      Math.PI
     : 0
 
   return (
@@ -138,7 +146,9 @@ export function GuidanceOverlay(): JSX.Element {
               </motion.span>
             )}
           </AnimatePresence>
-          {phase === 'pointing' && <span className="guidance-companion__target">{guidance.label || 'Look here'}</span>}
+          {phase === 'pointing' && (
+            <span className="guidance-companion__target">{guidance.label || 'Look here'}</span>
+          )}
         </motion.div>
       )}
     </div>

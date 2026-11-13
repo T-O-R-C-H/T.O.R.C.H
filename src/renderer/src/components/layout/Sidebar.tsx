@@ -1,9 +1,11 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useRef } from 'react'
 import { useTorchStore, type Skill } from '../../store/torchStore'
 import { API_BASE, torchFetch } from '../../config/api'
-import { TorchLogo } from '../ui/TorchLogo'
+import { useWebSocket } from '../../hooks/useWebSocket'
 import { runShortcut } from '../../utils/runShortcut'
+import { describeError } from '../../utils/plainLanguage'
+import { notify } from '../../utils/notify'
 import {
   IconMessage,
   IconCalendar,
@@ -14,7 +16,9 @@ import {
   IconMonitor,
   IconChart,
   IconSettings,
-  IconSparkles
+  IconSparkles,
+  IconPlay,
+  IconBrain
 } from '../icons'
 
 const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -25,7 +29,8 @@ const iconMap: Record<string, React.ComponentType<{ size?: number }>> = {
   clipboard: IconClipboard,
   monitor: IconMonitor,
   chart: IconChart,
-  skills: IconSparkles
+  skills: IconSparkles,
+  memory: IconBrain
 }
 
 interface NavItem {
@@ -35,6 +40,8 @@ interface NavItem {
   badge?: number | string
   indicator?: 'green' | 'yellow' | 'red' | 'gray' | 'hollow'
   isAction?: boolean
+  /** Match the path exactly, so `/` is not active on every page. */
+  end?: boolean
 }
 
 /*
@@ -49,7 +56,7 @@ interface NavItem {
  * resolves, but the sidebar no longer advertises them as places to go.
  */
 const mainItems: NavItem[] = [
-  { path: '/', icon: 'chat', label: 'Chat' },
+  { path: '/', icon: 'chat', label: 'Chat', end: true },
   { path: '/today', icon: 'today', label: 'Today' },
   { path: '/history', icon: 'history', label: 'History' },
   { path: '/skills', icon: 'skills', label: 'Skills' }
@@ -60,7 +67,8 @@ const workItems: NavItem[] = [{ path: '/inbox', icon: 'inbox', label: 'Inbox' }]
 const activityItems: NavItem[] = [
   { path: '/tools/clipboard', icon: 'clipboard', label: 'Clipboard' },
   { path: '/screenwatch', icon: 'monitor', label: 'Screen Watch' },
-  { path: '/insights', icon: 'chart', label: 'Insights' }
+  { path: '/insights', icon: 'chart', label: 'Insights' },
+  { path: '/memory', icon: 'memory', label: 'Memory' }
 ]
 
 function Indicator({ type }: { type: NavItem['indicator'] }): JSX.Element | null {
@@ -78,6 +86,7 @@ function NavList({ items, title }: { items: NavItem[]; title?: string }): JSX.El
           <NavLink
             key={item.path}
             to={item.path}
+            end={item.end}
             className={({ isActive }) =>
               `sidebar-nav-item ${isActive && !item.isAction ? 'active' : ''} ${item.isAction ? 'sidebar-nav-item--muted' : ''}`
             }
@@ -100,7 +109,11 @@ export function Sidebar(): JSX.Element {
   const wsConnected = useTorchStore((s) => s.wsConnected)
   const inboxUnread = useTorchStore((s) => s.inboxUnread)
   const screenWatchEnabled = useTorchStore((s) => s.screenWatchEnabled)
+  const agentStatus = useTorchStore((s) => s.agentStatus)
+  const hasMessages = useTorchStore((s) => s.messages.length > 0)
+  const { sendNewConversation } = useWebSocket()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [showAddForm, setShowAddForm] = useState(false)
   const [shortcutName, setShortcutName] = useState('')
@@ -175,7 +188,7 @@ export function Sidebar(): JSX.Element {
         await fetchSkills()
         navigate('/chat', { state: { runCommand: result.command } })
       } catch (err: unknown) {
-        alert(err instanceof Error ? err.message : 'Error running shortcut')
+        notify(describeError(err, "Couldn't run that shortcut. Try again."), 'error')
       } finally {
         runningShortcutIds.current.delete(shortcutId)
         setRunningShortcutIdsState((current) => {
@@ -198,7 +211,7 @@ export function Sidebar(): JSX.Element {
   const handleSaveShortcut = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     if (!shortcutName.trim() || !shortcutCommand.trim()) {
-      alert('Name and command cannot be empty')
+      notify('Give the shortcut a name and say what it should do.')
       return
     }
 
@@ -235,7 +248,7 @@ export function Sidebar(): JSX.Element {
       setShortcutCommand('')
       setShowAddForm(false)
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error saving shortcut')
+      notify(describeError(err, "Couldn't save that shortcut. Try again."), 'error')
     }
   }
 
@@ -250,21 +263,39 @@ export function Sidebar(): JSX.Element {
 
   const userName = localStorage.getItem('torch_user_name') || 'User'
 
+  /*
+   * Clears the screen and the agent's memory of the conversation together.
+   * Disabled mid-task: wiping the transcript out from under a running task
+   * would leave it finishing into a chat that no longer shows what it was for.
+   */
+  const onChatPage = location.pathname === '/' || location.pathname === '/chat'
+  const taskRunning = agentStatus !== 'idle'
+  const startNewChat = (): void => {
+    if (taskRunning) return
+    useTorchStore.getState().clearMessages()
+    useTorchStore.getState().setClarificationRequest(null)
+    if (!demoMode) sendNewConversation()
+    navigate('/')
+  }
+
   return (
     <aside className="sidebar">
-      <div className="sidebar-header drag-region">
-        <div className="no-drag">
-          <TorchLogo width={88} />
-        </div>
+      <div className="sidebar-top">
+        <button
+          type="button"
+          className="sidebar-new"
+          onClick={startNewChat}
+          disabled={taskRunning || (onChatPage && !hasMessages)}
+          title={taskRunning ? 'Wait for the current task to finish' : 'Start a new chat'}
+        >
+          <IconAdd />
+          <span>New chat</span>
+        </button>
       </div>
 
       <div className="sidebar-body">
-        <NavList
-          items={mainItems.map((item) =>
-            /* The only dot that means anything: whether TORCH can be reached. */
-            item.path === '/' ? { ...item, indicator: wsConnected ? 'green' : 'red' } : item
-          )}
-        />
+        {/* Connection and activity are reported once, in the title bar. */}
+        <NavList items={mainItems} />
         <NavList
           title="Work"
           items={workItems.map((item) =>
@@ -284,13 +315,14 @@ export function Sidebar(): JSX.Element {
                 'id' in shortcut ? shortcut.id : shortcut.name
               )}
               className="sidebar-nav-item sidebar-nav-item--shortcut"
+              title={shortcut.command}
             >
+              <IconPlay />
               <span>
                 {runningShortcutIdsState.has('id' in shortcut ? shortcut.id : shortcut.name)
                   ? `${shortcut.name}…`
                   : shortcut.name}
               </span>
-              <span className="sidebar-play">▶</span>
             </button>
           ))}
 
@@ -324,11 +356,7 @@ export function Sidebar(): JSX.Element {
                 value={shortcutCommand}
                 onChange={(e) => setShortcutCommand(e.target.value)}
               />
-              <button
-                type="submit"
-                className="btn-primary"
-                style={{ fontSize: 11, padding: '5px 10px' }}
-              >
+              <button type="submit" className="btn-primary">
                 Save
               </button>
             </form>

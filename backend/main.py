@@ -652,30 +652,36 @@ async def get_current_metrics():
     tasks_today = today_stats["completed"]
     tasks_yesterday = yesterday_stats["completed"]
     
-    time_saved = round(tasks_today * 8 / 60, 2)
-    time_saved_yesterday = round(tasks_yesterday * 8 / 60, 2)
-    
+    # No "time saved" figure. It used to be tasks x 8 minutes - a guess with
+    # nothing behind it, reported to two decimal places. Nothing in TORCH
+    # measures how long a task would have taken by hand, so it is not shown.
+
     actions_today = today_stats["actions"]
     actions_yesterday = yesterday_stats["actions"]
     
-    # Success Rate (today's performance)
-    success_rate = 100
+    # Success rate for today. None, not 100, when nothing has run: a perfect
+    # score for zero tasks is a number TORCH has not earned.
+    success_rate = None
     if today_stats["total"] > 0:
         success_rate = round((tasks_today / today_stats["total"]) * 100)
-        
-    success_rate_yesterday = 100
+
+    success_rate_yesterday = None
     if yesterday_stats["total"] > 0:
         success_rate_yesterday = round((tasks_yesterday / yesterday_stats["total"]) * 100)
+
+    success_delta = (
+        success_rate - success_rate_yesterday
+        if success_rate is not None and success_rate_yesterday is not None
+        else None
+    )
 
     return {
         "tasksCompleted": tasks_today,
         "tasksDelta": tasks_today - tasks_yesterday,
-        "timeSaved": time_saved,
-        "timeDelta": round(time_saved - time_saved_yesterday, 2),
         "actionsExecuted": actions_today,
         "actionsDelta": actions_today - actions_yesterday,
         "successRate": success_rate,
-        "successDelta": success_rate - success_rate_yesterday
+        "successDelta": success_delta,
     }
 
 
@@ -1002,6 +1008,14 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
                 reply="Stopped.",
                 client_id=client_id,
             )
+
+    elif msg_type == "new_conversation":
+        # "New chat" in the UI. Without this the screen emptied but the model
+        # still saw the previous ten turns, so "it" in a fresh conversation
+        # could resolve to a file from the one the user had just closed.
+        from agent.context import ConversationContext
+        logger.info("New conversation requested")
+        ConversationContext.clear_context(client_id)
 
     elif msg_type == "undo_task":
         message_id = message.get("messageId")

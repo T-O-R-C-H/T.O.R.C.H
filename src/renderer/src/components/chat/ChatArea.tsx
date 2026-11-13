@@ -57,7 +57,7 @@ function SuggestionCard({
   return (
     <button type="button" className="cmd-suggestion" onClick={onClick}>
       <span className="cmd-suggestion__icon">
-        <Icon size={16} />
+        <Icon size={17} />
       </span>
       <span>
         <div className="cmd-suggestion__title">{title}</div>
@@ -147,10 +147,10 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
         <div className="cmd-idle">
           <div className="cmd-idle__header">
             {/* Cycling here is literal: the backend really is starting. */}
-            <TorchMark size={72} active />
+            <TorchMark size={48} active />
             <p className="cmd-idle__title">Starting TORCH…</p>
             <p className="cmd-idle__subtitle">
-              Waking up the local agent server. This takes a few seconds.
+              Getting things ready on your computer. This takes a few seconds.
             </p>
           </div>
         </div>
@@ -160,8 +160,11 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
     return (
       <div className="cmd-idle">
         <div className="cmd-idle__header">
-          <TorchMark size={72} active={agentStatus !== 'idle'} />
-          <p className="cmd-idle__subtitle">What do you need done?</p>
+          <TorchMark size={48} active={agentStatus !== 'idle'} />
+          <h1 className="cmd-idle__title">What should TORCH do?</h1>
+          <p className="cmd-idle__subtitle">
+            Say it in plain words. TORCH asks first before it sends, deletes or runs anything.
+          </p>
         </div>
 
         <div className="cmd-suggestions">

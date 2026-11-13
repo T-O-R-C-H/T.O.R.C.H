@@ -48,6 +48,7 @@ interface TorchAPI {
     focusLabel?: string
   }>
   getAuthToken: () => Promise<string>
+  getBackendPort: () => Promise<number>
   setPillFocused: (focused: boolean) => void
   hidePill: () => void
   showTaskPanel: () => void
