@@ -148,6 +148,26 @@ def _visible_windows() -> Dict[int, "tuple[str, str]"]:
     return windows
 
 
+# Window titles of a browser's ordinary windows: "<page> - Google Chrome".
+# The profile chooser is titled just "Google Chrome", so it never matches.
+BROWSER_TITLE_MARKERS = {
+    "chrome": " - Google Chrome",
+    "msedge": " - Microsoft​ Edge",
+}
+
+
+def _open_browser_window(windows: Dict[int, "tuple[str, str]"], command: str) -> Optional[str]:
+    """Title of the front-most ordinary window of this browser, if one is open."""
+    marker = BROWSER_TITLE_MARKERS.get(command)
+    if not marker:
+        return None
+    for title, _class_name in windows.values():
+        # Edge writes a zero-width space into its name; accept either form.
+        if marker in title or marker.replace("​", "") in title:
+            return title
+    return None
+
+
 def _bring_to_front(title: str) -> None:
     """Put the window with this title in front of everything else.
 
@@ -223,6 +243,15 @@ def open_app(name: str) -> str:
 
     before = _visible_windows()
     launched = False
+
+    # A browser that is already open is brought forward, not launched again.
+    # Launching Chrome a second time opened its profile chooser over the
+    # user's own window, and the task stalled asking which profile to use.
+    existing = _open_browser_window(before, command) if system == "Windows" else None
+    if existing:
+        logger.info(f"{name} is already open; bringing '{existing}' forward")
+        _bring_to_front(existing)
+        return f"Opened {name}."
 
     try:
         if system == "Windows":

@@ -551,6 +551,20 @@ function setMainHiddenFromCapture(hidden: boolean): void {
   mainWindow.setContentProtection(hidden)
 }
 
+/**
+ * With ALLOW_CAPTURE on, the panel, cursor and border are visible to screen
+ * recorders - and so to TORCH's own screenshots, where the model took its
+ * panel for something covering the page and spent steps trying to close it.
+ * They are hidden for the instant TORCH looks. (Without the switch they are
+ * always hidden from capture and this does nothing.)
+ */
+function setOverlaysHiddenFromCapture(hidden: boolean): void {
+  if (!ALLOW_CAPTURE) return
+  for (const window of [taskPanelWindow, guidanceWindow, controlBorderWindow]) {
+    if (window && !window.isDestroyed()) window.setContentProtection(hidden)
+  }
+}
+
 function stepMainAside(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   if (!mainWindow.isVisible() || mainWindow.isMinimized()) return
@@ -1380,8 +1394,12 @@ app.whenReady().then(() => {
         // it and land on TORCH instead. Step aside again before each look.
         if (torchIsDriving) stepMainAside()
         setMainHiddenFromCapture(true)
+        setOverlaysHiddenFromCapture(true)
       }
-      if (eventType === 'vision_capture_end') setMainHiddenFromCapture(false)
+      if (eventType === 'vision_capture_end') {
+        setMainHiddenFromCapture(false)
+        setOverlaysHiddenFromCapture(false)
+      }
     }
 
     if (eventType === 'status') {
