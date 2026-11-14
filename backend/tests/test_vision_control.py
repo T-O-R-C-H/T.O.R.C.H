@@ -358,6 +358,36 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             [["active", "pending"], ["done", "active"], ["done", "done"]],
         )
 
+    async def test_the_todo_list_stays_put_and_only_moves_forward(self):
+        actions = iter(
+            [
+                {"action": "wait", "reason": "a", "plan": ["One", "Two", "Three"], "current": 2},
+                {"action": "wait", "reason": "b", "plan": ["Other", "Plan"], "current": 1},
+                {"action": "done", "reason": "ok"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_k: {"message": {"content": json.dumps(next(actions))}}
+        )
+        published = []
+
+        async def on_plan(items):
+            published.append([(item["label"], item["status"]) for item in items])
+
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("job", max_steps=3, task_id="stable", on_plan=on_plan)
+
+        # The second, different plan and the step back to 1 are both ignored.
+        self.assertEqual([label for label, _ in published[0]], ["One", "Two", "Three"])
+        self.assertEqual(published[-1], [("One", "done"), ("Two", "done"), ("Three", "done")])
+        self.assertTrue(all(len(p) == 3 for p in published))
+
     async def test_a_failure_says_which_todo_item_it_stopped_at(self):
         actions = iter(
             [

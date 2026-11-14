@@ -98,7 +98,7 @@ is still left. You will be given your own latest progress line with the next scr
 To-do list: in your first response include plan, a list of 2 to 6 short steps in plain words, the
 way a person would write a to-do list ("Open the Books page", "Sort by lowest price", "Add the
 cheapest book to the cart", "Go to checkout"). In every response include current: the number,
-starting at 1, of the plan step you are working on. Send a new plan only if the steps must change.
+starting at 1, of the plan step you are working on. Send the plan once; afterwards only move current forward.
 
 Dropdowns: to choose from a dropdown or select box, click it once to focus it, then choose with the
 keyboard (down or up to move, enter to pick) rather than clicking the option. Check the box shows the
@@ -2029,10 +2029,14 @@ async def vision_loop(
                 _front_window_title(),
             )
             progress_note = action.get("progress") or progress_note
-            if action.get("plan"):
+            # The to-do list is the user's view of the job, so it stays put:
+            # the model re-wrote it every few steps (4 items, then 5, then 3)
+            # and the "2 of 4" counter jumped backwards. The first list is
+            # kept, and progress only moves forward.
+            if action.get("plan") and not todo:
                 todo = list(action["plan"])
             if action.get("current") is not None and todo:
-                todo_current = max(0, min(int(action["current"]) - 1, len(todo) - 1))
+                todo_current = max(todo_current, min(int(action["current"]) - 1, len(todo) - 1))
             await publish_todo()
             # One line per step in the log: without it a task that "did
             # nothing" cannot be told apart from one that clicked the wrong place.
