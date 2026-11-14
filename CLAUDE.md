@@ -155,7 +155,7 @@ Do not add a second connection/activity indicator anywhere else.
 - **Companion** (`/companion`) — the screen-aware side panel. Deliberately
   dark in both themes (see `TORCH_overlay_companion_spec.md`).
 - **Guidance overlay** (`/guide`) — click-through, full-desktop. Draws
-  TORCH's own cursor (orange arrow + "TORCH" tag): it points while teaching
+  TORCH's own cursor (blue arrow + "TORCH" tag - blue means TORCH has control): it points while teaching
   and glides to each click/scroll/key while TORCH works (`agent_cursor` WS
   message, sent just before each action).
 - **Control border** (`/control-border`) — a breathing blue glow round the

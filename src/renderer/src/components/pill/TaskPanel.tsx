@@ -197,7 +197,6 @@ export function TaskPanel(): JSX.Element | null {
 
   return (
     <div ref={rootRef} className="dock" data-tone={tone}>
-      <div className="dock__progress" aria-hidden="true" />
       <header className="dock__head drag-region">
         <span className="dock__state" aria-hidden="true" />
         <div className="dock__titles">

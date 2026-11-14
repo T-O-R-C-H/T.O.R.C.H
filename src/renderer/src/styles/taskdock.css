@@ -34,29 +34,6 @@
   }
 }
 
-/* A hairline along the top that moves while TORCH works. */
-.dock__progress {
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  opacity: 0;
-  transition: opacity var(--dur-base) ease;
-}
-.dock[data-tone='working'] .dock__progress {
-  opacity: 1;
-  background: linear-gradient(90deg, transparent, var(--brand), transparent) 0 0 / 40% 100%
-    no-repeat;
-  animation: dock-sweep 1.4s var(--ease-in-out) infinite;
-}
-@keyframes dock-sweep {
-  from {
-    background-position: -40% 0;
-  }
-  to {
-    background-position: 140% 0;
-  }
-}
-
 .dock__head {
   display: flex;
   align-items: flex-start;
@@ -449,7 +426,6 @@
   .attention-card__message {
     animation: none;
   }
-  .dock[data-tone='working'] .dock__progress,
   .dock[data-tone='working'] .dock__state,
   .dock[data-tone='waiting'] .dock__state,
   .attention-card__pulse {
