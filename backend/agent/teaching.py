@@ -152,7 +152,7 @@ async def look_and_teach(
     left, top, width, height = frame.capture_bounds
     screenshots = [
         {
-            "dataUrl": f"data:image/png;base64,{frame.image}",
+            "dataUrl": f"data:{vc.SCREENSHOT_MEDIA_TYPE};base64,{frame.image}",
             "width": frame.model_size[0],
             "height": frame.model_size[1],
             "bounds": {"x": left, "y": top, "width": width, "height": height},

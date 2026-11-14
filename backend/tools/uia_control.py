@@ -176,7 +176,9 @@ def snap_to_named_control(label: str, x: float, y: float) -> Optional[Tuple[int,
         return None
 
 
-def read_screen(window_title: Optional[str] = None) -> Dict[str, Any]:
+def read_screen(
+    window_title: Optional[str] = None, time_budget: Optional[float] = None
+) -> Dict[str, Any]:
     """
     List the actionable elements of a window.
 
@@ -188,14 +190,19 @@ def read_screen(window_title: Optional[str] = None) -> Dict[str, Any]:
         window = _find_window(window_title) if window_title else auto.GetForegroundControl()
         if not window:
             raise UserFacingError("I couldn't find that window on your screen.")
-        return _read_window(window)
+        return _read_window(window, time_budget)
 
 
-def _read_window(window: Any) -> Dict[str, Any]:
+def _read_window(window: Any, time_budget: Optional[float] = None) -> Dict[str, Any]:
     elements: List[Dict[str, Any]] = []
+    # Screen control asks for this before every look; a large window could
+    # take over a second to walk. With a budget it returns what it has.
+    deadline = time.monotonic() + time_budget if time_budget else None
 
     def walk(control: Any, depth: int = 0) -> None:
         if depth > MAX_DEPTH or len(elements) >= MAX_ELEMENTS:
+            return
+        if deadline is not None and time.monotonic() > deadline:
             return
         try:
             children = control.GetChildren()

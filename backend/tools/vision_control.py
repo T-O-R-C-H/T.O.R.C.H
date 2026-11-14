@@ -21,7 +21,7 @@ from urllib.parse import quote_plus
 logger = logging.getLogger("torch.vision_control")
 # Writing a few lines and saving them took 25 looks before the save dialog was
 # even filled in. Real tasks need more room than that.
-MAX_STEPS, STEP_PAUSE = 40, 0.6
+MAX_STEPS, STEP_PAUSE = 40, 0.35
 # The picture the model sees. At 960x540 a full-HD screen is halved, and small
 # targets (a menu word, a toolbar icon) were hit near their edge instead of
 # their middle. 1280x720 keeps them readable for a modest increase in cost.
@@ -37,10 +37,17 @@ HANDOFF_POLL_SECONDS = 1.5
 HANDOFF_SETTLE_SECONDS = 20
 HANDOFF_CHANGE_THRESHOLD = 2.0
 MAX_HANDOFFS = 8
-CAPTURE_OVERLAY_SETTLE_SECONDS = 0.12
+CAPTURE_OVERLAY_SETTLE_SECONDS = 0.08
+# TORCH's own cursor glides to a target before the click lands there, so the
+# user sees where TORCH is about to act. Kept short: it is pure waiting.
+CURSOR_LEAD_SECONDS = 0.25
+# Pictures go to the AI service as JPEG: a fifth of the size of PNG, so each
+# look uploads faster, with no measurable loss in what the model can read.
+SCREENSHOT_MEDIA_TYPE = "image/jpeg"
+SCREENSHOT_JPEG_QUALITY = 82
 # TORCH's own window minimises when control starts. Looking before that
 # animation ends showed the model TORCH's window instead of the app behind it.
-CONTROL_START_SETTLE_SECONDS = 0.6
+CONTROL_START_SETTLE_SECONDS = 0.45
 BROWSER_CHOOSER_SETTLE_SECONDS = 0.6
 BROWSER_WINDOW_SETTLE_SECONDS = 0.8
 SYSTEM_PROMPT = """You are controlling a Windows computer on behalf of the user.
@@ -88,7 +95,19 @@ then type; ctrl+a is refused anywhere else.
 Keep track of the task yourself: in progress, write one short line saying what is finished and what
 is still left. You will be given your own latest progress line with the next screenshot.
 
-Return these fields: action, x, y, text, key, amount, reason, question, options, message, progress.
+To-do list: in your first response include plan, a list of 2 to 6 short steps in plain words, the
+way a person would write a to-do list ("Open the Books page", "Sort by lowest price", "Add the
+cheapest book to the cart", "Go to checkout"). In every response include current: the number,
+starting at 1, of the plan step you are working on. Send a new plan only if the steps must change.
+
+Speed: prefer the keyboard when it does the same job in fewer steps - type digits and operators
+into a calculator ("37*24=") instead of clicking each key, use shortcuts such as ctrl+s or ctrl+l.
+When the next few actions are certain without looking again (for example key ctrl+l, then
+type an address, then key enter), put the follow-ups in then: a list of up to 4 more actions, each
+only type, key or wait. Never put a click or scroll in then.
+
+Return these fields: action, x, y, target, text, key, amount, reason, question, options, message,
+progress, plan, current, then. Keep reason to one short sentence.
 Aim x and y at the middle of the control, never its edge. For done, put in reason one short plain
 sentence saying what is on screen now, written for the user (for example "The File menu is open.").
 Always return exactly one action. After typing into a search field, submit it with enter on the
@@ -140,6 +159,10 @@ ALLOWED_KEYS = {
     "ctrl+f",
     "ctrl+l",
     "ctrl+n",
+    "ctrl+o",
+    "ctrl+shift+s",
+    "f2",
+    "f3",
     "ctrl+r",
     "ctrl+s",
     "ctrl+t",
@@ -186,6 +209,7 @@ if sys.platform == "win32":
                 logger.debug("Could not enable DPI awareness", exc_info=True)
 
 import pyautogui
+from ctypes import wintypes
 from mss import mss
 from PIL import Image
 
@@ -219,6 +243,8 @@ class BrowserWindowTarget:
 
 _active_sessions: Dict[str, Dict[str, threading.Event]] = {}
 _pending_clarifications: Dict[tuple[str, str], asyncio.Future[str]] = {}
+# Set when the user presses "Done - continue" during a handoff.
+_pending_handoffs: Dict[tuple[str, str], asyncio.Event] = {}
 
 
 def cancel_vision_control(client_id: str, task_id: Optional[str] = None) -> int:
@@ -244,6 +270,15 @@ def submit_vision_clarification(client_id: str, task_id: str, response: str) -> 
     if pending is None or pending.done():
         return False
     pending.set_result(answer)
+    return True
+
+
+def continue_vision_handoff(client_id: str, task_id: str) -> bool:
+    """The user says they have done their part: look again straight away."""
+    waiting = _pending_handoffs.get((client_id, task_id))
+    if waiting is None or waiting.is_set():
+        return False
+    waiting.set()
     return True
 
 
@@ -522,7 +557,7 @@ def _focus_browser_search_bar(
     target: BrowserWindowTarget,
     cancel_event: threading.Event,
 ) -> None:
-    """Move the real cursor to the omnibox and click it visibly."""
+    """Click the omnibox without moving the user's mouse, then make sure it has focus."""
     _raise_if_cancelled(cancel_event)
     left, top, width, height = target.bounds
     # Use the left side of the address field. TORCH's expanded working panel
@@ -531,15 +566,9 @@ def _focus_browser_search_bar(
     # Chrome/Edge's omnibox sits below the tab strip. Keep the visible pointer
     # move in that band for both maximized and restored Windows layouts.
     search_y = top + min(88, max(68, round(height * 0.09)))
-    pyautogui.moveTo(
-        search_x,
-        search_y,
-        duration=0.8,
-        tween=pyautogui.easeInOutQuad,
-    )
     _raise_if_cancelled(cancel_event)
-    pyautogui.click(search_x, search_y)
-    time.sleep(0.18)
+    _press_at(search_x, search_y)
+    time.sleep(0.12)
     _raise_if_cancelled(cancel_event)
     # The click makes the interaction visible; Ctrl+L guarantees focus even
     # when browser DPI/theme changes move the omnibox by a few pixels.
@@ -548,6 +577,138 @@ def _focus_browser_search_bar(
     _raise_if_cancelled(cancel_event)
     pyautogui.hotkey("ctrl", "a")
     time.sleep(0.12)
+
+
+_MOUSE_BUTTONS = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010)}
+_MOUSEEVENTF_WHEEL = 0x0800
+
+
+def _saved_cursor() -> Optional[tuple[int, int]]:
+    point = wintypes.POINT()
+    if ctypes.windll.user32.GetCursorPos(ctypes.byref(point)):
+        return point.x, point.y
+    return None
+
+
+# Controls that can be operated directly through Windows accessibility,
+# with the pattern that does what a click would.
+_INVOKE_TYPES = {"ButtonControl", "HyperlinkControl", "MenuItemControl", "SplitButtonControl"}
+_TOGGLE_TYPES = {"CheckBoxControl"}
+_SELECT_TYPES = {"RadioButtonControl", "TabItemControl"}
+# Invoking a button that opens a modal dialog does not return until the
+# dialog closes. Do not wait for it: the click has been delivered.
+INVOKE_WAIT_SECONDS = 1.5
+
+
+def _press_without_mouse(x: int, y: int) -> bool:
+    """Operate the control at a point through Windows accessibility.
+
+    Returns True when it was pressed this way. The pointer does not move at
+    all, so the user's own mouse stays exactly where they left it. Anything
+    that is not a plain button, link, menu entry, tick box or tab - text
+    boxes, canvases, most of a web page's body - returns False and is
+    clicked the ordinary way.
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        import uiautomation as auto
+    except ImportError:
+        return False
+
+    outcome: dict = {}
+
+    def attempt() -> None:
+        try:
+            with auto.UIAutomationInitializerInThread():
+                control = auto.ControlFromPoint(int(x), int(y))
+                for _level in range(4):
+                    if control is None:
+                        break
+                    rect = control.BoundingRectangle
+                    inside = rect.left <= x <= rect.right and rect.top <= y <= rect.bottom
+                    kind = control.ControlTypeName
+                    if inside and control.IsEnabled:
+                        if kind in _INVOKE_TYPES:
+                            pattern = control.GetInvokePattern()
+                            if pattern:
+                                outcome["pressed"] = True
+                                pattern.Invoke()
+                                return
+                        elif kind in _TOGGLE_TYPES:
+                            pattern = control.GetTogglePattern()
+                            if pattern:
+                                outcome["pressed"] = True
+                                pattern.Toggle()
+                                return
+                        elif kind in _SELECT_TYPES:
+                            pattern = control.GetSelectionItemPattern()
+                            if pattern:
+                                outcome["pressed"] = True
+                                pattern.Select()
+                                return
+                    # Text inside a button answers first; its parent is the button.
+                    control = control.GetParentControl()
+        except Exception:
+            if not outcome.get("pressed"):
+                outcome["failed"] = True
+
+    worker = threading.Thread(target=attempt, daemon=True)
+    worker.start()
+    worker.join(INVOKE_WAIT_SECONDS)
+    return bool(outcome.get("pressed"))
+
+
+def _press_at(x: int, y: int, button: str = "left", clicks: int = 1) -> None:
+    """Click a screen point and put the user's own mouse straight back.
+
+    The pointer is there for a few hundredths of a second - long enough for
+    the app to receive the click, too short to see. What the user watches is
+    TORCH's own cursor gliding to the spot; their mouse stays where they left
+    it, and a hover menu is not left hanging open under it.
+    """
+    if sys.platform != "win32":
+        pyautogui.click(x, y, clicks=clicks, button=button)
+        return
+    if button == "left" and clicks == 1 and _press_without_mouse(x, y):
+        return
+    user32 = ctypes.windll.user32
+    down, up = _MOUSE_BUTTONS[button]
+    saved = _saved_cursor()
+    try:
+        user32.SetCursorPos(int(x), int(y))
+        time.sleep(0.008)
+        for index in range(clicks):
+            user32.mouse_event(down, 0, 0, 0, 0)
+            user32.mouse_event(up, 0, 0, 0, 0)
+            if index + 1 < clicks:
+                time.sleep(0.05)
+        time.sleep(0.012)
+    finally:
+        if saved is not None:
+            user32.SetCursorPos(*saved)
+
+
+def _scroll_at(x: int, y: int, notches: int) -> None:
+    """Scroll the window under a point; positive notches scroll down.
+
+    One wheel notch is 120 units. Passing the bare notch count, as the old
+    code did through PyAutoGUI on Windows, moved a page by 1/40 of a notch:
+    TORCH scrolled a shop's cart page twelve times and never reached Checkout.
+    """
+    if sys.platform != "win32":
+        pyautogui.scroll(-notches, x=x, y=y)
+        return
+    user32 = ctypes.windll.user32
+    saved = _saved_cursor()
+    try:
+        user32.SetCursorPos(int(x), int(y))
+        time.sleep(0.008)
+        user32.mouse_event(_MOUSEEVENTF_WHEEL, 0, 0, -int(notches) * 120, 0)
+        time.sleep(0.015)
+    finally:
+        if saved is not None:
+            user32.SetCursorPos(*saved)
 
 
 def _paste_text(text: str) -> None:
@@ -575,8 +736,8 @@ def _paste_text(text: str) -> None:
 
 def _type_humanly(text: str, cancel_event: threading.Event) -> None:
     """Type visibly, one character at a time, pressing Enter for line breaks."""
-    # Long text is typed faster: nobody wants to watch a paragraph crawl.
-    base_delay = 0.065 if len(text) <= 60 else 0.018
+    # Quick enough not to keep anyone waiting, slow enough to watch.
+    base_delay = 0.03 if len(text) <= 20 else 0.012
     for line_number, line in enumerate(text.split("\n")):
         _raise_if_cancelled(cancel_event)
         if line_number > 0:
@@ -590,7 +751,7 @@ def _type_humanly(text: str, cancel_event: threading.Event) -> None:
         for index, character in enumerate(line):
             _raise_if_cancelled(cancel_event)
             pyautogui.write(character)
-            time.sleep(base_delay + ((index + ord(character)) % 4) * 0.012)
+            time.sleep(base_delay + ((index + ord(character)) % 3) * 0.006)
 
 
 def _focus_is_single_line_box() -> bool:
@@ -1016,7 +1177,7 @@ def take_screenshot() -> ScreenFrame:
         if model_size != image.size:
             image = image.resize(model_size, Image.Resampling.LANCZOS)
         output = BytesIO()
-        image.save(output, format="PNG", optimize=True)
+        image.save(output, format="JPEG", quality=SCREENSHOT_JPEG_QUALITY)
         return ScreenFrame(
             image=base64.b64encode(output.getvalue()).decode("ascii"),
             capture_bounds=capture_bounds,
@@ -1103,6 +1264,34 @@ def _validate_action(candidate: Any) -> dict:
     progress = action.get("progress")
     action["progress"] = progress.strip()[:300] if isinstance(progress, str) else ""
 
+    plan = action.get("plan")
+    if isinstance(plan, list):
+        cleaned_plan = [
+            " ".join(str(item).split())[:80]
+            for item in plan
+            if isinstance(item, (str, int, float)) and str(item).strip()
+        ][:8]
+        action["plan"] = cleaned_plan or None
+    else:
+        action["plan"] = None
+    try:
+        action["current"] = int(action.get("current")) if action.get("current") is not None else None
+    except (TypeError, ValueError):
+        action["current"] = None
+
+    follow_ups = action.get("then")
+    validated_follow_ups: list = []
+    if isinstance(follow_ups, list) and kind not in {"ask", "handoff", "done", "failed"}:
+        for follow_up in follow_ups[:4]:
+            if not isinstance(follow_up, dict) or follow_up.get("action") not in {"type", "key", "wait"}:
+                break
+            try:
+                checked = _validate_action({**follow_up, "then": None})
+            except ValueError:
+                break
+            validated_follow_ups.append(checked)
+    action["then"] = validated_follow_ups
+
     if kind in {"click", "right_click", "double_click", "scroll"}:
         if action.get("x") is None or action.get("y") is None:
             raise ValueError(f"{kind} requires coordinates")
@@ -1186,7 +1375,9 @@ def _screens_differ(before: Any, after: Any) -> bool:
     return difference > HANDOFF_CHANGE_THRESHOLD
 
 
-async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
+async def _wait_for_user_to_act(
+    cancel_event: threading.Event, continue_event: Optional[asyncio.Event] = None
+) -> bool:
     """Watch the screen until the user has visibly done something, then settled.
 
     Returns False if nothing changed before HANDOFF_TIMEOUT_SECONDS. The
@@ -1198,9 +1389,12 @@ async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
         frame = await _run_blocking_cancellable(take_screenshot, cancel_event)
         return _screen_signature(frame.image if isinstance(frame, ScreenFrame) else frame)
 
+    def continued() -> bool:
+        return continue_event is not None and continue_event.is_set()
+
     async def pause() -> None:
         until = loop.time() + HANDOFF_POLL_SECONDS
-        while loop.time() < until:
+        while loop.time() < until and not continued():
             _raise_if_cancelled(cancel_event)
             await asyncio.sleep(min(0.05, max(0, until - loop.time())))
 
@@ -1208,6 +1402,8 @@ async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
     deadline = loop.time() + HANDOFF_TIMEOUT_SECONDS
     while loop.time() < deadline:
         await pause()
+        if continued():
+            return True
         current = await capture()
         if not _screens_differ(baseline, current):
             continue
@@ -1225,6 +1421,8 @@ async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
 
 
 MAX_NAMED_CONTROLS = 70
+# Time allowed for listing the front window's controls before each look.
+NAMED_CONTROLS_BUDGET_SECONDS = 0.35
 
 
 async def _announce_action(
@@ -1252,7 +1450,7 @@ async def _announce_action(
         logger.debug("Could not announce a cursor move", exc_info=True)
 
 
-def _named_controls_hint(frame: "ScreenFrame") -> str:
+def _named_controls_hint(frame: "ScreenFrame", into: Optional[dict] = None) -> str:
     """Exact positions of the controls Windows can name, in screenshot pixels.
 
     A vision model reads a screen well but aims loosely: on a calculator it
@@ -1266,7 +1464,7 @@ def _named_controls_hint(frame: "ScreenFrame") -> str:
 
         if not uia_control.UIA_AVAILABLE:
             return ""
-        screen = uia_control.read_screen()
+        screen = uia_control.read_screen(time_budget=NAMED_CONTROLS_BUDGET_SECONDS)
     except Exception:
         return ""
     window = str(screen.get("window") or "")
@@ -1286,6 +1484,8 @@ def _named_controls_hint(frame: "ScreenFrame") -> str:
             continue
         name = " ".join(str(element["name"]).split())[:40]
         lines.append(f'- "{name}" ({element["type"]}) at {x},{y}')
+        if into is not None:
+            into.setdefault(name.casefold(), (x, y))
         if len(lines) >= MAX_NAMED_CONTROLS:
             break
     if not lines:
@@ -1293,7 +1493,8 @@ def _named_controls_hint(frame: "ScreenFrame") -> str:
     return (
         f'\nWindows can name these controls in the front window "{window[:60]}". '
         "Their positions are exact for this screenshot. When the control you want is "
-        "in this list, use its x and y exactly as given instead of estimating:\n"
+        "in this list, click it by name: put its exact name in target, and TORCH uses "
+        "its exact position. Only estimate x and y for things not in this list:\n"
         + "\n".join(lines)
     )
 
@@ -1515,22 +1716,16 @@ def execute_action(
 
     if kind in pointer_actions:
         screen_x, screen_y = _map_screenshot_point(x, y, frame)
-        pyautogui.moveTo(
-            screen_x,
-            screen_y,
-            duration=0.65,
-            tween=pyautogui.easeInOutQuad,
-        )
+        # Let TORCH's own cursor arrive first, so the click is seen to happen
+        # where it lands. The user's mouse is never moved.
+        time.sleep(CURSOR_LEAD_SECONDS)
         _raise_if_cancelled(cancel_event)
         if kind == "click":
-            pyautogui.click(screen_x, screen_y)
+            _press_at(screen_x, screen_y)
         elif kind == "right_click":
-            pyautogui.rightClick(screen_x, screen_y)
+            _press_at(screen_x, screen_y, button="right")
         else:
-            pyautogui.click(screen_x, screen_y)
-            time.sleep(0.1)
-            _raise_if_cancelled(cancel_event)
-            pyautogui.click(screen_x, screen_y)
+            _press_at(screen_x, screen_y, clicks=2)
     elif kind == "type" and action.get("text"):
         time.sleep(0.2)
         _type_humanly(str(action["text"]), cancel_event)
@@ -1549,7 +1744,7 @@ def execute_action(
         _raise_if_cancelled(cancel_event)
         screen_x, screen_y = _map_screenshot_point(x, y, frame)
         amount = action.get("amount")
-        pyautogui.scroll(-int(3 if amount is None else amount), x=screen_x, y=screen_y)
+        _scroll_at(screen_x, screen_y, int(3 if amount is None else amount))
     elif kind == "wait":
         # Short waits make stop responsive while still allowing the UI to settle.
         for _ in range(15):
@@ -1562,6 +1757,7 @@ def execute_action(
 async def vision_loop(
     task: str,
     on_step: Optional[Callable[[int, str, str], Awaitable[None]]] = None,
+    on_plan: Optional[Callable[[list], Awaitable[None]]] = None,
     max_steps: int = MAX_STEPS,
     client_id: str = "main",
     task_id: Optional[str] = None,
@@ -1607,6 +1803,36 @@ async def vision_loop(
 
         history = []
         progress_note = ""
+        todo: list[str] = []
+        todo_current = 0
+        todo_published: Optional[list] = None
+
+        async def publish_todo(final: Optional[str] = None) -> None:
+            """Send TORCH's own to-do list, ticked off as it goes."""
+            nonlocal todo_published
+            if not todo or on_plan is None:
+                return
+            items = []
+            for index, label in enumerate(todo):
+                if final == "done" or index < todo_current:
+                    status = "done"
+                elif index == todo_current:
+                    status = {"failed": "failed", "waiting": "waiting"}.get(final or "", "active")
+                else:
+                    status = "pending"
+                items.append({"label": label, "status": status})
+            if items == todo_published:
+                return
+            todo_published = items
+            try:
+                await on_plan(items)
+            except Exception:
+                logger.debug("Could not publish the to-do list", exc_info=True)
+
+        def where_it_stopped() -> str:
+            if todo and 0 <= todo_current < len(todo):
+                return f"I stopped at \u201c{todo[todo_current]}\u201d"
+            return "I stopped"
         # What the last action was and where, to notice the model repeating
         # itself. It clicked one text box five times running to "focus" it.
         last_signature: Optional[tuple] = None
@@ -1617,9 +1843,12 @@ async def vision_loop(
         session_deadline = asyncio.get_running_loop().time() + SESSION_TIMEOUT_SECONDS
         for step in range(1, step_limit + 1):
             _raise_if_cancelled(cancel_event)
+            hint_seconds = 0.0
+            model_started = asyncio.get_running_loop().time()
+            named_controls: dict = {}
             if asyncio.get_running_loop().time() >= session_deadline:
                 raise RuntimeError(
-                    "That took longer than I allow myself, so I stopped before finishing."
+                    "It was taking longer than I allow myself, so I stopped before finishing."
                 )
             captured = await _take_vision_screenshot(client_id, cancel_event)
             if isinstance(captured, ScreenFrame):
@@ -1638,9 +1867,11 @@ async def vision_loop(
                     and (bool(browser) or _chrome_profile_chooser_in_front())
                     and not any(item["action"] == "user_answer" for item in history)
                 )
+                hint_started = asyncio.get_running_loop().time()
                 image_context += await _run_blocking_cancellable(
-                    _named_controls_hint, cancel_event, captured
+                    _named_controls_hint, cancel_event, captured, named_controls
                 )
+                hint_seconds = asyncio.get_running_loop().time() - hint_started
             else:
                 # Compatibility for callers/tests that provide a raw base64 image.
                 frame = None
@@ -1672,6 +1903,7 @@ async def vision_loop(
                     MODEL_ACTION_TIMEOUT_SECONDS,
                     max(0.1, session_deadline - asyncio.get_running_loop().time()),
                 )
+                model_started = asyncio.get_running_loop().time()
                 raw = await _await_model_action_with_progress(
                     _run_blocking_cancellable(
                         ask_vision_sync,
@@ -1682,6 +1914,7 @@ async def vision_loop(
                             f"Previous actions:\n{recent}{profile_guard}"
                         ),
                         [screenshot],
+                        SCREENSHOT_MEDIA_TYPE if frame is not None else "image/png",
                     ),
                     cancel_event,
                     model_timeout,
@@ -1705,7 +1938,14 @@ async def vision_loop(
             if raw.startswith("```"):
                 raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             try:
-                action = _validate_action(json.loads(raw))
+                candidate = json.loads(raw)
+                # A click by name lands exactly on that control: aiming by
+                # eye hit the calculator key next to the right one.
+                if isinstance(candidate, dict):
+                    target = str(candidate.get("target") or "").strip().casefold()
+                    if target and target in named_controls:
+                        candidate["x"], candidate["y"] = named_controls[target]
+                action = _validate_action(candidate)
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning("Invalid vision action (%s): %s", exc, raw[:200])
                 history.append({
@@ -1715,7 +1955,17 @@ async def vision_loop(
                 continue
 
             kind, reason = action.get("action", ""), action.get("reason", "")
+            logger.info(
+                "Vision timing: controls list %.2fs, model %.2fs",
+                hint_seconds,
+                asyncio.get_running_loop().time() - model_started,
+            )
             progress_note = action.get("progress") or progress_note
+            if action.get("plan"):
+                todo = list(action["plan"])
+            if action.get("current") is not None and todo:
+                todo_current = max(0, min(int(action["current"]) - 1, len(todo) - 1))
+            await publish_todo()
             # One line per step in the log: without it a task that "did
             # nothing" cannot be told apart from one that clicked the wrong place.
             logger.info(
@@ -1741,17 +1991,20 @@ async def vision_loop(
             _raise_if_cancelled(cancel_event)
 
             if kind == "done":
+                await publish_todo("done")
                 return f"Done: {reason or 'Task completed'}"
             if kind == "failed":
-                raise RuntimeError(
-                    f"Vision control could not complete the task: {reason or 'unknown reason'}"
+                await publish_todo("failed")
+                raise UserFacingError(
+                    f"{where_it_stopped()}: {reason or 'I could not find a way to carry on.'}"
                 )
             if kind == "handoff":
                 handoffs += 1
                 if handoffs > MAX_HANDOFFS:
+                    await publish_todo("failed")
                     raise UserFacingError(
-                        "I kept needing you to finish a step and couldn't get past it, "
-                        "so I stopped. Nothing else was changed."
+                        f"{where_it_stopped()}: I kept needing you to finish a step and "
+                        "couldn't get past it. Nothing else was changed."
                     )
                 message = action["message"]
                 # The user is in control now: drop the "TORCH is driving" border.
@@ -1773,15 +2026,26 @@ async def vision_loop(
                         f"Waiting for you: {message}", "hitl", client_id
                     )
                 last_handoff_message = message
+                await publish_todo("waiting")
                 waiting_since = asyncio.get_running_loop().time()
-                changed = await _wait_for_user_to_act(cancel_event)
+                handoff_key = (client_id, session_id)
+                continue_event = asyncio.Event()
+                _pending_handoffs[handoff_key] = continue_event
+                try:
+                    changed = await _wait_for_user_to_act(cancel_event, continue_event)
+                finally:
+                    _pending_handoffs.pop(handoff_key, None)
                 # Time the user spends on their step is not TORCH's time.
                 session_deadline += asyncio.get_running_loop().time() - waiting_since
                 if not changed:
+                    await publish_todo("failed")
                     raise UserFacingError(
-                        "I waited for you, but nothing changed on screen, so I stopped. "
-                        "Ask me again when you're ready."
+                        f"{where_it_stopped()} and waited for you to {message[:1].lower() + message[1:]} "
+                        "Nothing changed on screen for ten minutes, so I ended the task."
                     )
+                await ws_manager.send_message(
+                    {"type": "attention_resolved", "taskId": session_id}, client_id
+                )
                 await ws_manager.send_status("executing", client_id)
                 await ws_manager.send_message({"type": "vision_control_resume"}, client_id)
                 history.append({"action": "handoff", "reason": message})
@@ -1853,6 +2117,26 @@ async def vision_loop(
                 continue
 
             history.append({"action": kind, "reason": reason})
+            for follow_up in action.get("then") or []:
+                _raise_if_cancelled(cancel_event)
+                await _announce_action(follow_up, frame, client_id)
+                try:
+                    await _run_blocking_cancellable(
+                        execute_action, cancel_event, follow_up, cancel_event, frame
+                    )
+                except VisionControlCancelled:
+                    raise
+                except Exception as exc:
+                    history.append({
+                        "action": "error",
+                        "reason": f"The follow-up {follow_up.get('action')} was rejected: {exc}",
+                    })
+                    break
+                history.append({
+                    "action": follow_up["action"],
+                    "reason": f"(follow-up) {follow_up.get('text') or follow_up.get('key') or 'wait'}",
+                })
+                await asyncio.sleep(0.08)
             signature = (
                 kind,
                 round(float(action.get("x") or 0) / 12),
@@ -1879,14 +2163,16 @@ async def vision_loop(
                 await asyncio.sleep(min(0.05, max(0, pause_deadline - asyncio.get_running_loop().time())))
             _raise_if_cancelled(cancel_event)
 
+        await publish_todo("failed")
         raise UserFacingError(
-            "I couldn't finish that in the number of steps I allow myself, so I stopped."
-            + (f" How far I got: {progress_note}" if progress_note else "")
+            f"{where_it_stopped()} because it was taking more steps than I allow myself."
+            + (f" Where things are: {progress_note}" if progress_note else "")
         )
     finally:
         pending = _pending_clarifications.pop((client_id, session_id), None)
         if pending is not None and not pending.done():
             pending.cancel()
+        _pending_handoffs.pop((client_id, session_id), None)
         sessions.pop(session_id, None)
         if not sessions:
             _active_sessions.pop(client_id, None)
@@ -1899,6 +2185,7 @@ async def vision_control(
     client_id: str = "main",
     task_id: Optional[str] = None,
     on_step: Optional[Callable[[int, str, str], Awaitable[None]]] = None,
+    on_plan: Optional[Callable[[list], Awaitable[None]]] = None,
     browser: Optional[str] = None,
     search_query: Optional[str] = None,
     navigate_url: Optional[str] = None,
@@ -1908,6 +2195,7 @@ async def vision_control(
     return await vision_loop(
         task,
         on_step=on_step,
+        on_plan=on_plan,
         client_id=client_id,
         task_id=task_id,
         browser=browser,

@@ -59,7 +59,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             patch.object(vc, "take_screenshot", return_value="image"),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
         ):
-            with self.assertRaisesRegex(RuntimeError, "button missing"):
+            with self.assertRaisesRegex(vc.UserFacingError, "button missing"):
                 await vc.vision_loop("do it", client_id="alpha", task_id="task-1")
 
         self.assertEqual(send.await_args_list[-1].args[0]["type"], "vision_control_end")
@@ -74,7 +74,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             patch.object(vc, "STEP_PAUSE", 0),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
         ):
-            with self.assertRaisesRegex(vc.UserFacingError, "number of steps"):
+            with self.assertRaisesRegex(vc.UserFacingError, "more steps than I allow"):
                 await vc.vision_loop("do it", max_steps=1, task_id="task-2")
 
     async def test_rejected_pointer_action_is_not_executed_and_can_recover(self):
@@ -323,6 +323,157 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("same thing again", requests[1]["messages"][1]["content"])
         self.assertIn("same thing again", requests[2]["messages"][1]["content"])
 
+    async def test_todo_list_is_published_and_ticked_off(self):
+        actions = iter(
+            [
+                {
+                    "action": "wait",
+                    "reason": "loading",
+                    "plan": ["Open the Books page", "Add the cheapest book"],
+                    "current": 1,
+                },
+                {"action": "wait", "reason": "still", "current": 2},
+                {"action": "done", "reason": "added"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_k: {"message": {"content": json.dumps(next(actions))}}
+        )
+        published = []
+
+        async def on_plan(items):
+            published.append([item["status"] for item in items])
+
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("shop", max_steps=3, task_id="todo", on_plan=on_plan)
+
+        self.assertEqual(
+            published,
+            [["active", "pending"], ["done", "active"], ["done", "done"]],
+        )
+
+    async def test_a_failure_says_which_todo_item_it_stopped_at(self):
+        actions = iter(
+            [
+                {"action": "wait", "reason": "x", "plan": ["Find the book", "Go to checkout"], "current": 2},
+                {"action": "failed", "reason": "the checkout button is greyed out"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_k: {"message": {"content": json.dumps(next(actions))}}
+        )
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            with self.assertRaises(vc.UserFacingError) as raised:
+                await vc.vision_loop("shop", max_steps=3, task_id="fail-at")
+        self.assertIn("Go to checkout", str(raised.exception))
+        self.assertIn("greyed out", str(raised.exception))
+
+    async def test_follow_up_keys_run_without_another_look(self):
+        looks = []
+        actions = iter(
+            [
+                {
+                    "action": "key",
+                    "key": "ctrl+l",
+                    "reason": "address bar",
+                    "then": [
+                        {"action": "type", "text": "example.com"},
+                        {"action": "key", "key": "enter"},
+                        {"action": "click", "x": 5, "y": 5},
+                    ],
+                },
+                {"action": "done", "reason": "open"},
+            ]
+        )
+
+        def chat(**kwargs):
+            looks.append(1)
+            return {"message": {"content": json.dumps(next(actions))}}
+
+        executed = []
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action", side_effect=lambda action, *_a: executed.append(action["action"])),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("open example.com", max_steps=3, task_id="then")
+
+        # Two looks for four actions; a click is never run without looking.
+        self.assertEqual(len(looks), 2)
+        self.assertEqual(executed, ["key", "type", "key"])
+
+    async def test_continue_ends_the_wait_straight_away(self):
+        continue_event = asyncio.Event()
+        with (
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "_screen_signature", return_value=object()),
+            patch.object(vc, "_screens_differ", return_value=False),
+            patch.object(vc, "HANDOFF_POLL_SECONDS", 0.05),
+        ):
+            waiting = asyncio.create_task(
+                vc._wait_for_user_to_act(threading.Event(), continue_event)
+            )
+            await asyncio.sleep(0.12)
+            self.assertFalse(waiting.done())
+            continue_event.set()
+            self.assertTrue(await asyncio.wait_for(waiting, timeout=1))
+
+        vc._pending_handoffs[("alpha", "t")] = asyncio.Event()
+        self.assertTrue(vc.continue_vision_handoff("alpha", "t"))
+        self.assertFalse(vc.continue_vision_handoff("alpha", "t"))
+        self.assertFalse(vc.continue_vision_handoff("beta", "t"))
+        vc._pending_handoffs.clear()
+
+    async def test_a_click_by_name_uses_the_exact_position(self):
+        frame = vc.ScreenFrame(
+            image="image",
+            capture_bounds=(0, 0, 1920, 1080),
+            model_size=(1280, 720),
+            monitor_bounds=((0, 0, 1920, 1080),),
+        )
+        actions = iter(
+            [
+                {"action": "click", "target": "Two", "x": 9, "y": 9, "reason": "press 2"},
+                {"action": "done", "reason": "ok"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_k: {"message": {"content": json.dumps(next(actions))}}
+        )
+
+        def hint(_frame, into=None):
+            if into is not None:
+                into["two"] = (200, 400)
+            return "list"
+
+        executed = []
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value=frame),
+            patch.object(vc, "_named_controls_hint", side_effect=hint),
+            patch.object(vc, "_chrome_profile_chooser_visible", return_value=False),
+            patch.object(vc, "execute_action", side_effect=lambda action, *_a: executed.append((action["x"], action["y"]))),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("press 2", max_steps=2, task_id="by-name")
+
+        self.assertEqual(executed, [(200, 400)])
+
     def test_named_controls_are_given_in_screenshot_pixels(self):
         frame = vc.ScreenFrame(
             image="image",
@@ -442,9 +593,9 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0)
 
         streamed_labels = [
-            call.kwargs.get("label")
+            (call.kwargs.get("extra") or {}).get("activity")
             for call in updates.await_args_list
-            if call.kwargs.get("label")
+            if (call.kwargs.get("extra") or {}).get("activity")
         ]
         self.assertIn("Clicking the search box", streamed_labels)
         self.assertIn("Submitting the search", streamed_labels)
@@ -459,17 +610,14 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     def test_actions_map_screenshot_coordinates_to_virtual_desktop(self):
         with (
             patch.object(vc, "virtual_screen_bounds", return_value=(-1920, 120, 3840, 1080)),
+            patch.object(vc, "_press_at") as press,
             patch.object(vc.pyautogui, "moveTo") as move,
-            patch.object(vc.pyautogui, "click") as click,
+            patch.object(vc.time, "sleep"),
         ):
             vc.execute_action({"action": "click", "x": 200, "y": 300})
-        move.assert_called_once_with(
-            -1720,
-            420,
-            duration=0.65,
-            tween=vc.pyautogui.easeInOutQuad,
-        )
-        click.assert_called_once_with(-1720, 420)
+        press.assert_called_once_with(-1720, 420)
+        # The user's mouse is never glided anywhere.
+        move.assert_not_called()
 
     def test_browser_focus_visibly_clicks_then_guarantees_address_bar_focus(self):
         target = vc.BrowserWindowTarget(
@@ -480,19 +628,14 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         cancel_event = threading.Event()
         with (
             patch.object(vc.pyautogui, "moveTo") as move,
-            patch.object(vc.pyautogui, "click") as click,
+            patch.object(vc, "_press_at") as press,
             patch.object(vc.pyautogui, "hotkey") as hotkey,
             patch.object(vc.time, "sleep"),
         ):
             vc._focus_browser_search_bar(target, cancel_event)
 
-        move.assert_called_once_with(
-            517,
-            237,
-            duration=0.8,
-            tween=vc.pyautogui.easeInOutQuad,
-        )
-        click.assert_called_once_with(517, 237)
+        move.assert_not_called()
+        press.assert_called_once_with(517, 237)
         self.assertEqual(
             hotkey.call_args_list,
             [call("ctrl", "l"), call("ctrl", "a")],
@@ -501,10 +644,25 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
     def test_positive_scroll_amount_means_down(self):
         with (
             patch.object(vc, "virtual_screen_bounds", return_value=(0, 0, 1920, 1080)),
-            patch.object(vc.pyautogui, "scroll") as scroll,
+            patch.object(vc, "_scroll_at") as scroll,
         ):
             vc.execute_action({"action": "scroll", "x": 10, "y": 20, "amount": 4})
-        scroll.assert_called_once_with(-4, x=10, y=20)
+        scroll.assert_called_once_with(10, 20, 4)
+
+    def test_a_scroll_notch_is_a_whole_wheel_notch(self):
+        """Windows counts a wheel notch as 120; passing 1 moved the page by almost nothing."""
+        user32 = Mock()
+        user32.GetCursorPos.return_value = 1
+        with (
+            patch.object(vc.sys, "platform", "win32"),
+            patch.object(vc.ctypes, "windll", types.SimpleNamespace(user32=user32)),
+            patch.object(vc.time, "sleep"),
+        ):
+            vc._scroll_at(10, 20, 4)
+        user32.mouse_event.assert_called_once_with(vc._MOUSEEVENTF_WHEEL, 0, 0, -480, 0)
+        # The pointer goes to the spot and is then put back where the user left it.
+        self.assertEqual(user32.SetCursorPos.call_args_list[0], call(10, 20))
+        self.assertEqual(len(user32.SetCursorPos.call_args_list), 2)
 
     def test_out_of_bounds_pointer_action_is_rejected(self):
         with (

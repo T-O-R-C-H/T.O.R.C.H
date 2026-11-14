@@ -7,6 +7,10 @@ export interface TimelineStep {
   id: string
   label: string
   status: TimelineStatus
+  /** TORCH's own to-do list while it works on the screen. */
+  substeps?: { label: string; status: TimelineStatus }[]
+  /** What it is doing this second; shown only while the step runs. */
+  activity?: string
 }
 
 function StatusIcon({ status }: { status: TimelineStatus }): JSX.Element {
@@ -130,7 +134,16 @@ function headline(steps: TimelineStep[], running: boolean, duration: number | nu
   const noun = total === 1 ? 'step' : 'steps'
 
   if (steps.some((s) => s.status === 'waiting')) return 'Waiting for your approval'
-  if (running) return `Working · step ${Math.min(done + 1, total)} of ${total}`
+  if (running) {
+    const active = steps.find((s) => s.status === 'active')
+    const subs = active?.substeps ?? []
+    if (subs.some((sub) => sub.status === 'waiting')) return 'Waiting for you'
+    if (total === 1 && subs.length > 0) {
+      const subDone = subs.filter((sub) => sub.status === 'done').length
+      return `Working · ${Math.min(subDone + 1, subs.length)} of ${subs.length}`
+    }
+    return `Working · step ${Math.min(done + 1, total)} of ${total}`
+  }
   if (steps.some((s) => s.status === 'failed')) return `Stopped after ${done} of ${total} ${noun}`
   if (steps.some((s) => s.status === 'cancelled')) return 'Cancelled'
   return duration === null
@@ -196,11 +209,40 @@ export function StepTimeline({ steps }: { steps: TimelineStep[] }): JSX.Element 
               <span className={styles.icon}>
                 <StatusIcon status={step.status} />
               </span>
-              <span
-                className={styles.label + (step.status === 'active' ? ' ' + styles.shimmer : '')}
-              >
-                {step.label}
-              </span>
+              <div className={styles.body}>
+                <span
+                  className={
+                    styles.label +
+                    (step.status === 'active' && !step.substeps?.length ? ' ' + styles.shimmer : '')
+                  }
+                >
+                  {step.label}
+                </span>
+                {step.substeps && step.substeps.length > 0 && (
+                  <ol className={styles.sublist}>
+                    {step.substeps.map((sub, j) => (
+                      <li
+                        key={`${j}-${sub.label}`}
+                        className={styles.subitem}
+                        data-status={sub.status}
+                        style={{ ['--i' as string]: j }}
+                      >
+                        <span className={styles.subicon}>
+                          <StatusIcon status={sub.status} />
+                        </span>
+                        <span className={sub.status === 'active' ? styles.shimmer : undefined}>
+                          {sub.label}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {step.status === 'active' && step.activity && (
+                  <span key={step.activity} className={styles.activity}>
+                    {step.activity}
+                  </span>
+                )}
+              </div>
             </li>
           ))}
         </ol>

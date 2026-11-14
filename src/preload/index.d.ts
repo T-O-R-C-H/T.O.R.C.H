@@ -11,6 +11,13 @@ interface BackendHealth {
 type TaskCommand =
   | { type: 'stop_task' }
   | { type: 'clarification_response'; taskId: string; response: string }
+  | { type: 'handoff_continue'; taskId: string }
+  | {
+      type: 'hitl_response'
+      messageId: string
+      stepId: string
+      action: 'approve' | 'cancel'
+    }
 
 interface TorchAPI {
   minimizeWindow: () => void
@@ -74,6 +81,7 @@ interface TorchAPI {
   setPillFocused: (focused: boolean) => void
   hidePill: () => void
   showTaskPanel: () => void
+  resizeTaskPanel: (height: number) => void
   hideTaskPanel: () => void
   getVoiceShortcut: () => Promise<string>
   showCompanion: () => void

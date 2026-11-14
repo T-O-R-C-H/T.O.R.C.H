@@ -319,6 +319,10 @@ class Executor:
                     raise ValueError(f"Tool not registered: {tool_name}")
 
                 if tool_name == "vision_control":
+                    # The step keeps the name it was planned with; what TORCH is
+                    # doing this second goes in a separate line under it.
+                    planned_label = step["label"]
+
                     async def narrate_vision_action(
                         vision_step: int,
                         action: str,
@@ -326,13 +330,13 @@ class Executor:
                     ) -> None:
                         action_name = (action or "action").replace("_", " ")
                         live_label = str(reason or "").strip() or f"{action_name.capitalize()} on screen"
-                        step["label"] = live_label
                         await ws_manager.send_step_update(
                             message_id,
                             step_id,
                             "active",
-                            label=live_label,
+                            label=planned_label,
                             client_id=client_id,
+                            extra={"activity": live_label[:160]},
                         )
                         await ws_manager.send_terminal_line(
                             f"Vision step {vision_step}: {live_label}",
@@ -340,9 +344,21 @@ class Executor:
                             client_id,
                         )
 
+                    async def publish_vision_todo(items: list) -> None:
+                        step["substeps"] = items
+                        await ws_manager.send_step_update(
+                            message_id,
+                            step_id,
+                            "active",
+                            label=planned_label,
+                            client_id=client_id,
+                            extra={"substeps": items},
+                        )
+
                     resolved_args["client_id"] = client_id
                     resolved_args["task_id"] = message_id
                     resolved_args["on_step"] = narrate_vision_action
+                    resolved_args["on_plan"] = publish_vision_todo
                 result = await self._execute_tool_with_retry(
                     tool_name,
                     tool_func,
@@ -430,7 +446,8 @@ class Executor:
 
                 step["status"] = "done"
                 step["result"] = result_str
-                step["label"] = get_plain_phrase(tool_name, resolved_args, "done")
+                if tool_name != "vision_control":
+                    step["label"] = get_plain_phrase(tool_name, resolved_args, "done")
 
                 await ws_manager.send_step_update(
                     message_id, step_id, "done",

@@ -429,3 +429,50 @@ def test_blind_typing_is_replaced_even_when_other_steps_surround_it(monkeypatch)
         {"tool": "send_email", "label": "Send", "args": {"body": "{{step_1_result}}"}}
     ]
     assert main._prefer_sight("type and email it", numbered) is numbered
+
+
+def test_a_read_the_screen_step_after_a_screen_task_is_dropped(monkeypatch):
+    import main
+
+    monkeypatch.setattr(vision_model, "vision_providers", lambda: ["deepseek"])
+    plan_in = [
+        {"tool": "open_app", "label": "Open Calculator", "args": {"name": "calculator"}},
+        {"tool": "vision_control", "label": "Multiply 37 by 24", "args": {"task": "37*24"}},
+        {"tool": "read_screen", "label": "Read the result", "args": {}},
+    ]
+    plan = main._prefer_sight("work out 37 times 24", plan_in)
+    assert [step["tool"] for step in plan] == ["open_app", "vision_control"]
+    assert plan[1]["label"] == "Multiply 37 by 24"
+
+
+def test_a_reply_after_real_steps_is_filled_in_not_sent_raw(pipeline, monkeypatch):
+    main, sent = pipeline
+    monkeypatch.setattr(
+        main,
+        "plan_command",
+        AsyncMock(
+            return_value=[
+                {"tool": "list_directory", "label": "Look in Desktop", "args": {"path": "Desktop"}},
+                {
+                    "tool": "respond",
+                    "label": "Reply",
+                    "args": {"message": "Here is what I found:\n{{step_0_result}}\nWhich one?"},
+                },
+            ]
+        ),
+    )
+
+    async def fake_execute(message_id, steps, client_id, channel="command"):
+        for step in steps:
+            step["status"] = "done"
+            step["result"] = "notes.txt, plan.txt"
+        return steps
+
+    monkeypatch.setattr(main.executor, "execute_plan", fake_execute)
+    monkeypatch.setattr(main.ws_manager, "send_metrics", AsyncMock())
+
+    asyncio.run(main.process_command("which text files do I have?", "teach-client"))
+
+    shown = "\n".join(str(message.get("content")) for message in sent["responses"])
+    assert "{{step_" not in shown
+    assert "notes.txt, plan.txt" in shown

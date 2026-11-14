@@ -23,7 +23,9 @@ function getStepPhrase(
       read_inbox: "Couldn't read your inbox.",
       open_app: "Couldn't open the app."
     }
-    return failMap[tool] || "This step didn't finish."
+    // A step TORCH named itself keeps its name; the cross says it failed.
+    if (tool === 'vision_control' && fallbackLabel) return fallbackLabel
+    return failMap[tool] || fallbackLabel || "This step didn't finish."
   }
 
   const isPending = status === 'pending' || status === 'active' || status === 'hitl_required'
@@ -118,7 +120,9 @@ export function StepList({ steps }: StepListProps): JSX.Element {
     label: isCancelled(step)
       ? step.label || 'Cancelled.'
       : getStepPhrase(step.tool, step.args, step.status, step.label),
-    status: mapStatus(step)
+    status: mapStatus(step),
+    substeps: step.substeps,
+    activity: step.activity
   }))
 
   return (

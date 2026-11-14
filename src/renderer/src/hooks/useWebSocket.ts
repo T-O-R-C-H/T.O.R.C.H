@@ -132,6 +132,12 @@ export function useWebSocket(): {
   ) => boolean
   reconnect: () => void
   sendStopCommand: () => void
+  sendHandoffContinue: (taskId: string) => boolean
+  sendApprovalFromAnywhere: (
+    messageId: string,
+    stepId: string,
+    action: 'approve' | 'cancel'
+  ) => boolean
   sendClarification: (taskId: string, response: string) => boolean
   sendUndoCommand: (messageId: string) => void
   sendNewConversation: () => void
@@ -308,6 +314,9 @@ export function useWebSocket(): {
         }
         case 'status': {
           store.setAgentStatus(data.status as typeof store.agentStatus)
+          if (data.status === 'idle' || data.status === 'executing') {
+            store.setAttentionRequest(null)
+          }
           if (data.status === 'idle') {
             if (sourceSocket && sharedTaskOwnerSocket === sourceSocket) {
               sharedTaskOwnerSocket = null
@@ -336,6 +345,7 @@ export function useWebSocket(): {
           break
         }
         case 'vision_control_resume': {
+          store.setAttentionRequest(null)
           window.torchAPI?.showControlBorder()
           break
         }
@@ -372,15 +382,39 @@ export function useWebSocket(): {
         }
         case 'attention_needed': {
           // TORCH stopped at a step that is the user's to do (paying, picking
-          // a file) and is watching for them to finish it.
+          // a file). One card that updates in place, not a chat line per ask:
+          // a second "still not ticked" used to stack a duplicate message.
           const message = String(data.message ?? '')
-          store.addMessage({
-            id: crypto.randomUUID(),
-            role: 'torch',
-            content: `Attention needed. ${message}`,
-            timestamp: Date.now()
-          })
-          window.torchAPI?.notifyAttention(message)
+          const previous = store.attentionRequest
+          store.setAttentionRequest({ taskId: String(data.taskId ?? ''), message })
+          if (!previous) window.torchAPI?.notifyAttention(message)
+          break
+        }
+        case 'user_request': {
+          // A request typed in another TORCH window (the main window or the
+          // pill). Only added if this window does not already have it.
+          const id = String(data.id ?? '')
+          const content = String(data.content ?? '')
+          if (
+            content &&
+            !store.messages.some(
+              (m) =>
+                m.role === 'user' &&
+                m.content === content &&
+                Math.abs(m.timestamp - Number(data.timestamp ?? 0)) < 5000
+            )
+          ) {
+            store.addMessage({
+              id: id || crypto.randomUUID(),
+              role: 'user',
+              content,
+              timestamp: Number(data.timestamp ?? Date.now())
+            })
+          }
+          break
+        }
+        case 'attention_resolved': {
+          store.setAttentionRequest(null)
           break
         }
         case 'clarification_request': {
@@ -493,10 +527,14 @@ export function useWebSocket(): {
         ) {
           sharedSocket.send(JSON.stringify({ type: 'stop_task' }))
         } else if (
-          command.type === 'clarification_response' &&
+          (command.type === 'clarification_response' ||
+            command.type === 'handoff_continue' ||
+            command.type === 'hitl_response') &&
           sharedTaskOwnerSocket === sharedSocket &&
           sharedSocket?.readyState === WebSocket.OPEN
         ) {
+          // The bottom-right panel answers on behalf of the window that owns
+          // the task, so the user never has to switch back to TORCH.
           sharedSocket.send(JSON.stringify(command))
         }
       })
@@ -552,6 +590,14 @@ export function useWebSocket(): {
     (command: string, requestId: string = crypto.randomUUID()): void => {
       const model = useTorchStore.getState().selectedModel
       const payload = JSON.stringify({ type: 'command', content: command, model, requestId })
+      // The bottom-right panel shows what was asked; it has no other way to
+      // know, since the request is typed in this window.
+      window.torchAPI?.publishTaskEvent({
+        type: 'user_request',
+        id: requestId,
+        content: command,
+        timestamp: Date.now()
+      })
 
       const socket = openSocket()
       if (socket) {
@@ -642,6 +688,37 @@ export function useWebSocket(): {
     return false
   }, [])
 
+  /** "I've done my part" during a handoff: TORCH looks again now. */
+  const sendHandoffContinue = useCallback((taskId: string): boolean => {
+    const socket = openSocket()
+    if (socket && sharedTaskOwnerSocket === socket) {
+      socket.send(JSON.stringify({ type: 'handoff_continue', taskId }))
+      return true
+    }
+    if (window.torchAPI) {
+      window.torchAPI.publishTaskCommand({ type: 'handoff_continue', taskId })
+      return true
+    }
+    return false
+  }, [])
+
+  /** Approve or reject from a window that may not own the task. */
+  const sendApprovalFromAnywhere = useCallback(
+    (messageId: string, stepId: string, action: 'approve' | 'cancel'): boolean => {
+      const socket = openSocket()
+      if (socket && sharedTaskOwnerSocket === socket) {
+        socket.send(JSON.stringify({ type: 'hitl_response', messageId, stepId, action }))
+        return true
+      }
+      if (window.torchAPI) {
+        window.torchAPI.publishTaskCommand({ type: 'hitl_response', messageId, stepId, action })
+        return true
+      }
+      return false
+    },
+    []
+  )
+
   const sendUndoCommand = useCallback((messageId: string): void => {
     openSocket()?.send(JSON.stringify({ type: 'undo_task', messageId }))
   }, [])
@@ -664,6 +741,8 @@ export function useWebSocket(): {
     reconnect,
     sendStopCommand,
     sendClarification,
+    sendHandoffContinue,
+    sendApprovalFromAnywhere,
     sendUndoCommand,
     sendNewConversation
   }

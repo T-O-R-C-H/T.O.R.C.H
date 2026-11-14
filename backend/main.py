@@ -1001,6 +1001,15 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
             "error": None if accepted else "Approval request is invalid or has expired",
         }, client_id)
 
+    elif msg_type == "handoff_continue":
+        # "I've done my part" from the attention card: look again now rather
+        # than waiting for the screen to change.
+        from tools.vision_control import continue_vision_handoff
+
+        task_id = str(message.get("taskId") or "")
+        accepted = continue_vision_handoff(client_id, task_id)
+        logger.info("Handoff continue for %s accepted=%s", task_id, accepted)
+
     elif msg_type == "clarification_response":
         task_id = str(message.get("taskId") or "")
         response = str(message.get("response") or "")
@@ -1148,6 +1157,15 @@ def _elapsed_ms(started_at: float) -> int:
     return max(0, round((time.monotonic() - started_at) * 1000))
 
 
+def _fill_step_results(message: str, executed_steps: list) -> str:
+    """Put each step's result where a reply refers to it as {{step_N_result}}."""
+    for index, step in enumerate(executed_steps):
+        result = str(step.get("result") or "").strip() or "(nothing found)"
+        message = message.replace(f"{{{{step_{index}_result}}}}", result)
+    # Never show a placeholder that had no step behind it.
+    return re.sub(r"\{\{step_\d+_result\}\}", "(not available)", message)
+
+
 async def _answer_from_screen(command: str, screen_text: str) -> str | None:
     """One plain sentence answering `command` from what the screen now says.
 
@@ -1242,7 +1260,17 @@ def _prefer_sight(command: str, raw_steps: list) -> list:
         return raw_steps
     if any(not isinstance(step, dict) for step in raw_steps):
         return raw_steps
-    if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in raw_steps):
+    on_screen_tools = [step.get("tool") for step in raw_steps]
+    has_blind = any(tool in _BLIND_ACTION_TOOLS for tool in on_screen_tools)
+    consecutive_vision = any(
+        first == "vision_control" and second == "vision_control"
+        for first, second in zip(on_screen_tools, on_screen_tools[1:])
+    )
+    reading_after_vision = any(
+        first == "vision_control" and second in (_SCREEN_STEP_TOOLS - _BLIND_ACTION_TOOLS)
+        for first, second in zip(on_screen_tools, on_screen_tools[1:])
+    )
+    if not has_blind and not consecutive_vision and not reading_after_vision:
         return raw_steps
     if "{{step_" in json.dumps([step.get("args") for step in raw_steps], default=str):
         return raw_steps
@@ -1259,8 +1287,20 @@ def _prefer_sight(command: str, raw_steps: list) -> list:
     def flush() -> None:
         if not run:
             return
-        if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in run):
-            plan.extend(run)
+        vision_steps = [step for step in run if step.get("tool") == "vision_control"]
+        reads_only = all(
+            step.get("tool") in (_SCREEN_STEP_TOOLS - _BLIND_ACTION_TOOLS)
+            for step in run
+            if step.get("tool") != "vision_control"
+        )
+        if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in run) and len(vision_steps) < 2:
+            if len(vision_steps) == 1 and reads_only and len(run) > 1:
+                # A screen task already looks at the screen and reports what
+                # it sees. A "read the screen" step after it only dumped the
+                # raw list of buttons into the closing message.
+                plan.append(vision_steps[0])
+            else:
+                plan.extend(run)
             run.clear()
             return
         # The planner read the whole conversation, so its step labels say what
@@ -1281,13 +1321,34 @@ def _prefer_sight(command: str, raw_steps: list) -> list:
         detail = f" What that means here: {intended}." if intended else ""
         if texts:
             detail += " Text to type: " + " | ".join(texts)[:1500]
+        # A name a person would give the job, from the planner's own labels.
+        labels = [
+            str(step.get("label") or "").strip().rstrip(".")
+            for step in run
+            if step.get("tool") in (_BLIND_ACTION_TOOLS | {"vision_control"})
+            and str(step.get("label") or "").strip()
+        ]
+        if len(labels) >= 2:
+            # Several planner steps folded into one: name it after what the
+            # user asked for. Stitching the parts ("Entering 4, then entering
+            # 6") read like a fragment of the work, not the work.
+            label = request_line[:1].upper() + request_line[1:]
+        elif labels:
+            label = labels[0]
+        else:
+            label = request_line[:1].upper() + request_line[1:]
+        if len(label) > 90:
+            label = label[:87].rsplit(" ", 1)[0] + "..."
+        suggested = (
+            " Suggested to-do list: " + "; ".join(labels) + "." if len(labels) >= 2 else ""
+        )
         plan.append(
             {
                 "tool": "vision_control",
-                "label": "Doing it on your screen",
+                "label": label,
                 "args": {
                     "task": (
-                        f"{request_line}.{detail} Look at what is already on screen "
+                        f"{request_line}.{detail}{suggested} Look at what is already on screen "
                         "before you start. A calculator or form showing leftovers may "
                         "be cleared; a document that is already open must be left alone "
                         "- start a new blank one instead. Before you report done, check "
@@ -1298,6 +1359,10 @@ def _prefer_sight(command: str, raw_steps: list) -> list:
                 "requires_approval": False,
             }
         )
+        for step in vision_steps:
+            for key in ("browser",):
+                if (step.get("args") or {}).get(key) and key not in plan[-1]["args"]:
+                    plan[-1]["args"][key] = step["args"][key]
         run.clear()
 
     for step in raw_steps:
@@ -1517,6 +1582,18 @@ async def process_command(
                     }
                 ]
 
+        # A reply that comes after real steps ("here is what I found: ...")
+        # is the closing message of that work, not a reply instead of it. It
+        # used to be sent straight away with its {{step_0_result}} holes
+        # unfilled, and the steps it depended on were never run.
+        closing_reply = ""
+        if any(s.get("tool") == "respond" for s in raw_steps) and any(
+            s.get("tool") != "respond" for s in raw_steps
+        ):
+            replies = [s for s in raw_steps if s.get("tool") == "respond"]
+            closing_reply = str((replies[-1].get("args") or {}).get("message") or "")
+            raw_steps = [s for s in raw_steps if s.get("tool") != "respond"]
+
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
         respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
         if respond_steps:
@@ -1571,7 +1648,7 @@ async def process_command(
         if len(validated_steps) == 1 and validated_steps[0].get("tool") == "error":
             natural_response = step_labels[0]
         elif len(step_labels) > 1:
-            natural_response = "Got it. Here is my plan:"
+            natural_response = "Here's my plan."
         else:
             natural_response = f"On it. {step_labels[0]}."
         
@@ -1736,8 +1813,17 @@ async def process_command(
                     recap_sentence = last_result if last_result else "I found the file."
             elif "vision_control" in tools_used:
                 # What TORCH saw when it finished ("The File menu is open.") is
-                # the useful closing line. "Done: " is the tool's own prefix.
-                seen = (last_result or "").removeprefix("Done:").strip()
+                # the useful closing line - from the screen step itself, not
+                # from whatever step happened to run last.
+                vision_result = next(
+                    (
+                        str(step.get("result") or "")
+                        for step in reversed(completed_steps)
+                        if step.get("tool") == "vision_control"
+                    ),
+                    last_result or "",
+                )
+                seen = vision_result.removeprefix("Done:").strip()
                 recap_sentence = (seen[:1].upper() + seen[1:]) if seen else None
                 if recap_sentence and recap_sentence[-1] not in ".!?":
                     recap_sentence += "."
@@ -1763,6 +1849,8 @@ async def process_command(
         # outcome, where the tool's own result is the more useful summary and
         # onboarding renders it verbatim.
         bubble_sentence = recap_sentence or "That's done."
+        if closing_reply:
+            bubble_sentence = _fill_step_results(closing_reply, executed_steps)
 
         if bubble_sentence:
             # `speak` marks the final sentence for the voice ladder. Plan

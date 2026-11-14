@@ -26,6 +26,13 @@ type ClipboardChangeEvent = {
 type TaskCommand =
   | { type: 'stop_task' }
   | { type: 'clarification_response'; taskId: string; response: string }
+  | { type: 'handoff_continue'; taskId: string }
+  | {
+      type: 'hitl_response'
+      messageId: string
+      stepId: string
+      action: 'approve' | 'cancel'
+    }
 
 export type ScreenCapture = {
   displayId: string
@@ -112,6 +119,8 @@ const torchAPI = {
   setPillFocused: (focused: boolean): void => ipcRenderer.send('pill:setFocused', focused),
   hidePill: (): void => ipcRenderer.send('pill:hide'),
   showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
+  /** The panel sizes its window to its content, anchored bottom-right. */
+  resizeTaskPanel: (height: number): void => ipcRenderer.send('task-panel:resize', height),
   hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
   getVoiceShortcut: (): Promise<string> => ipcRenderer.invoke('shortcuts:voice'),
 

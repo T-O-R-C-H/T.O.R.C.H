@@ -195,3 +195,95 @@
     -webkit-text-fill-color: currentColor;
   }
 }
+
+/* A step's body: its name, TORCH's to-do list under it, and a live line. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sublist {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 6px 0 6px 10px;
+  border-left: 1px dashed var(--border-default);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.subitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+  animation: timeline-in var(--dur-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+  transition: color var(--dur-base) ease;
+}
+.subicon {
+  flex: none;
+  width: 14px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-ghost);
+}
+.subitem[data-status='done'] {
+  color: var(--text-secondary);
+}
+.subitem[data-status='done'] .subicon {
+  color: var(--color-torch-success);
+  animation: tick-pop var(--dur-slow) var(--ease-spring);
+}
+.subitem[data-status='active'] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.subitem[data-status='active'] .subicon {
+  color: var(--brand);
+}
+.subitem[data-status='waiting'] {
+  color: var(--tint-warning-text);
+  font-weight: 500;
+}
+.subitem[data-status='waiting'] .subicon {
+  color: var(--color-torch-warning);
+}
+.subitem[data-status='failed'] {
+  color: var(--tint-error-text);
+}
+.subitem[data-status='failed'] .subicon {
+  color: var(--color-torch-error);
+}
+@keyframes tick-pop {
+  0% {
+    transform: scale(0.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* What TORCH is doing this second. Each new line fades in over the last. */
+.activity {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--text-tertiary);
+  animation: activity-in var(--dur-base) var(--ease-out);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@keyframes activity-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}

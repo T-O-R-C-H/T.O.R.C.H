@@ -169,7 +169,7 @@ def test_plan_messages_are_never_marked_speakable():
     """
     source = inspect.getsource(main.process_command)
 
-    plan_send = source[source.index('natural_response = "Got it. Here is my plan:"') :]
+    plan_send = source[source.index('natural_response = "Here\'s my plan."') :]
     plan_send = plan_send[: plan_send.index("send_agent_response")]
 
     assert '"speak"' not in plan_send

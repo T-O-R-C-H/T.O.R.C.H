@@ -1,0 +1,451 @@
+/*
+ * TORCH's bottom-right panel, and the "your turn" card it shares with chat.
+ *
+ * The panel floats over other apps, so it is a lifted card on a transparent
+ * window: everything outside the card is see-through, and the window itself
+ * is sized to the card by the main process.
+ */
+
+.dock {
+  /* The page root is a full-height flex box; without this the card shrinks
+     to whatever height the window has, measures that, and never grows. */
+  flex: none;
+  align-self: flex-end;
+  position: relative;
+  box-sizing: border-box;
+  width: calc(100% - 12px);
+  margin: 0 6px 6px auto;
+  padding: 12px 14px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: dock-in var(--dur-slow) var(--ease-out);
+  transition: border-color var(--dur-base) ease;
+}
+
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+}
+
+/* A soft wash along the top edge in the colour of the current state. */
+.dock__glow {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--dock-accent, var(--brand));
+  opacity: 0.9;
+  transition: background var(--dur-base) ease;
+}
+.dock[data-tone='working'] .dock__glow {
+  background: linear-gradient(90deg, transparent, var(--brand), transparent);
+  background-size: 200% 100%;
+  animation: dock-sweep 1.6s linear infinite;
+}
+@keyframes dock-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.dock[data-tone='waiting'] {
+  --dock-accent: var(--color-torch-warning);
+  border-color: var(--tint-warning-border);
+}
+.dock[data-tone='done'] {
+  --dock-accent: var(--color-torch-success);
+}
+.dock[data-tone='failed'] {
+  --dock-accent: var(--color-torch-error);
+}
+
+.dock__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+.dock__head img {
+  flex: none;
+}
+
+.dock__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dock__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dock-accent, var(--brand));
+}
+.dock[data-tone='working'] .dock__dot,
+.dock[data-tone='waiting'] .dock__dot {
+  animation: dock-dot 1.4s ease-in-out infinite;
+}
+@keyframes dock-dot {
+  50% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+}
+
+.dock__elapsed {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dock__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--dur-instant) ease,
+    color var(--dur-instant) ease;
+}
+.dock__icon-button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.dock__request {
+  margin: 10px 0 2px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.dock__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  max-height: 470px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.dock__body .step-block {
+  margin: 0;
+}
+
+.dock__result {
+  margin: 2px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  animation: dock-in var(--dur-base) var(--ease-out);
+}
+.dock__result--done {
+  background: var(--tint-success-bg);
+  border: 1px solid var(--tint-success-border);
+}
+.dock__result--failed {
+  background: var(--tint-error-bg);
+  border: 1px solid var(--tint-error-border);
+  color: var(--tint-error-text);
+}
+
+.dock__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.dock__stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--dur-instant) ease,
+    color var(--dur-instant) ease,
+    border-color var(--dur-instant) ease;
+}
+.dock__stop:hover {
+  border-color: var(--tint-error-border);
+  background: var(--tint-error-bg);
+  color: var(--tint-error-text);
+}
+
+/* Buttons shared by the approval and question blocks. */
+.dock-button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform var(--dur-instant) ease,
+    background var(--dur-instant) ease,
+    opacity var(--dur-fast) ease;
+}
+.dock-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.dock-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dock-button--primary {
+  border: 0;
+  background: var(--color-torch-accent);
+  color: var(--color-torch-accent-fg);
+}
+.dock-button--ghost {
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+}
+.dock-button--ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.dock-approval {
+  padding: 11px 12px;
+  border: 1px solid var(--tint-warning-border);
+  border-radius: 12px;
+  background: var(--tint-warning-bg);
+  animation: dock-in var(--dur-base) var(--ease-out);
+}
+.dock-approval__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--tint-warning-text);
+}
+.dock-approval__title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.dock-approval__label {
+  margin: 7px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.dock-approval__detail {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dock-approval__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.dock-question {
+  padding: 11px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-well);
+}
+.dock-question__text {
+  margin: 0 0 9px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.dock-question__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---- "Your turn": the same card in chat and in the panel ---- */
+
+.attention-card {
+  position: relative;
+  margin: 14px 0 6px;
+  padding: 14px 16px 14px;
+  border: 1px solid var(--tint-warning-border);
+  border-radius: 14px;
+  background: var(--tint-warning-bg);
+  animation: attention-in var(--dur-slow) var(--ease-spring);
+}
+.attention-card--compact {
+  margin: 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+}
+@keyframes attention-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.attention-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tint-warning-text);
+}
+.attention-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--tint-warning-bg-strong);
+}
+.attention-card__title {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.attention-card__pulse {
+  width: 8px;
+  height: 8px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--color-torch-warning);
+  box-shadow: 0 0 0 0 var(--tint-warning-border);
+  animation: attention-ping 1.6s ease-out infinite;
+}
+@keyframes attention-ping {
+  0% {
+    box-shadow: 0 0 0 0 var(--tint-warning-border);
+  }
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+.attention-card__message {
+  margin: 9px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  animation: activity-swap var(--dur-base) var(--ease-out);
+}
+.attention-card--compact .attention-card__message {
+  font-size: 13px;
+}
+@keyframes activity-swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+.attention-card__hint {
+  margin: 5px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.attention-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.attention-card__stop,
+.attention-card__continue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform var(--dur-instant) ease,
+    background var(--dur-instant) ease,
+    opacity var(--dur-fast) ease;
+}
+.attention-card__stop {
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.attention-card__stop:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.attention-card__continue {
+  border: 0;
+  background: var(--color-torch-accent);
+  color: var(--color-torch-accent-fg);
+}
+.attention-card__continue svg {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.attention-card__continue:hover:not(:disabled) svg {
+  transform: translateX(2px);
+}
+.attention-card__continue:active:not(:disabled),
+.attention-card__stop:active {
+  transform: scale(0.97);
+}
+.attention-card__continue:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock,
+  .dock__result,
+  .dock-approval,
+  .attention-card,
+  .attention-card__message {
+    animation: none;
+  }
+  .dock[data-tone='working'] .dock__glow,
+  .dock__dot,
+  .attention-card__pulse {
+    animation: none;
+  }
+}

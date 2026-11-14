@@ -74,6 +74,7 @@ async def analyse_screen() -> str:
         "Say which app is open, what is on screen, and anything that looks important. "
         "Three short sentences at most.",
         [await asyncio.to_thread(_sized_screenshot)],
+        "image/jpeg",
     )
     cleaned = text.strip()
     if cleaned.startswith("```"):
