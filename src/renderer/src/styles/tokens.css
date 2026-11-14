@@ -17,6 +17,11 @@
    ═══════════════════════════════════════════════════ */
 
 :root {
+  /* TORCH's on-screen cursor is drawn over other apps, not over TORCH, so
+     its outline and shadow are the same in both themes. */
+  --cursor-outline: #ffffff;
+  --cursor-shadow: rgba(0, 0, 0, 0.4);
+
   /* ─── Semantic surfaces ───
      Aliases over the @theme colours, so a component says which role a surface
      plays instead of which shade it happens to be. */

@@ -6,6 +6,7 @@ import { useWebSocket } from '../hooks/useWebSocket'
 import { useEffect, useCallback } from 'react'
 import { handleDemoCommand, handleDemoApproval, handleDemoCancel } from '../demo/demoAgent'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { notify } from '../utils/notify'
 
 export function Command(): JSX.Element {
   const addMessage = useTorchStore((s) => s.addMessage)
@@ -71,8 +72,10 @@ export function Command(): JSX.Element {
     if (!wsConnected || !sendApproval(messageId, stepId, 'approve')) {
       useTorchStore.getState().updateStep(messageId, stepId, {
         status: 'failed',
-        error: 'Approval could not be sent because the backend is disconnected'
+        error: "TORCH isn't connected right now, so that action wasn't run."
       })
+      // No reply follows a failure that never reached TORCH, so say it here.
+      notify("TORCH isn't connected right now, so that action wasn't run.", 'error')
       useTorchStore.getState().setAgentStatus('idle')
     }
   }
@@ -89,6 +92,7 @@ export function Command(): JSX.Element {
         status: 'failed',
         error: "TORCH isn't connected right now, so that action wasn't run."
       })
+      notify("TORCH isn't connected right now, so that action wasn't run.", 'error')
       useTorchStore.getState().setAgentStatus('idle')
       return
     }

@@ -74,7 +74,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             patch.object(vc, "STEP_PAUSE", 0),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
         ):
-            with self.assertRaisesRegex(RuntimeError, "maximum of 1 steps"):
+            with self.assertRaisesRegex(vc.UserFacingError, "number of steps"):
                 await vc.vision_loop("do it", max_steps=1, task_id="task-2")
 
     async def test_rejected_pointer_action_is_not_executed_and_can_recover(self):
@@ -267,6 +267,61 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, "Done: 63")
         self.assertNotIn("ONLY permitted action is ask", requests[0]["messages"][1]["content"])
+
+    async def test_the_models_own_progress_note_is_fed_back_to_it(self):
+        requests = []
+        actions = iter(
+            [
+                {"action": "wait", "reason": "loading", "progress": "Poem typed; saving is left."},
+                {"action": "done", "reason": "saved"},
+            ]
+        )
+
+        def chat(**kwargs):
+            requests.append(kwargs)
+            return {"message": {"content": json.dumps(next(actions))}}
+
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("write and save", max_steps=2, task_id="notes")
+
+        self.assertNotIn("progress note", requests[0]["messages"][1]["content"])
+        self.assertIn(
+            "Your progress note: Poem typed; saving is left.",
+            requests[1]["messages"][1]["content"],
+        )
+        self.assertIn("Stay in the app the task is about", requests[0]["messages"][0]["content"])
+
+    async def test_a_repeated_action_is_pointed_out_to_the_model(self):
+        requests = []
+        actions = iter(
+            [
+                {"action": "click", "x": 640, "y": 421, "reason": "focus"},
+                {"action": "click", "x": 641, "y": 420, "reason": "focus again"},
+                {"action": "done", "reason": "ok"},
+            ]
+        )
+
+        def chat(**kwargs):
+            requests.append(kwargs)
+            return {"message": {"content": json.dumps(next(actions))}}
+
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action"),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("type a poem", max_steps=3, task_id="repeat")
+
+        self.assertNotIn("same thing again", requests[1]["messages"][1]["content"])
+        self.assertIn("same thing again", requests[2]["messages"][1]["content"])
 
     def test_named_controls_are_given_in_screenshot_pixels(self):
         frame = vc.ScreenFrame(
@@ -504,7 +559,11 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "not allowed"):
             vc._validate_action({"action": "key", "key": "win+r"})
         with self.assertRaisesRegex(ValueError, "control characters"):
-            vc._validate_action({"action": "type", "text": "hello\nworld"})
+            vc._validate_action({"action": "type", "text": "hello\x07world"})
+        # A line break is the Enter key, so several lines can go in one step.
+        self.assertEqual(
+            vc._validate_action({"action": "type", "text": "one\r\ntwo"})["text"], "one\ntwo"
+        )
         with self.assertRaisesRegex(ValueError, "between -10 and 10"):
             vc._validate_action(
                 {"action": "scroll", "x": 1, "y": 1, "amount": 100}

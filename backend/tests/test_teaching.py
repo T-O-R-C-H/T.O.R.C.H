@@ -272,7 +272,10 @@ def test_a_failed_look_says_so_and_is_not_remembered_as_a_lesson(pipeline, monke
 
 def test_an_empty_reply_is_asked_again_before_giving_up():
     replies = iter(["", '{"ok": true}'])
-    with patch.dict(vision_model._PROVIDERS, {"deepseek": lambda *_a: next(replies)}):
+    with (
+        patch.dict(vision_model._PROVIDERS, {"deepseek": lambda *_a: next(replies)}),
+        patch.dict(vision_model._RETRY_PROVIDERS, {"deepseek": lambda *_a: next(replies)}),
+    ):
         assert (
             vision_model.ask_vision_sync("s", "t", ["i"], providers=["deepseek"])
             == '{"ok": true}'
@@ -283,7 +286,10 @@ def test_an_empty_reply_is_asked_again_before_giving_up():
         calls.append(1)
         return ""
 
-    with patch.dict(vision_model._PROVIDERS, {"deepseek": always_empty}):
+    with (
+        patch.dict(vision_model._PROVIDERS, {"deepseek": always_empty}),
+        patch.dict(vision_model._RETRY_PROVIDERS, {"deepseek": always_empty}),
+    ):
         with pytest.raises(vision_model.VisionUnavailable):
             vision_model.ask_vision_sync("s", "t", ["i"], providers=["deepseek"])
     assert len(calls) == 1 + vision_model.EMPTY_REPLY_RETRIES
@@ -333,8 +339,13 @@ def test_a_blind_click_plan_becomes_one_look_then_act_step(monkeypatch):
     # Plans that are not purely on-screen are left exactly as written.
     files = [{"tool": "find_file", "label": "Find", "args": {"query": "cv"}}]
     assert main._prefer_sight("find my cv", files) is files
+    # Steps around the on-screen run are kept; only the blind run is replaced.
     mixed = blind + [{"tool": "send_email", "label": "Send", "args": {}}]
-    assert main._prefer_sight("do it and email it", mixed) is mixed
+    assert [step["tool"] for step in main._prefer_sight("do it and email it", mixed)] == [
+        "open_app",
+        "vision_control",
+        "send_email",
+    ]
     only_reading = [{"tool": "read_screen", "label": "Read", "args": {}}]
     assert main._prefer_sight("what is on screen", only_reading) is only_reading
 
@@ -380,3 +391,41 @@ def test_a_false_done_is_replanned_and_never_shown(pipeline, monkeypatch):
     assert "nothing has been done yet" in planned.await_args_list[1].args[0]
     shown = sent["responses"][0]["content"]
     assert "63" not in shown and "haven't done anything" in shown
+
+
+def test_blind_typing_followed_by_screen_control_becomes_one_step(monkeypatch):
+    import main
+
+    monkeypatch.setattr(vision_model, "vision_providers", lambda: ["deepseek"])
+    mixed = [
+        {"tool": "open_app", "label": "Open Notepad", "args": {"name": "notepad"}},
+        {"tool": "type_text", "label": "Type the poem", "args": {"text": "Lagos wakes at dawn"}},
+        {"tool": "vision_control", "label": "Save it to the Desktop", "args": {"task": "save"}},
+    ]
+    plan = main._prefer_sight("write a poem and save it as lagos-poem.txt", mixed)
+    assert [step["tool"] for step in plan] == ["open_app", "vision_control"]
+    task = plan[1]["args"]["task"]
+    assert "Lagos wakes at dawn" in task
+    assert "Save it to the Desktop" in task
+
+
+def test_blind_typing_is_replaced_even_when_other_steps_surround_it(monkeypatch):
+    import main
+
+    monkeypatch.setattr(vision_model, "vision_providers", lambda: ["deepseek"])
+    plan_in = [
+        {"tool": "open_app", "label": "Open Notepad", "args": {"name": "notepad"}},
+        {"tool": "type_text", "label": "Type the poem", "args": {"text": "Lagos wakes at dawn"}},
+        {"tool": "vision_control", "label": "Save it to the Desktop", "args": {"task": "save"}},
+        {"tool": "find_file", "label": "Check the file", "args": {"query": "lagos-poem.txt"}},
+    ]
+    plan = main._prefer_sight("write a poem and save it as lagos-poem.txt", plan_in)
+    assert [step["tool"] for step in plan] == ["open_app", "vision_control", "find_file"]
+    assert "Lagos wakes at dawn" in plan[1]["args"]["task"]
+    assert "check on screen that the result is really there" in plan[1]["args"]["task"]
+
+    # A plan whose later step refers to an earlier result by number is left alone.
+    numbered = plan_in[:2] + [
+        {"tool": "send_email", "label": "Send", "args": {"body": "{{step_1_result}}"}}
+    ]
+    assert main._prefer_sight("type and email it", numbered) is numbered

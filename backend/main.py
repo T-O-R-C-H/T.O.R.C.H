@@ -1224,54 +1224,90 @@ _OPENING_TOOLS = {"open_app", "open_browser"}
 
 
 def _prefer_sight(command: str, raw_steps: list) -> list:
-    """Swap a blind click-by-click plan for one look-then-act step.
+    """Swap blind on-screen steps for look-then-act steps.
 
-    Applies only when the user lets TORCH look at the screen, the plan acts on
-    screen controls, and everything after any app-opening steps is a screen
-    step. Anything else - files, email, a mixed plan - is left exactly as
-    planned, and so is every plan when looking at the screen is switched off.
+    A plan is written before TORCH has seen the screen. Steps that click or
+    type without looking land in whatever window happens to have focus: a poem
+    was once typed into the wrong window and an empty document saved in its
+    place. Every run of consecutive on-screen steps that contains such a blind
+    step is replaced by one `vision_control` step, which looks before each
+    action. Steps around the run (opening an app first, finding a file after)
+    are kept as planned.
+
+    Nothing changes when looking at the screen is switched off, when no AI
+    service can look, or when a later step depends on an earlier step's result
+    by number (the numbering would shift).
     """
     if not settings.allow_screen or not isinstance(raw_steps, list):
         return raw_steps
-    tools = [step.get("tool") for step in raw_steps if isinstance(step, dict)]
-    if len(tools) != len(raw_steps) or not any(t in _BLIND_ACTION_TOOLS for t in tools):
+    if any(not isinstance(step, dict) for step in raw_steps):
         return raw_steps
-    opening = []
-    for step in raw_steps:
-        if step.get("tool") in _OPENING_TOOLS:
-            opening.append(step)
-        else:
-            break
-    rest = raw_steps[len(opening):]
-    if not rest or any(step.get("tool") not in _SCREEN_STEP_TOOLS for step in rest):
+    if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in raw_steps):
+        return raw_steps
+    if "{{step_" in json.dumps([step.get("args") for step in raw_steps], default=str):
         return raw_steps
     from agent.vision_model import vision_available
 
     if not vision_available():
         return raw_steps
+
+    on_screen = _SCREEN_STEP_TOOLS | {"vision_control"}
     request_line = command.splitlines()[0].strip() if command else ""
-    # The planner read the whole conversation, so its step labels say what a
-    # short request like "do it for me" actually refers to. Keep them.
-    intended = "; ".join(
-        str(step.get("label") or "").strip()
-        for step in rest
-        if step.get("tool") in _BLIND_ACTION_TOOLS and step.get("label")
-    )[:600]
-    detail = f" What that means here: {intended}." if intended else ""
-    return opening + [
-        {
-            "tool": "vision_control",
-            "label": "Doing it on your screen",
-            "args": {
-                "task": (
-                    f"{request_line}.{detail} Look at what is already on screen before "
-                    "you start and clear anything left over from earlier. When you "
-                    "finish, report the result that is on screen."
-                )
-            },
-            "requires_approval": False,
-        }
-    ]
+    plan: list = []
+    run: list = []
+
+    def flush() -> None:
+        if not run:
+            return
+        if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in run):
+            plan.extend(run)
+            run.clear()
+            return
+        # The planner read the whole conversation, so its step labels say what
+        # a short request like "do it for me" refers to. Keep them, and keep
+        # any text it already wrote (a poem, a message).
+        intended = "; ".join(
+            str(step.get("label") or "").strip()
+            for step in run
+            if step.get("tool") in (_BLIND_ACTION_TOOLS | {"vision_control"})
+            and step.get("label")
+        )[:600]
+        texts = [
+            str((step.get("args") or {}).get("text") or "").strip()
+            for step in run
+            if step.get("tool") in {"type_text", "type_into"}
+        ]
+        texts = [text for text in texts if text]
+        detail = f" What that means here: {intended}." if intended else ""
+        if texts:
+            detail += " Text to type: " + " | ".join(texts)[:1500]
+        plan.append(
+            {
+                "tool": "vision_control",
+                "label": "Doing it on your screen",
+                "args": {
+                    "task": (
+                        f"{request_line}.{detail} Look at what is already on screen "
+                        "before you start. A calculator or form showing leftovers may "
+                        "be cleared; a document that is already open must be left alone "
+                        "- start a new blank one instead. Before you report done, check "
+                        "on screen that the result is really there (for a saved "
+                        "document, that it shows the text). Then report what is on screen."
+                    )
+                },
+                "requires_approval": False,
+            }
+        )
+        run.clear()
+
+    for step in raw_steps:
+        if step.get("tool") in on_screen:
+            run.append(step)
+        else:
+            flush()
+            plan.append(step)
+    flush()
+    return plan
 
 
 # Tools that act on a control by its name, without looking at the screen.
@@ -1581,7 +1617,12 @@ async def process_command(
         if executor.is_cancelled(client_id, message_id):
             completed_count = sum(1 for s in executed_steps if s["status"] == "done")
             cancelled_count = len(executed_steps) - completed_count
-            recap_sentence = f"I've stopped the task. Completed {completed_count} step(s) and cancelled the remaining {cancelled_count} step(s)."
+            total_count = len(executed_steps)
+            recap_sentence = (
+                "Stopped. Nothing was done yet."
+                if completed_count == 0
+                else f"Stopped. I had finished {completed_count} of {total_count} steps."
+            )
             await ws_manager.send_status("idle", client_id)
             recap_msg = {
                 "id": str(uuid.uuid4()),

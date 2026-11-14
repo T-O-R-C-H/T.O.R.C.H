@@ -39,7 +39,9 @@ class VisionUnavailable(UserFacingError):
     """No AI service could look at the screenshot. The message is user-ready."""
 
 
-def _ask_deepseek(system: str, text: str, images: list[str], media_type: str) -> str:
+def _ask_deepseek(
+    system: str, text: str, images: list[str], media_type: str, json_mode: bool = True
+) -> str:
     from openai import OpenAI
 
     client = OpenAI(
@@ -63,12 +65,31 @@ def _ask_deepseek(system: str, text: str, images: list[str], media_type: str) ->
             {"role": "user", "content": content},
         ],
         max_tokens=MAX_OUTPUT_TOKENS,
-        response_format={"type": "json_object"},
         # One screen, one next step: measured the same accuracy as the default
         # effort and about a fifth faster.
         reasoning_effort="low",
+        **({"response_format": {"type": "json_object"}} if json_mode else {}),
     )
-    return (response.choices[0].message.content or "").strip()
+    choice = response.choices[0]
+    reply = (choice.message.content or "").strip()
+    if not reply:
+        logger.warning(
+            "DeepSeek gave an empty reply (finish=%s, json_mode=%s, output tokens=%s)",
+            choice.finish_reason,
+            json_mode,
+            getattr(response.usage, "completion_tokens", "?"),
+        )
+    return reply
+
+
+def _ask_deepseek_plain(system: str, text: str, images: list[str], media_type: str) -> str:
+    """The same request without the service's JSON mode.
+
+    That mode is documented to return an empty answer now and then, and it did
+    so three times running on one real screen. The prompts already ask for
+    JSON, so a retry without the mode gets the same shape back.
+    """
+    return _ask_deepseek(system, text, images, media_type, json_mode=False)
 
 
 def _ask_claude(system: str, text: str, images: list[str], media_type: str) -> str:
@@ -106,6 +127,12 @@ def _ask_claude(system: str, text: str, images: list[str], media_type: str) -> s
 _PROVIDERS: dict[str, Callable[[str, str, list[str], str], str]] = {
     "deepseek": _ask_deepseek,
     "claude": _ask_claude,
+}
+
+
+# What to call when the first request came back empty.
+_RETRY_PROVIDERS: dict[str, Callable[[str, str, list[str], str], str]] = {
+    "deepseek": _ask_deepseek_plain,
 }
 
 
@@ -152,8 +179,9 @@ def ask_vision_sync(
         # A service sometimes answers "OK" with nothing in it. That is not an
         # outage, and asking once more nearly always works.
         for attempt in range(1 + EMPTY_REPLY_RETRIES):
+            ask = _PROVIDERS[name] if attempt == 0 else _RETRY_PROVIDERS.get(name, _PROVIDERS[name])
             try:
-                reply = _PROVIDERS[name](system, text, images, media_type)
+                reply = ask(system, text, images, media_type)
             except VisionUnavailable:
                 raise
             except Exception:

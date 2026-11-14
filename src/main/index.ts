@@ -687,7 +687,10 @@ function createMainWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      zoomFactor: 1.0
+      zoomFactor: 1.0,
+      // The window is minimised while TORCH drives the screen. It still has
+      // to keep its connection and its step list ticking at full speed.
+      backgroundThrottling: false
     }
   })
 
@@ -726,7 +729,9 @@ function createMainWindow(): void {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools()
+    // Developer tools open as a separate window, which sits on top of the
+    // apps TORCH is asked to work in. Opt in when they are wanted.
+    if (process.env['TORCH_DEVTOOLS'] === '1') mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -1263,6 +1268,26 @@ app.whenReady().then(() => {
     })
   })
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
+  // TORCH's own cursor: where the next click, scroll or keystroke happens.
+  ipcMain.on('agent-cursor:move', (_, event) => {
+    if (!event || typeof event !== 'object') return
+    if (!guidanceWindow || guidanceWindow.isDestroyed()) createGuidanceWindow()
+    const payload: Record<string, unknown> = { action: String(event.action ?? 'look') }
+    if (typeof event.note === 'string') payload.note = event.note.slice(0, 120)
+    if (Number.isFinite(Number(event.x)) && Number.isFinite(Number(event.y))) {
+      const displays = screen.getAllDisplays()
+      const left = Math.min(...displays.map((display) => display.bounds.x))
+      const top = Math.min(...displays.map((display) => display.bounds.y))
+      let point = { x: Number(event.x), y: Number(event.y) }
+      if (process.platform === 'win32') {
+        point = screen.screenToDipPoint({ x: Math.round(point.x), y: Math.round(point.y) })
+      }
+      payload.x = point.x - left
+      payload.y = point.y - top
+    }
+    if (payload.action !== 'hide') guidanceWindow?.showInactive()
+    guidanceWindow?.webContents.send('guidance:cursor', payload)
+  })
   // TORCH has stopped and is waiting for the user (a payment, a file to
   // pick). If they are looking at another app they would never know, so tell
   // them through Windows. Skipped when a TORCH window already has focus.

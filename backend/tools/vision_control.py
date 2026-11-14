@@ -19,12 +19,14 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from urllib.parse import quote_plus
 
 logger = logging.getLogger("torch.vision_control")
-MAX_STEPS, STEP_PAUSE = 25, 0.6
+# Writing a few lines and saving them took 25 looks before the save dialog was
+# even filled in. Real tasks need more room than that.
+MAX_STEPS, STEP_PAUSE = 40, 0.6
 # The picture the model sees. At 960x540 a full-HD screen is halved, and small
 # targets (a menu word, a toolbar icon) were hit near their edge instead of
 # their middle. 1280x720 keeps them readable for a modest increase in cost.
 MAX_SCREENSHOT_WIDTH, MAX_SCREENSHOT_HEIGHT = 1280, 720
-SESSION_TIMEOUT_SECONDS = 5 * 60
+SESSION_TIMEOUT_SECONDS = 10 * 60
 MODEL_ACTION_TIMEOUT_SECONDS = 90
 MODEL_PROGRESS_INTERVAL_SECONDS = 15
 # While the user does a step themselves (paying, picking a file) TORCH watches
@@ -69,7 +71,24 @@ Available actions:
 - done: the requested task is fully complete
 - failed: the task cannot be completed, with a clear reason
 
-Return these fields: action, x, y, text, key, amount, reason, question, options, message.
+Stay in the app the task is about. If its window is not in front, bring it forward first (click it
+on the taskbar, or use alt+tab) and check that it is the right window before you type or use a menu.
+Never click menus, buttons or text in an app that is not part of the task, and never close or
+minimise the user's other windows. Before typing, make sure the right text box has focus; before
+saving, make sure the document on screen is the one you just worked on.
+
+Never change, delete, overwrite or close anything the user already had open. If a document is
+already open, leave it exactly as it is and work in a new blank one (ctrl+n, or a new tab). Never
+save over an existing file; if a name is taken, ask.
+
+Typing: text may contain line breaks, so type several lines in one type action instead of one line
+at a time. To replace what is in a one-line box such as a file name field, click it, press ctrl+a,
+then type; ctrl+a is refused anywhere else.
+
+Keep track of the task yourself: in progress, write one short line saying what is finished and what
+is still left. You will be given your own latest progress line with the next screenshot.
+
+Return these fields: action, x, y, text, key, amount, reason, question, options, message, progress.
 Aim x and y at the middle of the control, never its edge. For done, put in reason one short plain
 sentence saying what is on screen now, written for the user (for example "The File menu is open.").
 Always return exactly one action. After typing into a search field, submit it with enter on the
@@ -120,7 +139,9 @@ ALLOWED_KEYS = {
     "ctrl+c",
     "ctrl+f",
     "ctrl+l",
+    "ctrl+n",
     "ctrl+r",
+    "ctrl+s",
     "ctrl+t",
     "ctrl+v",
     "ctrl+w",
@@ -529,12 +550,67 @@ def _focus_browser_search_bar(
     time.sleep(0.12)
 
 
+def _paste_text(text: str) -> None:
+    """Put text into the focused box through the clipboard, then restore it.
+
+    Keystroke typing silently drops anything not on a plain keyboard - an
+    apostrophe in a different style, an accented letter, a naira sign.
+    """
+    import pyperclip
+
+    try:
+        previous = pyperclip.paste()
+    except Exception:
+        previous = None
+    pyperclip.copy(text)
+    time.sleep(0.05)
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(0.15)
+    if previous is not None:
+        try:
+            pyperclip.copy(previous)
+        except Exception:
+            logger.debug("Could not restore the clipboard", exc_info=True)
+
+
 def _type_humanly(text: str, cancel_event: threading.Event) -> None:
-    """Type one visible character at a time with a small natural cadence."""
-    for index, character in enumerate(text):
+    """Type visibly, one character at a time, pressing Enter for line breaks."""
+    # Long text is typed faster: nobody wants to watch a paragraph crawl.
+    base_delay = 0.065 if len(text) <= 60 else 0.018
+    for line_number, line in enumerate(text.split("\n")):
         _raise_if_cancelled(cancel_event)
-        pyautogui.write(character)
-        time.sleep(0.065 + ((index + ord(character)) % 4) * 0.012)
+        if line_number > 0:
+            pyautogui.press("enter")
+            time.sleep(0.08)
+        if not line:
+            continue
+        if not line.isascii():
+            _paste_text(line)
+            continue
+        for index, character in enumerate(line):
+            _raise_if_cancelled(cancel_event)
+            pyautogui.write(character)
+            time.sleep(base_delay + ((index + ord(character)) % 4) * 0.012)
+
+
+def _focus_is_single_line_box() -> bool:
+    """True when the keyboard focus is in a one-line text box (a name field).
+
+    "Select all" there replaces a file name. In a document it selects the
+    user's whole text, and the next keystroke would wipe it - so it is only
+    ever allowed in a single-line box.
+    """
+    try:
+        import uiautomation as auto
+
+        with auto.UIAutomationInitializerInThread():
+            focused = auto.GetFocusedControl()
+            if focused is None or focused.ControlTypeName != "EditControl":
+                return False
+            rect = focused.BoundingRectangle
+            return 0 < (rect.bottom - rect.top) <= 60
+    except Exception:
+        return False
 
 
 def _press_enter(cancel_event: threading.Event) -> None:
@@ -1024,6 +1100,9 @@ def _validate_action(candidate: Any) -> dict:
         raise ValueError("Vision action reason must be text")
     action["reason"] = reason[:500]
 
+    progress = action.get("progress")
+    action["progress"] = progress.strip()[:300] if isinstance(progress, str) else ""
+
     if kind in {"click", "right_click", "double_click", "scroll"}:
         if action.get("x") is None or action.get("y") is None:
             raise ValueError(f"{kind} requires coordinates")
@@ -1042,8 +1121,12 @@ def _validate_action(candidate: Any) -> dict:
             raise ValueError(
                 f"type text exceeds the {MAX_TYPED_CHARACTERS}-character safety limit"
             )
-        if any(ord(character) < 32 for character in text):
+        # A line break is just the Enter key, which is already allowed, and
+        # lets several lines be typed in one step. Nothing else below a space.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        if any(ord(character) < 32 and character != "\n" for character in text):
             raise ValueError("type text contains control characters")
+        action["text"] = text
 
     if kind == "key":
         key = action.get("key")
@@ -1142,6 +1225,31 @@ async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
 
 
 MAX_NAMED_CONTROLS = 70
+
+
+async def _announce_action(
+    action: dict, frame: Optional["ScreenFrame"], client_id: str
+) -> None:
+    """Tell the app where the next action lands, so TORCH's cursor goes there.
+
+    The on-screen cursor and the real mouse then travel together: the user
+    watches TORCH move to a button and click it. Purely cosmetic - a failure
+    here must never stop the action itself.
+    """
+    kind = action.get("action")
+    if kind not in {"click", "right_click", "double_click", "scroll", "type", "key"}:
+        return
+    message: dict = {"type": "agent_cursor", "action": kind}
+    if kind in {"click", "right_click", "double_click", "scroll"}:
+        try:
+            screen_x, screen_y = _map_screenshot_point(action.get("x"), action.get("y"), frame)
+        except Exception:
+            return
+        message["x"], message["y"] = screen_x, screen_y
+    try:
+        await ws_manager.send_message(message, client_id)
+    except Exception:
+        logger.debug("Could not announce a cursor move", exc_info=True)
 
 
 def _named_controls_hint(frame: "ScreenFrame") -> str:
@@ -1428,6 +1536,11 @@ def execute_action(
         _type_humanly(str(action["text"]), cancel_event)
     elif kind == "key" and action.get("key"):
         _raise_if_cancelled(cancel_event)
+        if str(action["key"]).lower() == "ctrl+a" and not _focus_is_single_line_box():
+            raise ValueError(
+                "ctrl+a is only allowed inside a one-line text box such as a file name "
+                "field, never in a document"
+            )
         keys = str(action["key"]).lower().split("+")
         pyautogui.press(keys[0]) if len(keys) == 1 else pyautogui.hotkey(*keys)
     elif kind == "scroll":
@@ -1493,6 +1606,11 @@ async def vision_loop(
                 return direct_result
 
         history = []
+        progress_note = ""
+        # What the last action was and where, to notice the model repeating
+        # itself. It clicked one text box five times running to "focus" it.
+        last_signature: Optional[tuple] = None
+        repeats = 0
         handoffs = 0
         last_handoff_message = ""
         step_limit = min(max_steps, MAX_STEPS)
@@ -1501,7 +1619,7 @@ async def vision_loop(
             _raise_if_cancelled(cancel_event)
             if asyncio.get_running_loop().time() >= session_deadline:
                 raise RuntimeError(
-                    "Vision control reached its five-minute safety limit before completing the task."
+                    "That took longer than I allow myself, so I stopped before finishing."
                 )
             captured = await _take_vision_screenshot(client_id, cancel_event)
             if isinstance(captured, ScreenFrame):
@@ -1531,8 +1649,10 @@ async def vision_loop(
                 profile_choice_needed = False
             _raise_if_cancelled(cancel_event)
             recent = "\n".join(
-                f"{item['action']}: {item['reason']}" for item in history[-5:]
+                f"{item['action']}: {item['reason']}" for item in history[-8:]
             ) or "No previous actions."
+            if progress_note:
+                recent += f"\nYour progress note: {progress_note}"
             profile_guard = (
                 "\nA trusted Windows guard confirms that Chrome's profile chooser is visible. "
                 "Your ONLY permitted action is ask. Read the exact visible profile names from "
@@ -1595,6 +1715,7 @@ async def vision_loop(
                 continue
 
             kind, reason = action.get("action", ""), action.get("reason", "")
+            progress_note = action.get("progress") or progress_note
             # One line per step in the log: without it a task that "did
             # nothing" cannot be told apart from one that clicked the wrong place.
             logger.info(
@@ -1634,6 +1755,9 @@ async def vision_loop(
                     )
                 message = action["message"]
                 # The user is in control now: drop the "TORCH is driving" border.
+                await ws_manager.send_message(
+                    {"type": "agent_cursor", "action": "hide"}, client_id
+                )
                 await ws_manager.send_message({"type": "vision_control_pause"}, client_id)
                 await ws_manager.send_status("awaiting_input", client_id)
                 if message != last_handoff_message:
@@ -1705,6 +1829,7 @@ async def vision_loop(
                 history.append({"action": "user_answer", "reason": answer})
                 continue
 
+            await _announce_action(action, frame, client_id)
             try:
                 await _run_blocking_cancellable(
                     execute_action,
@@ -1728,15 +1853,35 @@ async def vision_loop(
                 continue
 
             history.append({"action": kind, "reason": reason})
+            signature = (
+                kind,
+                round(float(action.get("x") or 0) / 12),
+                round(float(action.get("y") or 0) / 12),
+                action.get("key"),
+                action.get("text"),
+            )
+            repeats = repeats + 1 if signature == last_signature else 0
+            last_signature = signature
+            if repeats >= 1:
+                history.append(
+                    {
+                        "action": "note",
+                        "reason": (
+                            "You just did exactly the same thing again. Do not repeat it a "
+                            "third time. If you clicked a text box, it already has focus: "
+                            "type now. Otherwise try a different way."
+                        ),
+                    }
+                )
             pause_deadline = asyncio.get_running_loop().time() + STEP_PAUSE
             while asyncio.get_running_loop().time() < pause_deadline:
                 _raise_if_cancelled(cancel_event)
                 await asyncio.sleep(min(0.05, max(0, pause_deadline - asyncio.get_running_loop().time())))
             _raise_if_cancelled(cancel_event)
 
-        raise RuntimeError(
-            f"Vision control reached the maximum of {step_limit} steps "
-            "without completing the task."
+        raise UserFacingError(
+            "I couldn't finish that in the number of steps I allow myself, so I stopped."
+            + (f" How far I got: {progress_note}" if progress_note else "")
         )
     finally:
         pending = _pending_clarifications.pop((client_id, session_id), None)
@@ -1745,6 +1890,7 @@ async def vision_loop(
         sessions.pop(session_id, None)
         if not sessions:
             _active_sessions.pop(client_id, None)
+        await ws_manager.send_message({"type": "agent_cursor", "action": "hide"}, client_id)
         await ws_manager.send_message({"type": "vision_control_end"}, client_id)
 
 

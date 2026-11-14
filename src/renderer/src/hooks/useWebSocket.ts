@@ -245,6 +245,12 @@ export function useWebSocket(): {
           }
 
           ws.onmessage = (event): void => {
+            // Anything arriving proves the connection is alive, not only a
+            // pong. During a long task TORCH's window is minimised and its
+            // timers run slowly; counting only pongs let a busy, healthy
+            // connection be declared dead, and the backend treats a dropped
+            // connection as Stop - so long tasks were killed mid-way.
+            if (isCurrent(ws)) sharedLastPongAt = Date.now()
             try {
               const data = JSON.parse(event.data)
               handleMessageRef.current(data, ws)
@@ -316,6 +322,11 @@ export function useWebSocket(): {
         case 'vision_control_start':
         case 'uia_control_start': {
           window.torchAPI?.showControlBorder()
+          break
+        }
+        case 'agent_cursor': {
+          // Where TORCH is about to click, scroll or type, in screen pixels.
+          window.torchAPI?.moveAgentCursor(data)
           break
         }
         case 'vision_control_pause': {

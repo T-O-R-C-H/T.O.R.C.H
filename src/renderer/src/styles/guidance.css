@@ -1,12 +1,10 @@
 /*
- * The pointer TORCH draws on the real screen, over other apps.
+ * TORCH's own cursor, drawn on the real screen over other apps.
  *
- * It is a ring around the thing being pointed at, plus a small bubble holding
- * what TORCH said. The window is full-desktop, transparent and click-through,
- * so everything here must stay small and must never swallow the pointer.
- *
- * These rules were deleted along with the old floating overlay, which left the
- * component unstyled: its arrow, having no size, filled the whole screen.
+ * The window is full-desktop, transparent and click-through, so everything
+ * here stays small and never swallows the mouse. An earlier version of these
+ * rules was deleted with the old floating overlay, which left the component
+ * unstyled: its arrow, having no size, filled the whole screen.
  */
 
 .guidance-stage {
@@ -17,70 +15,72 @@
   background: transparent;
 }
 
-/* A zero-size anchor placed exactly on the target; children centre on it. */
-.guidance-marker {
+/* A zero-size anchor. Its top-left corner is the point TORCH means, and the
+   arrow's tip is drawn exactly there. Moving it is the glide. */
+.torch-cursor {
   position: absolute;
-  width: 0;
-  height: 0;
-}
-
-.guidance-target__ring {
-  position: absolute;
-  left: -26px;
-  top: -26px;
-  width: 52px;
-  height: 52px;
-  border: 3px solid var(--brand);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 2px var(--color-torch-accent-fg),
-    var(--shadow-pop);
-  animation: guidance-pulse 1.8s var(--ease-out) infinite;
-}
-
-.guidance-target__ring--delay {
-  animation-delay: 0.9s;
-}
-
-.guidance-marker__dot {
-  position: absolute;
-  left: -4px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--brand);
-  box-shadow: 0 0 0 2px var(--color-torch-accent-fg);
-}
-
-/* A zero-size anchor on the target; the bubble and the label hang off it. */
-.guidance-companion {
-  position: absolute;
+  left: 0;
+  top: 0;
   width: 0;
   height: 0;
   opacity: 1;
-  transition: opacity var(--dur-fast) var(--ease-out);
+  transition:
+    transform 650ms cubic-bezier(0.45, 0, 0.55, 1),
+    opacity var(--dur-fast) var(--ease-out);
+  will-change: transform;
 }
 
-.guidance-companion[data-leaving='true'] {
+.torch-cursor[data-mode='hidden'] {
   opacity: 0;
 }
 
-.guidance-companion__speech,
-.guidance-companion__target {
+.torch-cursor__arrow {
   position: absolute;
-  left: 38px;
+  /* The path's tip is at (2.5, 2.2) of a 28x32 box drawn at 28x32. */
+  left: -2.5px;
+  top: -2.2px;
+  width: 28px;
+  height: 32px;
+  overflow: visible;
+  filter: drop-shadow(0 3px 6px var(--cursor-shadow));
+}
+
+.torch-cursor__arrow path {
+  fill: var(--brand);
+  stroke: var(--cursor-outline);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.torch-cursor__tag,
+.torch-cursor__bubble {
+  position: absolute;
   box-sizing: border-box;
   width: max-content;
-  max-width: 320px;
   font-family: var(--font-sans);
-  border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-pop);
 }
 
-.guidance-companion__speech {
-  top: 18px;
+/* The name tag hangs off the arrow's tail, the way shared cursors do. */
+.torch-cursor__tag {
+  left: 22px;
+  top: 26px;
+  padding: 3px 9px;
+  border-radius: 6px 12px 12px 12px;
+  background: var(--brand);
+  color: var(--cursor-outline);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.torch-cursor__bubble {
+  left: 22px;
+  top: 56px;
+  max-width: 340px;
   padding: 10px 14px;
+  border: 1px solid var(--border-strong);
   border-radius: 14px;
   background: var(--surface-raised);
   color: var(--text-primary);
@@ -88,69 +88,59 @@
   line-height: 1.45;
 }
 
-.guidance-companion__target {
-  bottom: 14px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--brand);
-  border-color: transparent;
-  color: var(--color-torch-accent-fg);
+.torch-cursor__label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--brand);
   font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+  font-weight: 650;
 }
 
-/* Near the right or bottom edge the bubble opens the other way. */
-.guidance-companion[data-flip-x='true'] .guidance-companion__speech,
-.guidance-companion[data-flip-x='true'] .guidance-companion__target {
+/* Near the right or bottom edge the tag and bubble open the other way. */
+.torch-cursor[data-flip-x='true'] .torch-cursor__tag,
+.torch-cursor[data-flip-x='true'] .torch-cursor__bubble {
   left: auto;
-  right: 38px;
+  right: 6px;
 }
 
-.guidance-companion[data-flip-y='true'] .guidance-companion__speech {
+.torch-cursor[data-flip-y='true'] .torch-cursor__tag {
   top: auto;
-  bottom: 44px;
+  bottom: 8px;
 }
 
-.guidance-companion[data-flip-y='true'] .guidance-companion__target {
-  bottom: 14px;
+.torch-cursor[data-flip-y='true'] .torch-cursor__bubble {
+  top: auto;
+  bottom: 38px;
 }
 
-.guidance-companion__caret {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  background: var(--brand);
-  animation: guidance-caret 0.7s steps(1) infinite;
+/* A click: one ring that opens out from the tip and is gone. */
+.torch-cursor__ripple {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--brand);
+  border-radius: 50%;
+  animation: torch-cursor-ripple 520ms var(--ease-out) forwards;
 }
 
-@keyframes guidance-pulse {
-  0% {
-    transform: scale(0.6);
-    opacity: 0;
-  }
-  30% {
+@keyframes torch-cursor-ripple {
+  from {
+    transform: scale(0.25);
     opacity: 1;
   }
-  100% {
-    transform: scale(1.35);
-    opacity: 0;
-  }
-}
-
-@keyframes guidance-caret {
-  50% {
+  to {
+    transform: scale(1.5);
     opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .guidance-target__ring {
-    animation: none;
+  .torch-cursor {
+    transition: opacity var(--dur-fast) var(--ease-out);
   }
-  .guidance-target__ring--delay {
-    display: none;
+  .torch-cursor__ripple {
+    animation-duration: 1ms;
   }
 }

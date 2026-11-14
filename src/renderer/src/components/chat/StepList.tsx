@@ -1,5 +1,4 @@
 import type { Step } from '../../store/torchStore'
-import { toPlainLanguage } from '../../utils/plainLanguage'
 import { StepTimeline, type TimelineStep } from './StepTimeline'
 
 interface StepListProps {
@@ -108,6 +107,11 @@ function mapStatus(step: Step): TimelineStep['status'] {
   }
 }
 
+/*
+ * The timeline marks which step failed; it does not say why. TORCH always
+ * closes a failed task with a message that does, and a card here repeating
+ * the same sentence made every error appear twice.
+ */
 export function StepList({ steps }: StepListProps): JSX.Element {
   const timeline: TimelineStep[] = steps.map((step) => ({
     id: step.id,
@@ -120,23 +124,6 @@ export function StepList({ steps }: StepListProps): JSX.Element {
   return (
     <div className="step-block">
       <StepTimeline steps={timeline} />
-      {steps.map((step) => {
-        const isFailed = step.status === 'failed'
-        if (!step.error && !(isFailed && step.result)) return null
-
-        // A cancelled step is already marked as such in the timeline; a card
-        // repeating "You cancelled this" underneath adds nothing.
-        if (isCancelled(step)) return null
-
-        return (
-          <div key={step.id} className="chat-error-card chat-error-card--step">
-            <span className="chat-error-card__title">What went wrong</span>
-            <p className="chat-error-card__body">
-              {toPlainLanguage(step.error || step.result || '')}
-            </p>
-          </div>
-        )
-      })}
     </div>
   )
 }

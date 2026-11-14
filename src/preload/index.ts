@@ -84,6 +84,17 @@ const torchAPI = {
   removeGuidance: (): void => {
     ipcRenderer.removeAllListeners('guidance:update')
   },
+  /** Tell TORCH's on-screen cursor where the next action is. */
+  moveAgentCursor: (event: Record<string, unknown>): void =>
+    ipcRenderer.send('agent-cursor:move', event),
+  onAgentCursor: (callback: (_e: unknown, event: Record<string, unknown>) => void): void => {
+    ipcRenderer.on('guidance:cursor', (event, payload: Record<string, unknown>) =>
+      callback(event, payload)
+    )
+  },
+  removeAgentCursor: (): void => {
+    ipcRenderer.removeAllListeners('guidance:cursor')
+  },
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),

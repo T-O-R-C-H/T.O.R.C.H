@@ -40,6 +40,27 @@ interface TorchAPI {
   removeTaskCommand: () => void
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
   removeGuidance: () => void
+  moveAgentCursor: (event: Record<string, unknown>) => void
+  onAgentCursor: (
+    callback: (
+      _e: unknown,
+      event: {
+        action:
+          | 'click'
+          | 'right_click'
+          | 'double_click'
+          | 'scroll'
+          | 'type'
+          | 'key'
+          | 'look'
+          | 'hide'
+        x?: number
+        y?: number
+        note?: string
+      }
+    ) => void
+  ) => void
+  removeAgentCursor: () => void
   openExternal: (url: string) => void
   getReportInfo: () => Promise<{ appVersion: string; electron: string; os: string }>
   getDesktopContext: () => Promise<{
