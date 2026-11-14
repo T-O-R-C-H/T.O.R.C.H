@@ -34,6 +34,13 @@
   opacity: 0;
 }
 
+/* Working moves are quicker than teaching ones; see GLIDE_MS. */
+.torch-cursor[data-mode='working'] {
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
 .torch-cursor__arrow {
   position: absolute;
   /* The path's tip is at (2.5, 2.2) of a 28x32 box drawn at 28x32. */
@@ -114,26 +121,89 @@
 }
 
 /* A click: one ring that opens out from the tip and is gone. */
+.torch-cursor__click {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* A solid blink right under the tip. */
+.torch-cursor__flash {
+  position: absolute;
+  left: -16px;
+  top: -16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--cursor-color);
+  animation: torch-cursor-flash 420ms var(--ease-out) forwards;
+}
+
 .torch-cursor__ripple {
   position: absolute;
-  left: -18px;
-  top: -18px;
-  width: 36px;
-  height: 36px;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
   border: 3px solid var(--cursor-color);
   border-radius: 50%;
-  animation: torch-cursor-ripple 520ms var(--ease-out) forwards;
+  animation: torch-cursor-ripple 620ms var(--ease-out) forwards;
+}
+
+.torch-cursor__ripple--late {
+  opacity: 0;
+  border-width: 2px;
+  animation-delay: 120ms;
+  animation-duration: 760ms;
+}
+
+@keyframes torch-cursor-flash {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.55;
+  }
+  35% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
 }
 
 @keyframes torch-cursor-ripple {
   from {
-    transform: scale(0.25);
+    transform: scale(0.3);
     opacity: 1;
   }
   to {
-    transform: scale(1.5);
+    transform: scale(1.9);
     opacity: 0;
   }
+}
+
+/* The arrow presses in on each click. Two names so every click restarts it. */
+.torch-cursor[data-click='a'] .torch-cursor__click ~ .torch-cursor__arrow {
+  animation: torch-cursor-press-a 260ms var(--ease-out);
+}
+
+.torch-cursor[data-click='b'] .torch-cursor__click ~ .torch-cursor__arrow {
+  animation: torch-cursor-press-b 260ms var(--ease-out);
+}
+
+@keyframes torch-cursor-press-a {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(0.78); }
+}
+
+@keyframes torch-cursor-press-b {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(0.78); }
+}
+
+.torch-cursor__arrow {
+  transform-origin: 2.5px 2.2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

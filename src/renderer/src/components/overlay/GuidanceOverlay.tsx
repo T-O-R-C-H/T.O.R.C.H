@@ -30,8 +30,12 @@ export type AgentCursorEvent = {
 
 type Mode = 'hidden' | 'teaching' | 'working'
 
-/** How long the real mouse takes to travel, so the two arrive together. */
-const GLIDE_MS = 650
+/**
+ * How long the cursor takes to reach a click while TORCH works. It must land
+ * before the backend presses (CURSOR_LEAD_SECONDS in vision_control.py), so
+ * the blink and the real click happen together. Teaching glides slower.
+ */
+const GLIDE_MS = 360
 const POINTER_ACTIONS = new Set(['click', 'right_click', 'double_click'])
 
 const ACTION_WORDS: Record<string, string> = {
@@ -148,9 +152,17 @@ export function GuidanceOverlay(): JSX.Element {
         data-mode={mode}
         data-flip-x={flipX}
         data-flip-y={flipY}
+        data-click={ripple % 2 === 0 ? 'a' : 'b'}
         style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
       >
-        {ripple > 0 && mode === 'working' && <span key={ripple} className="torch-cursor__ripple" />}
+        {/* A click: the arrow presses in, a flash and two rings burst from the tip. */}
+        {ripple > 0 && mode === 'working' && (
+          <span key={ripple} className="torch-cursor__click" aria-hidden="true">
+            <span className="torch-cursor__flash" />
+            <span className="torch-cursor__ripple" />
+            <span className="torch-cursor__ripple torch-cursor__ripple--late" />
+          </span>
+        )}
 
         {/* The tip of the arrow sits exactly on the target. */}
         <svg className="torch-cursor__arrow" viewBox="0 0 28 32" aria-hidden="true">
