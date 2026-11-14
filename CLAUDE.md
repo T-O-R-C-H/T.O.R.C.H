@@ -145,12 +145,21 @@ Do not add a second connection/activity indicator anywhere else.
 - **Main window** (`/`) — frameless; title bar, sidebar, and the pages.
 - **Command pill** (`/pill`) — small always-on-top input, shown when the main
   window is minimized or the global shortcut is pressed.
-- **Task panel** (`/task-panel`) — live steps for the running task.
+- **Task panel** (`/task-panel`) — TORCH's bottom-right panel
+  (`components/pill/TaskPanel.tsx`, `styles/taskdock.css`). Shown whenever a
+  task runs and TORCH's window is not focused, and forced up for anything only
+  the user can do: Approve/Reject, "Your turn" (Continue/Stop), questions. It
+  sizes itself to its content (`task-panel:resize`; the window must stay
+  `resizable: true` or the page does not follow the frame). Its buttons relay
+  through the main process to whichever window owns the task.
 - **Companion** (`/companion`) — the screen-aware side panel. Deliberately
   dark in both themes (see `TORCH_overlay_companion_spec.md`).
-- **Guidance overlay** (`/guide`) and **control border** (`/control-border`) —
-  click-through, full-desktop; pointing during guidance, and the blue border
-  while vision control is driving the screen.
+- **Guidance overlay** (`/guide`) — click-through, full-desktop. Draws
+  TORCH's own cursor (orange arrow + "TORCH" tag): it points while teaching
+  and glides to each click/scroll/key while TORCH works (`agent_cursor` WS
+  message, sent just before each action).
+- **Control border** (`/control-border`) — a breathing blue glow round the
+  screen edge while TORCH drives. Never draw anything in the middle.
 
 ---
 
@@ -229,6 +238,21 @@ Rules learned from driving the real app (Nov 2026) - keep them:
   front window; it used to interrupt every task.
 - `styles/guidance.css` styles the pointer. Those rules were once deleted with
   the old overlay, which left a screen-sized black arrow.
+- **The user's mouse never moves.** `_press_at` presses buttons, links, menus,
+  tick boxes and tabs through UI Automation (`_press_without_mouse`); anything
+  else is clicked with the pointer put back within ~20 ms. Never glide the
+  real mouse. Scroll is whole wheel notches (120 units) - PyAutoGUI's Windows
+  scroll passed raw units and barely moved pages.
+- **TORCH keeps its own to-do list** (`plan`/`current` in the model's reply,
+  sent as step `substeps`); a step keeps its planned name, and the live action
+  is `activity`. Failures say which to-do item it stopped at and why.
+- **Click by name**: the model may give `target` (a name from the controls
+  list) and the exact position is used. `then` runs up to four type/key/wait
+  follow-ups without another look. Screenshots go as JPEG.
+- **A handoff can be ended by the user**: `handoff_continue` WS message.
+- **Never rewrite TORCH's own messages in the UI.** `toPlainLanguage` only
+  replaces obvious program output; it once swapped a specific failure for
+  "Something went wrong on this step".
 
 When vision control starts: emit `vision_control_start` WS message → frontend shows blue border window
 When vision control ends: emit `vision_control_end` WS message → frontend hides blue border window

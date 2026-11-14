@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { StepList } from '../chat/StepList'
 import { AttentionCard } from '../chat/AttentionCard'
 import { TorchLogo } from '../ui/TorchLogo'
+import { RichText } from '../chat/RichText'
 
 /**
  * TORCH's panel in the bottom-right corner, over whatever app is in front.
@@ -249,7 +250,7 @@ export function TaskPanel(): JSX.Element | null {
         <QuestionBlock />
         {steps.length > 0 && <StepList steps={steps} />}
         {!running && closing?.content && (
-          <p className={'dock__result dock__result--' + tone}>{closing.content}</p>
+          <RichText className={'dock__result dock__result--' + tone} text={closing.content} />
         )}
       </div>
 

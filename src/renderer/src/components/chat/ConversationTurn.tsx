@@ -10,7 +10,7 @@ import { ApprovalCard } from '../aicss/ApprovalCard'
 import { AgentActivity } from './AgentActivity'
 import { TextResponse } from '../aicss/TextResponse'
 import { StreamingText } from '../aicss/StreamingText'
-import { LinkifiedText } from './LinkifiedText'
+import { RichText } from './RichText'
 import { MailResults } from '../mail/MailResults'
 import { AgentQuestion } from './AgentQuestion'
 import {
@@ -121,7 +121,7 @@ export function ConversationTurn({
                 <StreamingText text={bodyText} />
               ) : (
                 <TextResponse>
-                  <LinkifiedText text={bodyText} />
+                  <RichText text={bodyText} />
                 </TextResponse>
               )}
             </motion.div>

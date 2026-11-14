@@ -2,7 +2,6 @@
   font-size: 14px;
   line-height: 1.65;
   color: var(--text-primary);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 /* The caret is the brand colour while text is arriving and fades out once
