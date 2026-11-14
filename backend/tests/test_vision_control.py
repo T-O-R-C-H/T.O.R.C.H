@@ -474,6 +474,28 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(executed, [(200, 400)])
 
+    async def test_a_second_click_on_the_same_spot_is_a_real_click(self):
+        actions = iter(
+            [
+                {"action": "click", "x": 100, "y": 200, "reason": "checkout"},
+                {"action": "click", "x": 101, "y": 201, "reason": "checkout again"},
+                {"action": "done", "reason": "ok"},
+            ]
+        )
+        fake = types.SimpleNamespace(
+            chat=lambda **_k: {"message": {"content": json.dumps(next(actions))}}
+        )
+        seen = []
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(fake)),
+            patch.object(vc, "take_screenshot", return_value="image"),
+            patch.object(vc, "execute_action", side_effect=lambda action, *_a: seen.append(bool(action.get("_real_click")))),
+            patch.object(vc, "STEP_PAUSE", 0),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            await vc.vision_loop("check out", max_steps=3, task_id="real-click")
+        self.assertEqual(seen, [False, True])
+
     def test_named_controls_are_given_in_screenshot_pixels(self):
         frame = vc.ScreenFrame(
             image="image",

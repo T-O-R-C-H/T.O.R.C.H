@@ -176,6 +176,77 @@ def snap_to_named_control(label: str, x: float, y: float) -> Optional[Tuple[int,
         return None
 
 
+def find_click_target(
+    label: str, x: float, y: float, time_budget: float = 1.2
+) -> Optional[Tuple[int, int]]:
+    """Where the thing called `label` really is, near a click at (x, y).
+
+    A vision model names the right button but can aim a little off: on a
+    shop's cart page it clicked about 100 pixels under CHECKOUT, a dozen
+    times. Returns None when the point is already on it, or when nothing
+    with that name is close. Otherwise the middle of the named control.
+
+    Looks in the part of the window around the point first (fast, because a
+    web page's tree is deep), then the whole window if time allows.
+    """
+    key = _label_key(label)
+    if not UIA_AVAILABLE or not key:
+        return None
+    deadline = time.monotonic() + time_budget
+
+    def centre(control: Any) -> Optional[Tuple[int, int]]:
+        rect = control.BoundingRectangle
+        if rect.right <= rect.left or rect.bottom <= rect.top:
+            return None
+        return (rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2
+
+    try:
+        with _com_apartment():
+            hit = auto.ControlFromPoint(int(x), int(y))
+            if hit is None:
+                return None
+            # Already on it: the point, or something the point is inside of.
+            probe = hit
+            for _level in range(4):
+                if probe is None:
+                    break
+                if _label_key(probe.Name) == key:
+                    return None
+                probe = probe.GetParentControl()
+
+            best: Optional[Tuple[float, int, int]] = None
+            searched: set = set()
+            scope = hit
+            for _level in range(8):
+                scope = scope.GetParentControl() if scope is not None else None
+                if scope is None or time.monotonic() > deadline:
+                    break
+                for control, _depth in auto.WalkControl(scope, maxDepth=20):
+                    if time.monotonic() > deadline:
+                        break
+                    try:
+                        runtime_id = tuple(control.GetRuntimeId() or ())
+                        if runtime_id in searched:
+                            continue
+                        searched.add(runtime_id)
+                        if _label_key(control.Name) != key:
+                            continue
+                        point = centre(control)
+                    except Exception:
+                        continue
+                    if point is None:
+                        continue
+                    distance = ((point[0] - x) ** 2 + (point[1] - y) ** 2) ** 0.5
+                    if distance <= SNAP_MAX_DISTANCE and (best is None or distance < best[0]):
+                        best = (distance, point[0], point[1])
+                if best is not None:
+                    return best[1], best[2]
+            return None
+    except Exception:
+        logger.debug("Could not look up a click target by name", exc_info=True)
+        return None
+
+
 def read_screen(
     window_title: Optional[str] = None, time_budget: Optional[float] = None
 ) -> Dict[str, Any]:

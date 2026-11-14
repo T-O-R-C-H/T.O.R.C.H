@@ -1706,7 +1706,7 @@ async def process_command(
                 "role": "torch",
                 "content": recap_sentence,
                 "timestamp": __import__("time").time() * 1000,
-                "steps": executed_steps,
+                "steps": [],  # the plan above already shows them; a copy drew the list twice
                 "speak": True,
             }
             await ws_manager.send_agent_response(recap_msg, client_id)

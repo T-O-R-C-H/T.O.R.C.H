@@ -100,11 +100,18 @@ way a person would write a to-do list ("Open the Books page", "Sort by lowest pr
 cheapest book to the cart", "Go to checkout"). In every response include current: the number,
 starting at 1, of the plan step you are working on. Send a new plan only if the steps must change.
 
+Dropdowns: to choose from a dropdown or select box, click it once to focus it, then choose with the
+keyboard (down or up to move, enter to pick) rather than clicking the option. Check the box shows the
+new choice before moving on, and do not navigate away from a page you have just sorted or filtered.
+
 Speed: prefer the keyboard when it does the same job in fewer steps - type digits and operators
 into a calculator ("37*24=") instead of clicking each key, use shortcuts such as ctrl+s or ctrl+l.
 When the next few actions are certain without looking again (for example key ctrl+l, then
 type an address, then key enter), put the follow-ups in then: a list of up to 4 more actions, each
 only type, key or wait. Never put a click or scroll in then.
+
+For every click on something with visible text (a button, link, tab or menu entry), also put that
+exact text in target, even when you give x and y; TORCH uses it to land the click exactly.
 
 Return these fields: action, x, y, target, text, key, amount, reason, question, options, message,
 progress, plan, current, then. Keep reason to one short sentence.
@@ -581,6 +588,11 @@ def _focus_browser_search_bar(
 
 _MOUSE_BUTTONS = {"left": (0x0002, 0x0004), "right": (0x0008, 0x0010)}
 _MOUSEEVENTF_WHEEL = 0x0800
+_MOUSEEVENTF_MOVE = 0x0001
+# A dropdown's list only takes a click on the option the pointer is resting
+# on. Arriving and clicking in the same instant selected nothing, and a shop's
+# "Sort by price" was picked eight times without effect.
+HOVER_BEFORE_CLICK_SECONDS = 0.06
 
 
 def _saved_cursor() -> Optional[tuple[int, int]]:
@@ -659,7 +671,9 @@ def _press_without_mouse(x: int, y: int) -> bool:
     return bool(outcome.get("pressed"))
 
 
-def _press_at(x: int, y: int, button: str = "left", clicks: int = 1) -> None:
+def _press_at(
+    x: int, y: int, button: str = "left", clicks: int = 1, real_click: bool = False
+) -> None:
     """Click a screen point and put the user's own mouse straight back.
 
     The pointer is there for a few hundredths of a second - long enough for
@@ -670,20 +684,23 @@ def _press_at(x: int, y: int, button: str = "left", clicks: int = 1) -> None:
     if sys.platform != "win32":
         pyautogui.click(x, y, clicks=clicks, button=button)
         return
-    if button == "left" and clicks == 1 and _press_without_mouse(x, y):
+    if not real_click and button == "left" and clicks == 1 and _press_without_mouse(x, y):
         return
     user32 = ctypes.windll.user32
     down, up = _MOUSE_BUTTONS[button]
     saved = _saved_cursor()
     try:
         user32.SetCursorPos(int(x), int(y))
-        time.sleep(0.008)
+        # A real move event, so whatever is under the pointer knows it is
+        # hovered before the button goes down.
+        user32.mouse_event(_MOUSEEVENTF_MOVE, 0, 0, 0, 0)
+        time.sleep(HOVER_BEFORE_CLICK_SECONDS)
         for index in range(clicks):
             user32.mouse_event(down, 0, 0, 0, 0)
             user32.mouse_event(up, 0, 0, 0, 0)
             if index + 1 < clicks:
                 time.sleep(0.05)
-        time.sleep(0.012)
+        time.sleep(0.03)
     finally:
         if saved is not None:
             user32.SetCursorPos(*saved)
@@ -1499,6 +1516,30 @@ def _named_controls_hint(frame: "ScreenFrame", into: Optional[dict] = None) -> s
     )
 
 
+def _correct_click_to_target(candidate: dict, frame: "ScreenFrame") -> Optional[tuple[int, int]]:
+    """Move a click onto the control the model named, if it aimed beside it."""
+    try:
+        from tools import uia_control
+
+        screen_x, screen_y = _map_screenshot_point(candidate["x"], candidate["y"], frame)
+        found = uia_control.find_click_target(str(candidate.get("target") or ""), screen_x, screen_y)
+    except Exception:
+        return None
+    if found is None:
+        return None
+    left, top, width, height = frame.capture_bounds
+    model_width, model_height = frame.model_size
+    corrected = (
+        round((found[0] - left) * model_width / width),
+        round((found[1] - top) * model_height / height),
+    )
+    logger.info(
+        "Click moved onto %r: (%s, %s) -> %s",
+        candidate.get("target"), candidate["x"], candidate["y"], corrected,
+    )
+    return corrected
+
+
 async def _wait_for_clarification(
     future: asyncio.Future[str],
     cancel_event: threading.Event,
@@ -1721,7 +1762,10 @@ def execute_action(
         time.sleep(CURSOR_LEAD_SECONDS)
         _raise_if_cancelled(cancel_event)
         if kind == "click":
-            _press_at(screen_x, screen_y)
+            if action.get("_real_click"):
+                _press_at(screen_x, screen_y, real_click=True)
+            else:
+                _press_at(screen_x, screen_y)
         elif kind == "right_click":
             _press_at(screen_x, screen_y, button="right")
         else:
@@ -1945,6 +1989,17 @@ async def vision_loop(
                     target = str(candidate.get("target") or "").strip().casefold()
                     if target and target in named_controls:
                         candidate["x"], candidate["y"] = named_controls[target]
+                    elif (
+                        target
+                        and isinstance(captured, ScreenFrame)
+                        and candidate.get("action") in {"click", "double_click", "right_click"}
+                        and candidate.get("x") is not None
+                    ):
+                        corrected = await _run_blocking_cancellable(
+                            _correct_click_to_target, cancel_event, candidate, captured
+                        )
+                        if corrected is not None:
+                            candidate["x"], candidate["y"] = corrected
                 action = _validate_action(candidate)
             except (json.JSONDecodeError, ValueError) as exc:
                 logger.warning("Invalid vision action (%s): %s", exc, raw[:200])
@@ -2093,6 +2148,17 @@ async def vision_loop(
                 history.append({"action": "user_answer", "reason": answer})
                 continue
 
+            # Pressing a web page's button through accessibility is sometimes
+            # accepted and ignored: a shop's CHECKOUT took five tries. A second
+            # click on the same spot is made as a real click instead.
+            if kind == "click" and last_signature is not None and last_signature == (
+                kind,
+                round(float(action.get("x") or 0) / 12),
+                round(float(action.get("y") or 0) / 12),
+                action.get("key"),
+                action.get("text"),
+            ):
+                action["_real_click"] = True
             await _announce_action(action, frame, client_id)
             try:
                 await _run_blocking_cancellable(
