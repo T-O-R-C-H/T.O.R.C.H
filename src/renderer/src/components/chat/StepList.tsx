@@ -85,7 +85,7 @@ function getStepPhrase(
  */
 function isCancelled(step: Step): boolean {
   if (step.cancelled) return true
-  return /you cancelled|cancelled this task/i.test(step.error || '')
+  return /you cancelled|cancelled this task|stopped by user/i.test(step.error || '')
 }
 
 /*
@@ -117,11 +117,27 @@ function mapStatus(step: Step): TimelineStep['status'] {
 export function StepList({ steps }: StepListProps): JSX.Element {
   const timeline: TimelineStep[] = steps.map((step) => ({
     id: step.id,
-    label: isCancelled(step)
-      ? step.label || 'Cancelled.'
-      : getStepPhrase(step.tool, step.args, step.status, step.label),
+    label: tidyLabel(
+      isCancelled(step)
+        ? step.label || 'Cancelled'
+        : getStepPhrase(step.tool, step.args, step.status, step.label)
+    ),
     status: mapStatus(step),
-    substeps: step.substeps,
+    tool: step.tool,
+    // A to-do left mid-way is not still running once its step has ended:
+    // stopped by the user it is left blank, failed it is marked.
+    substeps: step.substeps?.map((sub) =>
+      (sub.status === 'active' || sub.status === 'waiting') &&
+      (step.status === 'failed' || isCancelled(step))
+        ? {
+            ...sub,
+            status:
+              /stopped by user/i.test(step.error || '') || isCancelled(step)
+                ? 'cancelled'
+                : 'failed'
+          }
+        : sub
+    ),
     activity: step.activity
   }))
 
@@ -129,5 +145,14 @@ export function StepList({ steps }: StepListProps): JSX.Element {
     <div className="step-block">
       <StepTimeline steps={timeline} />
     </div>
+  )
+}
+
+/** "Opened chrome." -> "Opened Chrome": a row is a name, not a sentence. */
+function tidyLabel(label: string): string {
+  const trimmed = label.trim().replace(/\.$/, '')
+  return trimmed.replace(
+    /\b(Opened|Opening|Open) ([a-z])/,
+    (_m, verb, first) => `${verb} ${first.toUpperCase()}`
   )
 }

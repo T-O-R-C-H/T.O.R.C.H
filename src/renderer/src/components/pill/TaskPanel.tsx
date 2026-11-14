@@ -197,14 +197,23 @@ export function TaskPanel(): JSX.Element | null {
 
   return (
     <div ref={rootRef} className="dock" data-tone={tone}>
-      <div className="dock__glow" aria-hidden="true" />
+      <div className="dock__progress" aria-hidden="true" />
       <header className="dock__head drag-region">
-        <TorchLogo width={58} />
-        <span className="dock__status">
-          <span className="dock__dot" aria-hidden="true" />
-          {statusText[tone]}
-        </span>
-        <span className="dock__elapsed">{elapsedLabel(startedAt)}</span>
+        <span className="dock__state" aria-hidden="true" />
+        <div className="dock__titles">
+          <span className="dock__title">
+            {request?.content
+              ? request.content.charAt(0).toUpperCase() + request.content.slice(1)
+              : 'TORCH'}
+          </span>
+          <span className="dock__subtitle">
+            <TorchLogo width={38} />
+            <span className="dock__sep">·</span>
+            {statusText[tone]}
+            <span className="dock__sep">·</span>
+            {elapsedLabel(startedAt)}
+          </span>
+        </div>
         <button
           type="button"
           className="dock__icon-button no-drag"
@@ -242,15 +251,15 @@ export function TaskPanel(): JSX.Element | null {
         </button>
       </header>
 
-      {request?.content && <p className="dock__request">{request.content}</p>}
-
       <div className="dock__body no-drag">
         {waitingStep && plan && <ApprovalBlock message={plan} step={waitingStep} />}
         <AttentionCard compact />
         <QuestionBlock />
         {steps.length > 0 && <StepList steps={steps} />}
         {!running && closing?.content && (
-          <RichText className={'dock__result dock__result--' + tone} text={closing.content} />
+          <div className={'dock__result dock__result--' + tone}>
+            <RichText text={closing.content} />
+          </div>
         )}
       </div>
 

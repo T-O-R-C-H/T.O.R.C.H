@@ -7,93 +7,136 @@ export interface TimelineStep {
   id: string
   label: string
   status: TimelineStatus
+  /** Which kind of action this is, for its icon. */
+  tool?: string
   /** TORCH's own to-do list while it works on the screen. */
   substeps?: { label: string; status: TimelineStatus }[]
   /** What it is doing this second; shown only while the step runs. */
   activity?: string
 }
 
-function StatusIcon({ status }: { status: TimelineStatus }): JSX.Element {
-  if (status === 'active') {
+/*
+ * A run of work, drawn as a quiet list of action rows: an icon for the kind
+ * of action, what it was, and a small status mark at the end. Colour is kept
+ * for the marks; the rows themselves stay neutral, so one failed step does not
+ * paint a whole sentence red.
+ */
+
+const ICONS: Record<string, string> = {
+  app: 'M3 4.5h10v7H3zM3 6.5h10',
+  cursor: 'M4 2.5 12.5 9 8.6 9.7 10.6 13.6 8.8 14.4 6.9 10.5 4 13Z',
+  file: 'M4.5 2h4.8L12 4.7V14H4.5zM9.2 2v2.8H12',
+  folder: 'M2.5 4.5h4l1.2 1.4h5.8v6.6h-11z',
+  globe:
+    'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2.6 8h10.8M8 2.6c1.7 1.6 2.5 3.4 2.5 5.4S9.7 11.8 8 13.4M8 2.6C6.3 4.2 5.5 6 5.5 8s.8 3.8 2.5 5.4',
+  mail: 'M2.5 4h11v8h-11zM2.8 4.4 8 8.6l5.2-4.2',
+  terminal: 'M2.5 3.5h11v9h-11zM5 6.5 7 8 5 9.5M8.5 10h2.5',
+  eye: 'M1.8 8S4 4 8 4s6.2 4 6.2 4-2.2 4-6.2 4S1.8 8 1.8 8ZM8 6.4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2Z',
+  dot: 'M8 6.6a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'
+}
+
+function iconFor(tool?: string): string {
+  if (!tool) return ICONS.dot
+  if (tool === 'open_app') return ICONS.app
+  if (tool === 'vision_control' || tool.startsWith('click') || tool.startsWith('type'))
+    return ICONS.cursor
+  if (/file|read_(pdf|word|excel)|list_directory/.test(tool)) return ICONS.file
+  if (/folder|zip|move/.test(tool)) return ICONS.folder
+  if (/web|browser|download/.test(tool)) return ICONS.globe
+  if (/mail|inbox|message|social/.test(tool)) return ICONS.mail
+  if (tool === 'run_terminal') return ICONS.terminal
+  if (/screen|screenshot/.test(tool)) return ICONS.eye
+  return ICONS.dot
+}
+
+function ToolIcon({ tool }: { tool?: string }): JSX.Element {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d={iconFor(tool)}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function Mark({ status }: { status: TimelineStatus }): JSX.Element | null {
+  if (status === 'active') return <span className={styles.spinner} aria-label="Working" />
+  if (status === 'done')
     return (
-      <svg className={styles.spin} viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-        <circle
-          cx="8"
-          cy="8"
-          r="6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          opacity="0.2"
-        />
-        <path
-          d="M14 8a6 6 0 0 0-6-6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-    )
-  }
-  if (status === 'done') {
-    return (
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <svg className={styles.markDone} viewBox="0 0 16 16" width="13" height="13" aria-label="Done">
         <path
           d="m3.5 8.4 2.9 2.9 6.1-6.6"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.7"
+          strokeWidth="1.6"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
       </svg>
     )
-  }
-  if (status === 'failed') {
+  if (status === 'failed')
     return (
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <svg
+        className={styles.markFailed}
+        viewBox="0 0 16 16"
+        width="12"
+        height="12"
+        aria-label="Did not finish"
+      >
         <path
           d="m4.5 4.5 7 7m0-7-7 7"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.7"
+          strokeWidth="1.6"
           strokeLinecap="round"
         />
       </svg>
     )
-  }
-  if (status === 'waiting') {
+  if (status === 'waiting') return <span className={styles.markWaiting}>Waiting for you</span>
+  if (status === 'cancelled') return <span className={styles.markMuted}>Stopped</span>
+  return null
+}
+
+/** One line of the to-do list: a round box, ticked and struck through when done. */
+function TodoBox({ status }: { status: TimelineStatus }): JSX.Element {
+  if (status === 'done')
     return (
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-        <path
-          d="M6 4.5v7m4-7v7"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
+      <span className={styles.boxDone} aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="9" height="9">
+          <path
+            d="m3.5 8.4 2.9 2.9 6.1-6.6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
     )
-  }
-  if (status === 'cancelled') {
+  if (status === 'active') return <span className={styles.boxActive} aria-hidden="true" />
+  if (status === 'failed')
     return (
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-        <path
-          d="M4.5 8h7"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-        />
-      </svg>
+      <span className={styles.boxFailed} aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="8" height="8">
+          <path
+            d="m4.5 4.5 7 7m0-7-7 7"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </span>
     )
-  }
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.55" />
-    </svg>
-  )
+  if (status === 'waiting') return <span className={styles.boxWaiting} aria-hidden="true" />
+  if (status === 'cancelled') return <span className={styles.boxStopped} aria-hidden="true" />
+  return <span className={styles.box} aria-hidden="true" />
 }
 
 function formatDuration(ms: number): string {
@@ -129,37 +172,21 @@ function useRunDuration(running: boolean): number | null {
 }
 
 function headline(steps: TimelineStep[], running: boolean, duration: number | null): string {
-  const total = steps.length
-  const done = steps.filter((s) => s.status === 'done').length
-  const noun = total === 1 ? 'step' : 'steps'
-
-  if (steps.some((s) => s.status === 'waiting')) return 'Waiting for your approval'
-  if (running) {
-    const active = steps.find((s) => s.status === 'active')
-    const subs = active?.substeps ?? []
-    if (subs.some((sub) => sub.status === 'waiting')) return 'Waiting for you'
-    if (total === 1 && subs.length > 0) {
-      const subDone = subs.filter((sub) => sub.status === 'done').length
-      return `Working · ${Math.min(subDone + 1, subs.length)} of ${subs.length}`
-    }
-    return `Working · step ${Math.min(done + 1, total)} of ${total}`
+  const took = duration === null ? '' : ` for ${formatDuration(duration)}`
+  const waitingOnUser =
+    steps.some((s) => s.status === 'waiting') ||
+    steps.some((s) => s.substeps?.some((sub) => sub.status === 'waiting'))
+  if (waitingOnUser) return 'Waiting for you'
+  if (running) return 'Working'
+  if (steps.some((s) => s.status === 'failed')) {
+    return duration === null ? 'Stopped' : `Stopped after ${formatDuration(duration)}`
   }
-  if (steps.some((s) => s.status === 'failed')) return `Stopped after ${done} of ${total} ${noun}`
-  if (steps.some((s) => s.status === 'cancelled')) return 'Cancelled'
-  return duration === null
-    ? `Finished ${total} ${noun}`
-    : `Finished ${total} ${noun} in ${formatDuration(duration)}`
+  if (steps.some((s) => s.status === 'cancelled')) {
+    return duration === null ? 'Stopped' : `Stopped after ${formatDuration(duration)}`
+  }
+  return `Worked${took}`
 }
 
-/**
- * The list of things TORCH did for one request.
- *
- * It replaces two stacked blocks: an "Agenda" checklist, and above it a
- * "Reasoned for Ns" panel whose sentences were templated from the same steps
- * ("Done - Found your file."). The second was the first one restated and
- * labelled as thought, so it is gone; the time it reported now sits in this
- * header, where it is described as what it is - how long the work took.
- */
 export function StepTimeline({ steps }: { steps: TimelineStep[] }): JSX.Element {
   const running = steps.some((s) => s.status === 'active' || s.status === 'pending')
   const waiting = steps.some((s) => s.status === 'waiting')
@@ -176,18 +203,15 @@ export function StepTimeline({ steps }: { steps: TimelineStep[] }): JSX.Element 
         aria-expanded={open}
         onClick={() => setUserOpen(!open)}
       >
-        <span className={styles.headLabel + (running && !waiting ? ' ' + styles.shimmer : '')}>
-          {headline(steps, running, duration)}
-        </span>
         <svg
           className={styles.chevron}
           viewBox="0 0 16 16"
-          width="12"
-          height="12"
+          width="11"
+          height="11"
           aria-hidden="true"
         >
           <path
-            d="m4 6 4 4 4-4"
+            d="m6 4 4 4-4 4"
             fill="none"
             stroke="currentColor"
             strokeWidth="1.6"
@@ -195,56 +219,70 @@ export function StepTimeline({ steps }: { steps: TimelineStep[] }): JSX.Element 
             strokeLinejoin="round"
           />
         </svg>
+        <span className={running && !waiting ? styles.shimmer : undefined}>
+          {headline(steps, running, duration)}
+        </span>
       </button>
 
       <div className={styles.collapsible + (open ? '' : ' ' + styles.collapsed)}>
         <ol className={styles.list}>
-          {steps.map((step, i) => (
-            <li
-              key={step.id}
-              className={styles.item}
-              data-status={step.status}
-              style={{ ['--i' as string]: i }}
-            >
-              <span className={styles.icon}>
-                <StatusIcon status={step.status} />
-              </span>
-              <div className={styles.body}>
-                <span
-                  className={
-                    styles.label +
-                    (step.status === 'active' && !step.substeps?.length ? ' ' + styles.shimmer : '')
-                  }
-                >
-                  {step.label}
-                </span>
-                {step.substeps && step.substeps.length > 0 && (
-                  <ol className={styles.sublist}>
-                    {step.substeps.map((sub, j) => (
-                      <li
-                        key={`${j}-${sub.label}`}
-                        className={styles.subitem}
-                        data-status={sub.status}
-                        style={{ ['--i' as string]: j }}
-                      >
-                        <span className={styles.subicon}>
-                          <StatusIcon status={sub.status} />
-                        </span>
-                        <span className={sub.status === 'active' ? styles.shimmer : undefined}>
-                          {sub.label}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                {step.status === 'active' && step.activity && (
-                  <span key={step.activity} className={styles.activity}>
-                    {step.activity}
+          {steps.map((step, i) => {
+            const subs = step.substeps ?? []
+            const subsDone = subs.filter((sub) => sub.status === 'done').length
+            return (
+              <li
+                key={step.id}
+                className={styles.item}
+                data-status={step.status}
+                style={{ ['--i' as string]: i }}
+              >
+                <div className={styles.row}>
+                  <span className={styles.icon}>
+                    <ToolIcon tool={step.tool} />
                   </span>
+                  <span className={styles.label}>{step.label}</span>
+                  <span className={styles.mark}>
+                    <Mark status={step.status} />
+                  </span>
+                </div>
+
+                {subs.length > 0 && (
+                  <div className={styles.todos}>
+                    <div className={styles.todosHead}>
+                      <span>To-dos</span>
+                      <span className={styles.todosCount}>
+                        {subsDone} of {subs.length}
+                      </span>
+                    </div>
+                    <ol className={styles.todoList}>
+                      {subs.map((sub, j) => (
+                        <li
+                          key={`${j}-${sub.label}`}
+                          className={styles.todo}
+                          data-status={sub.status}
+                          style={{ ['--i' as string]: j }}
+                        >
+                          <TodoBox status={sub.status} />
+                          <span className={sub.status === 'active' ? styles.shimmer : undefined}>
+                            {sub.label}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 )}
-              </div>
-            </li>
-          ))}
+
+                {step.status === 'active' && step.activity && (
+                  <div key={step.activity} className={styles.activity}>
+                    <span className={styles.activityCaret} aria-hidden="true">
+                      ›
+                    </span>
+                    {step.activity}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ol>
       </div>
     </div>

@@ -985,3 +985,27 @@ textarea:focus {
     animation: none;
   }
 }
+
+/* ---- A task that did not finish: a quiet note, not an alarm ---- */
+.chat-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-well);
+  animation: rich-item-in var(--dur-base) var(--ease-out);
+}
+.chat-note__icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--color-torch-error);
+}
+.chat-note__body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}

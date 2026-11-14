@@ -1647,10 +1647,11 @@ async def process_command(
         # and a failure in one breath.
         if len(validated_steps) == 1 and validated_steps[0].get("tool") == "error":
             natural_response = step_labels[0]
-        elif len(step_labels) > 1:
-            natural_response = "Here's my plan."
         else:
-            natural_response = f"On it. {step_labels[0]}."
+            # No preamble: the step list itself shows what TORCH is doing.
+            # "Here's my plan." / "On it. ..." only restated the first row
+            # and left a gap above the work.
+            natural_response = ""
         
         response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
@@ -1730,7 +1731,13 @@ async def process_command(
                 # when they are the one who stopped it.
                 recap_sentence = "Cancelled — nothing was sent."
             elif first_error:
-                recap_sentence = f"I couldn't finish that. {first_error}"
+                # The step's own message usually says it already ("I stopped
+                # at ..."); prefixing it again read as two apologies.
+                recap_sentence = (
+                    first_error
+                    if re.match(r"^(I stopped|I couldn't|I could not|I can't|I waited)", first_error)
+                    else f"I couldn't finish that. {first_error}"
+                )
             else:
                 failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
                 recap_sentence = (
