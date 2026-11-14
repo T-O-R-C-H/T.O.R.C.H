@@ -525,6 +525,13 @@ function completeVisionControl(): void {
  * Acting: a click aimed at the app would land on TORCH's window instead, so
  * the window steps aside while TORCH is driving and comes back afterwards.
  */
+/**
+ * Developer switch for recording demos: TORCH_ALLOW_CAPTURE=1 lets screen
+ * recorders see TORCH's overlay windows. Off by default, because those
+ * windows are hidden from capture so TORCH's own screenshots never show the
+ * AI its own panel or cursor.
+ */
+const ALLOW_CAPTURE = process.env['TORCH_ALLOW_CAPTURE'] === '1'
 let mainSteppedAside = false
 /** True while a task is running, from the status events TORCH publishes. */
 let taskActive = false
@@ -647,7 +654,7 @@ function createControlBorderWindow(): void {
     }
   })
   registerControlBorderDisplayListeners()
-  controlBorderWindow.setContentProtection(true)
+  controlBorderWindow.setContentProtection(!ALLOW_CAPTURE)
   controlBorderWindow.setIgnoreMouseEvents(true, { forward: true })
   controlBorderWindow.setAlwaysOnTop(true, 'screen-saver')
   controlBorderWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -960,7 +967,7 @@ function createTaskPanelWindow(): void {
     }
   })
 
-  taskPanelWindow.setContentProtection(true)
+  taskPanelWindow.setContentProtection(!ALLOW_CAPTURE)
   taskPanelWindow.setAlwaysOnTop(true, 'screen-saver')
   taskPanelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
@@ -1042,7 +1049,7 @@ function createGuidanceWindow(): void {
       backgroundThrottling: false
     }
   })
-  guidanceWindow.setContentProtection(true)
+  guidanceWindow.setContentProtection(!ALLOW_CAPTURE)
   guidanceWindow.setIgnoreMouseEvents(true, { forward: true })
   guidanceWindow.setAlwaysOnTop(true, 'screen-saver')
   guidanceWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })

@@ -419,6 +419,18 @@ def _chrome_profile_chooser_visible() -> bool:
         return False
 
 
+def _front_window_title() -> str:
+    """Title of the window in front, for the log (never the screen itself)."""
+    if sys.platform != "win32":
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(120)
+        ctypes.windll.user32.GetWindowTextW(ctypes.windll.user32.GetForegroundWindow(), buf, 120)
+        return buf.value
+    except Exception:
+        return ""
+
+
 def _chrome_profile_chooser_in_front() -> bool:
     """True when the profile chooser is the window the user is looking at."""
     if sys.platform != "win32":
@@ -2011,9 +2023,10 @@ async def vision_loop(
 
             kind, reason = action.get("action", ""), action.get("reason", "")
             logger.info(
-                "Vision timing: controls list %.2fs, model %.2fs",
+                "Vision timing: controls list %.2fs, model %.2fs; front window %r",
                 hint_seconds,
                 asyncio.get_running_loop().time() - model_started,
+                _front_window_title(),
             )
             progress_note = action.get("progress") or progress_note
             if action.get("plan"):
