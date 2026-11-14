@@ -49,6 +49,14 @@ def screenshot() -> str:
     return base64.b64encode(png_bytes).decode("utf-8")
 
 
+def _sized_screenshot() -> str:
+    """The screen as base64 PNG, scaled the way screen control scales it."""
+    from tools.vision_control import ScreenFrame, take_screenshot
+
+    frame = take_screenshot()
+    return frame.image if isinstance(frame, ScreenFrame) else str(frame)
+
+
 async def analyse_screen() -> str:
     """Take a screenshot and describe it using the user's AI service."""
     import asyncio
@@ -65,7 +73,7 @@ async def analyse_screen() -> str:
         ),
         "Say which app is open, what is on screen, and anything that looks important. "
         "Three short sentences at most.",
-        [screenshot()],
+        [await asyncio.to_thread(_sized_screenshot)],
     )
     cleaned = text.strip()
     if cleaned.startswith("```"):

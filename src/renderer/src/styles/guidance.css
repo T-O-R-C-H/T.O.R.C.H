@@ -1,0 +1,156 @@
+/*
+ * The pointer TORCH draws on the real screen, over other apps.
+ *
+ * It is a ring around the thing being pointed at, plus a small bubble holding
+ * what TORCH said. The window is full-desktop, transparent and click-through,
+ * so everything here must stay small and must never swallow the pointer.
+ *
+ * These rules were deleted along with the old floating overlay, which left the
+ * component unstyled: its arrow, having no size, filled the whole screen.
+ */
+
+.guidance-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* A zero-size anchor placed exactly on the target; children centre on it. */
+.guidance-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.guidance-target__ring {
+  position: absolute;
+  left: -26px;
+  top: -26px;
+  width: 52px;
+  height: 52px;
+  border: 3px solid var(--brand);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px var(--color-torch-accent-fg),
+    var(--shadow-pop);
+  animation: guidance-pulse 1.8s var(--ease-out) infinite;
+}
+
+.guidance-target__ring--delay {
+  animation-delay: 0.9s;
+}
+
+.guidance-marker__dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 2px var(--color-torch-accent-fg);
+}
+
+/* A zero-size anchor on the target; the bubble and the label hang off it. */
+.guidance-companion {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 1;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.guidance-companion[data-leaving='true'] {
+  opacity: 0;
+}
+
+.guidance-companion__speech,
+.guidance-companion__target {
+  position: absolute;
+  left: 38px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 320px;
+  font-family: var(--font-sans);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop);
+}
+
+.guidance-companion__speech {
+  top: 18px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.guidance-companion__target {
+  bottom: 14px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--brand);
+  border-color: transparent;
+  color: var(--color-torch-accent-fg);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Near the right or bottom edge the bubble opens the other way. */
+.guidance-companion[data-flip-x='true'] .guidance-companion__speech,
+.guidance-companion[data-flip-x='true'] .guidance-companion__target {
+  left: auto;
+  right: 38px;
+}
+
+.guidance-companion[data-flip-y='true'] .guidance-companion__speech {
+  top: auto;
+  bottom: 44px;
+}
+
+.guidance-companion[data-flip-y='true'] .guidance-companion__target {
+  bottom: 14px;
+}
+
+.guidance-companion__caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--brand);
+  animation: guidance-caret 0.7s steps(1) infinite;
+}
+
+@keyframes guidance-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes guidance-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guidance-target__ring {
+    animation: none;
+  }
+  .guidance-target__ring--delay {
+    display: none;
+  }
+}

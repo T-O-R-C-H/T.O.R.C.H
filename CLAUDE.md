@@ -207,6 +207,29 @@ straight after such an answer runs that one step through `vision_control`.
 Not built yet: TORCH noticing by itself that the user followed a pointed-at
 step, and a visible Action / Thought panel.
 
+Rules learned from driving the real app (Nov 2026) - keep them:
+
+- **On-screen tasks go through the look-then-act loop.** `_prefer_sight` in
+  `main.py` replaces a blind click-by-name plan with one `vision_control` step
+  when the user allows looking at the screen. A blind plan typed onto a
+  calculator that already showed a 9 and reported nothing.
+- **The vision loop is handed exact control positions.** `_named_controls_hint`
+  lists the front window's named controls in screenshot pixels. Aiming by eye
+  alone hit the wrong calculator key about half the time.
+- **The pointer snaps to the real control** (`snap_to_named_control`) when
+  Windows can name it; otherwise the model's own point is used.
+- **A reply can never claim work.** `_is_unbacked_claim` catches a plan that is
+  only "Done - ..." for an instruction, re-plans once, then says honestly that
+  nothing was done. The planner once answered "9 x 7 = 63, showing on your
+  screen" having done nothing.
+- **TORCH's window gets out of its own way** (`src/main/index.ts`): hidden from
+  capture during a screenshot, minimised while TORCH is driving, minimised
+  with the pill shown when a pointer target lies underneath it.
+- **A Chrome profile chooser only matters to browser tasks** or when it is the
+  front window; it used to interrupt every task.
+- `styles/guidance.css` styles the pointer. Those rules were once deleted with
+  the old overlay, which left a screen-sized black arrow.
+
 When vision control starts: emit `vision_control_start` WS message → frontend shows blue border window
 When vision control ends: emit `vision_control_end` WS message → frontend hides blue border window
 

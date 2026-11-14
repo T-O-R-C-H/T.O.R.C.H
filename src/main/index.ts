@@ -512,6 +512,48 @@ function getProjectRoot(): string {
 
 function completeVisionControl(): void {
   hideControlBorder()
+  restoreMainAfterControl()
+}
+
+/**
+ * TORCH's main window usually sits on top of the app the user is asking
+ * about. Two things follow, and both are handled here.
+ *
+ * Looking: for the instant of a screenshot the window is excluded from
+ * capture, so TORCH sees the app underneath instead of its own chat.
+ *
+ * Acting: a click aimed at the app would land on TORCH's window instead, so
+ * the window steps aside while TORCH is driving and comes back afterwards.
+ */
+let mainSteppedAside = false
+/** True from the moment TORCH starts driving until it stops or hands off. */
+let torchIsDriving = false
+
+function setMainHiddenFromCapture(hidden: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.setContentProtection(hidden)
+}
+
+function stepMainAside(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return
+  mainSteppedAside = true
+  mainWindow.minimize()
+}
+
+function restoreMainAfterControl(): void {
+  if (!mainSteppedAside) return
+  mainSteppedAside = false
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.restore()
+}
+
+/** True when a point on screen (scaled pixels) is under the main window. */
+function mainWindowCovers(point: { x: number; y: number }): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return false
+  const b = mainWindow.getBounds()
+  return point.x >= b.x && point.x <= b.x + b.width && point.y >= b.y && point.y <= b.y + b.height
 }
 
 /**
@@ -595,6 +637,7 @@ function createControlBorderWindow(): void {
     }
   })
   registerControlBorderDisplayListeners()
+  controlBorderWindow.setContentProtection(true)
   controlBorderWindow.setIgnoreMouseEvents(true, { forward: true })
   controlBorderWindow.setAlwaysOnTop(true, 'screen-saver')
   controlBorderWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -971,6 +1014,7 @@ function createGuidanceWindow(): void {
       backgroundThrottling: false
     }
   })
+  guidanceWindow.setContentProtection(true)
   guidanceWindow.setIgnoreMouseEvents(true, { forward: true })
   guidanceWindow.setAlwaysOnTop(true, 'screen-saver')
   guidanceWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -1202,6 +1246,13 @@ app.whenReady().then(() => {
     if (guidance.space === 'physical' && process.platform === 'win32') {
       target = screen.screenToDipPoint({ x: Math.round(target.x), y: Math.round(target.y) })
     }
+    // Pointing at something hidden behind TORCH's own window helps nobody:
+    // step aside so the user can see what is being pointed at. The pointer
+    // carries the words, and the pill takes "do it for me".
+    if (mainWindowCovers(target)) {
+      mainWindow?.minimize()
+      showPill()
+    }
     guidanceWindow?.showInactive()
     guidanceWindow?.webContents.send('guidance:update', {
       ...guidance,
@@ -1243,6 +1294,9 @@ app.whenReady().then(() => {
       'status',
       'vision_control_start',
       'vision_control_end',
+      'vision_control_pause',
+      'vision_control_resume',
+      'attention_needed',
       'uia_control_start',
       'uia_control_end',
       'vision_capture_start',
@@ -1258,6 +1312,24 @@ app.whenReady().then(() => {
       'undo_result'
     ])
     if (typeof eventType !== 'string' || !relayedEventTypes.has(eventType)) return
+
+    {
+      if (eventType === 'vision_control_start' || eventType === 'vision_control_resume') {
+        torchIsDriving = true
+        stepMainAside()
+      }
+      if (eventType === 'vision_control_end' || eventType === 'vision_control_pause') {
+        torchIsDriving = false
+      }
+      if (eventType === 'vision_capture_start') {
+        // The user may have brought TORCH back mid-task. It is hidden from
+        // the screenshot, so the next click would be aimed at the app behind
+        // it and land on TORCH instead. Step aside again before each look.
+        if (torchIsDriving) stepMainAside()
+        setMainHiddenFromCapture(true)
+      }
+      if (eventType === 'vision_capture_end') setMainHiddenFromCapture(false)
+    }
 
     for (const target of [mainWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {

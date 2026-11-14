@@ -351,6 +351,9 @@ class Executor:
                 )
 
                 result_str = str(result) if result is not None else "Done"
+                if tool_name == "vision_control":
+                    # "Done: " is the loop's own marker, not something to show the user.
+                    result_str = result_str.removeprefix("Done:").strip() or "Done"
                 result_recorded = False
 
                 if tool_name == "find_file" and result_str.startswith("No files matching"):

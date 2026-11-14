@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion, useAnimation } from 'framer-motion'
-import { TorchLogo } from '../ui/TorchLogo'
+import { AnimatePresence, motion } from 'framer-motion'
 
 type Guidance = {
   type: 'point' | 'none'
@@ -12,16 +11,15 @@ type Guidance = {
   transcript?: string
 }
 
-type MotionPhase = 'travelling' | 'pointing' | 'returning'
+type MotionPhase = 'pointing' | 'returning'
 
 const wait = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
 export function GuidanceOverlay(): JSX.Element {
   const [guidance, setGuidance] = useState<Guidance | null>(null)
-  const [phase, setPhase] = useState<MotionPhase>('travelling')
+  const [phase, setPhase] = useState<MotionPhase>('pointing')
   const [spokenWords, setSpokenWords] = useState(0)
-  const companionControls = useAnimation()
   const sequenceId = useRef(0)
 
   useEffect(() => {
@@ -32,37 +30,17 @@ export function GuidanceOverlay(): JSX.Element {
         return
       }
 
-      const homeX = next.homeX ?? 72
-      const homeY = next.homeY ?? window.innerHeight - 72
-      const targetX = next.x ?? homeX
-      const targetY = next.y ?? homeY
       setGuidance(next)
       setSpokenWords(0)
-      setPhase('travelling')
-      companionControls.set({ x: homeX, y: homeY, opacity: 0, scale: 0.72, rotate: -10 })
-      await companionControls.start({
-        x: targetX,
-        y: targetY,
-        opacity: 1,
-        scale: 1,
-        rotate: 0,
-        transition: { type: 'spring', stiffness: 115, damping: 17, mass: 0.82 }
-      })
-      if (sequenceId.current !== currentSequence) return
-
       setPhase('pointing')
-      await wait(4200)
+      // Long enough to read what TORCH said: about three words a second,
+      // never shorter than a glance and never so long it gets in the way.
+      const wordCount = next.transcript?.split(/\s+/).filter(Boolean).length ?? 0
+      await wait(Math.min(14000, Math.max(4200, wordCount * 350 + 1500)))
       if (sequenceId.current !== currentSequence) return
 
       setPhase('returning')
-      await companionControls.start({
-        x: homeX,
-        y: homeY,
-        scale: 0.78,
-        opacity: 0.2,
-        rotate: 8,
-        transition: { type: 'spring', stiffness: 105, damping: 18, mass: 0.9 }
-      })
+      await wait(160)
       if (sequenceId.current !== currentSequence) return
       setGuidance(null)
       window.torchAPI?.hideGuidance()
@@ -73,7 +51,7 @@ export function GuidanceOverlay(): JSX.Element {
       sequenceId.current += 1
       window.torchAPI?.removeGuidance()
     }
-  }, [companionControls])
+  }, [])
 
   useEffect(() => {
     const words = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
@@ -94,19 +72,10 @@ export function GuidanceOverlay(): JSX.Element {
   }, [guidance?.transcript])
 
   const transcriptWords = guidance?.transcript?.split(/\s+/).filter(Boolean) ?? []
-  const pointerAngle = guidance
-    ? (Math.atan2(
-        (guidance.y ?? 0) - (guidance.homeY ?? 0),
-        (guidance.x ?? 0) - (guidance.homeX ?? 0)
-      ) *
-        180) /
-      Math.PI
-    : 0
-
   return (
     <div className="guidance-stage">
       <AnimatePresence>
-        {guidance?.type === 'point' && phase === 'pointing' && (
+        {guidance?.type === 'point' && phase !== 'returning' && (
           <motion.div
             className="guidance-marker"
             style={{ left: guidance.x, top: guidance.y }}
@@ -117,22 +86,18 @@ export function GuidanceOverlay(): JSX.Element {
             <span className="guidance-target__ring" />
             <span className="guidance-target__ring guidance-target__ring--delay" />
             <span className="guidance-marker__dot" />
-            <motion.svg
-              className="guidance-cursor"
-              viewBox="0 0 34 42"
-              style={{ rotate: pointerAngle + 35 }}
-              initial={{ opacity: 0, scale: 0.5, x: -18, y: -18 }}
-              animate={{ opacity: 1, scale: 1, x: -10, y: -10 }}
-            >
-              <path d="M3 2.5 29 22l-12 2.2 6.8 12.1-6.2 3.2-6.5-12.3L3 36Z" />
-            </motion.svg>
           </motion.div>
         )}
       </AnimatePresence>
 
       {guidance?.type === 'point' && (
-        <motion.div className="guidance-companion" animate={companionControls}>
-          <TorchLogo tone="light" width={96} animate />
+        <div
+          className="guidance-companion"
+          data-leaving={phase === 'returning'}
+          style={{ left: guidance.x, top: guidance.y }}
+          data-flip-x={(guidance.x ?? 0) > window.innerWidth - 380}
+          data-flip-y={(guidance.y ?? 0) > window.innerHeight - 200}
+        >
           <AnimatePresence>
             {transcriptWords.length > 0 && phase !== 'returning' && (
               <motion.span
@@ -146,10 +111,10 @@ export function GuidanceOverlay(): JSX.Element {
               </motion.span>
             )}
           </AnimatePresence>
-          {phase === 'pointing' && (
+          {phase !== 'returning' && (
             <span className="guidance-companion__target">{guidance.label || 'Look here'}</span>
           )}
-        </motion.div>
+        </div>
       )}
     </div>
   )

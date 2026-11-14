@@ -318,6 +318,16 @@ export function useWebSocket(): {
           window.torchAPI?.showControlBorder()
           break
         }
+        case 'vision_control_pause': {
+          // TORCH handed a step to the user and is waiting. The border means
+          // "TORCH is driving", so it comes down, but the task is not over.
+          window.torchAPI?.hideControlBorder()
+          break
+        }
+        case 'vision_control_resume': {
+          window.torchAPI?.showControlBorder()
+          break
+        }
         case 'vision_control_end':
         case 'uia_control_end': {
           window.torchAPI?.completeVisionControl()

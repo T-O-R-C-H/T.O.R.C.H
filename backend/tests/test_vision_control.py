@@ -42,6 +42,9 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         settle_patch = patch.object(vc, "CAPTURE_OVERLAY_SETTLE_SECONDS", 0)
         settle_patch.start()
         self.addCleanup(settle_patch.stop)
+        start_patch = patch.object(vc, "CONTROL_START_SETTLE_SECONDS", 0)
+        start_patch.start()
+        self.addCleanup(start_patch.stop)
         browser_chooser_patch = patch.object(vc, "BROWSER_CHOOSER_SETTLE_SECONDS", 0)
         browser_chooser_patch.start()
         self.addCleanup(browser_chooser_patch.stop)
@@ -239,6 +242,69 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("waited", str(raised.exception))
         self.assertEqual(send.await_args_list[-1].args[0]["type"], "vision_control_end")
 
+    async def test_a_profile_chooser_in_the_background_does_not_interrupt_other_tasks(self):
+        requests = []
+
+        def chat(**kwargs):
+            requests.append(kwargs)
+            return {"message": {"content": json.dumps({"action": "done", "reason": "63"})}}
+
+        frame = vc.ScreenFrame(
+            image="image",
+            capture_bounds=(0, 0, 1920, 1080),
+            model_size=(1280, 720),
+            monitor_bounds=((0, 0, 1920, 1080),),
+        )
+        with (
+            patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
+            patch.object(vc, "take_screenshot", return_value=frame),
+            patch.object(vc, "_named_controls_hint", return_value=""),
+            patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
+            patch.object(vc, "_chrome_profile_chooser_in_front", return_value=False),
+            patch.object(vc.ws_manager, "send_message", new=AsyncMock()),
+        ):
+            result = await vc.vision_loop("work out 9 times 7", max_steps=1, task_id="calc")
+
+        self.assertEqual(result, "Done: 63")
+        self.assertNotIn("ONLY permitted action is ask", requests[0]["messages"][1]["content"])
+
+    def test_named_controls_are_given_in_screenshot_pixels(self):
+        frame = vc.ScreenFrame(
+            image="image",
+            capture_bounds=(0, 0, 1920, 1080),
+            model_size=(1280, 720),
+            monitor_bounds=((0, 0, 1920, 1080),),
+        )
+        screen = {
+            "window": "Calculator",
+            "elements": [
+                {"name": "Nine", "type": "Button", "x": 300, "y": 600, "enabled": True},
+                {"name": "Off screen", "type": "Button", "x": 5000, "y": 10, "enabled": True},
+                {"name": "Greyed", "type": "Button", "x": 30, "y": 30, "enabled": False},
+            ],
+        }
+        from tools import uia_control
+
+        with (
+            patch.object(uia_control, "UIA_AVAILABLE", True),
+            patch.object(uia_control, "read_screen", return_value=screen),
+        ):
+            hint = vc._named_controls_hint(frame)
+            self.assertIn('"Nine" (Button) at 200,400', hint)
+            self.assertNotIn("Off screen", hint)
+            self.assertNotIn("Greyed", hint)
+        # TORCH never lists its own window, and an app that names nothing gives no list.
+        with (
+            patch.object(uia_control, "UIA_AVAILABLE", True),
+            patch.object(uia_control, "read_screen", return_value={**screen, "window": "TORCH - AI Agent"}),
+        ):
+            self.assertEqual(vc._named_controls_hint(frame), "")
+        with (
+            patch.object(uia_control, "UIA_AVAILABLE", True),
+            patch.object(uia_control, "read_screen", side_effect=RuntimeError("no window")),
+        ):
+            self.assertEqual(vc._named_controls_hint(frame), "")
+
     def test_handoff_needs_a_message_and_screens_are_compared_locally(self):
         with self.assertRaises(ValueError):
             vc._validate_action({"action": "handoff"})
@@ -331,7 +397,9 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
 
     def test_vision_control_has_plain_step_phrasing(self):
         self.assertIn("screen", get_plain_phrase("vision_control", {}, "active"))
-        self.assertIn("Completed", get_plain_phrase("vision_control", {}, "done"))
+        done = get_plain_phrase("vision_control", {}, "done")
+        self.assertIn("screen", done)
+        self.assertNotIn("vision", done.lower())
 
     def test_actions_map_screenshot_coordinates_to_virtual_desktop(self):
         with (
@@ -513,6 +581,7 @@ class VisionControlTests(unittest.IsolatedAsyncioTestCase):
             patch.object(vc, "ask_vision_sync", new=_as_model(types.SimpleNamespace(chat=chat))),
             patch.object(vc, "take_screenshot", return_value=frame),
             patch.object(vc, "_chrome_profile_chooser_visible", return_value=True),
+            patch.object(vc, "_chrome_profile_chooser_in_front", return_value=True),
             patch.object(vc.ws_manager, "send_message", new=AsyncMock()) as send,
             patch.object(vc.ws_manager, "send_status", new=AsyncMock()),
             patch.object(vc.ws_manager, "send_terminal_line", new=AsyncMock()),

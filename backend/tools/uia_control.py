@@ -19,10 +19,11 @@ their tree unless accessibility is enabled, so web content usually needs the
 browser tools or a vision fallback instead.
 """
 
+import re
 import logging
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Tuple, Any, Dict, List, Optional
 
 from errors.plain_language import UserFacingError
 
@@ -110,6 +111,68 @@ def _describe(control: Any) -> Optional[Dict[str, Any]]:
         }
     except Exception:
         # A control can disappear between enumeration and inspection.
+        return None
+
+
+# Words people add when naming a control that are not part of its real name:
+# TORCH says "the Edit menu", Windows calls it "Edit".
+_LABEL_NOISE = {
+    "the", "a", "an", "menu", "button", "icon", "tab", "option", "link",
+    "item", "box", "field", "toggle", "checkbox",
+}
+SNAP_SEARCH_SECONDS = 1.5
+SNAP_MAX_CONTROLS = 1500
+SNAP_MAX_DISTANCE = 600
+
+
+def _label_key(text: str) -> str:
+    words = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return " ".join(word for word in words if word not in _LABEL_NOISE)
+
+
+def snap_to_named_control(label: str, x: float, y: float) -> Optional[Tuple[int, int]]:
+    """Return the exact middle of the control called `label`, near (x, y).
+
+    A vision model's coordinates are a good guess; Windows knows the truth for
+    any app that describes itself (most native ones). When the window under
+    the guess holds exactly the control the model named, point at that. When
+    it does not - web pages and many modern apps describe little - return None
+    and the caller keeps the model's own point. Coordinates are screen pixels.
+    """
+    key = _label_key(label)
+    if not UIA_AVAILABLE or not key:
+        return None
+    import time
+
+    deadline = time.monotonic() + SNAP_SEARCH_SECONDS
+    try:
+        with _com_apartment():
+            under = auto.ControlFromPoint(int(x), int(y))
+            if under is None:
+                return None
+            window = under.GetTopLevelControl() or under
+            best: Optional[Tuple[float, int, int]] = None
+            seen = 0
+            for control, _depth in auto.WalkControl(window, maxDepth=12):
+                seen += 1
+                if seen > SNAP_MAX_CONTROLS or time.monotonic() > deadline:
+                    break
+                try:
+                    if _label_key(control.Name) != key:
+                        continue
+                    rect = control.BoundingRectangle
+                    if rect.right <= rect.left or rect.bottom <= rect.top:
+                        continue
+                    cx = (rect.left + rect.right) // 2
+                    cy = (rect.top + rect.bottom) // 2
+                except Exception:
+                    continue
+                distance = ((cx - x) ** 2 + (cy - y) ** 2) ** 0.5
+                if distance <= SNAP_MAX_DISTANCE and (best is None or distance < best[0]):
+                    best = (distance, cx, cy)
+            return (best[1], best[2]) if best else None
+    except Exception:
+        logger.debug("Could not snap the pointer to a named control", exc_info=True)
         return None
 
 

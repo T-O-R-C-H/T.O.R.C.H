@@ -34,8 +34,8 @@ def get_plain_phrase(tool_name: str, args: Dict[str, Any], status: str = "active
         "screenshot": ("Taking a picture of your screen...", "Took a picture of your screen."),
         "analyse_screen": ("Looking at the screen...", "Looked at the screen."),
         "vision_control": (
-            "Looking at the screen and carrying out your request...",
-            "Completed your request using vision control."
+            "Working on your screen...",
+            "Did it on your screen."
         ),
         "search_web": ("Searching the web...", "Searched the web."),
         "download_file": ("Downloading a file...", "Downloaded the file."),

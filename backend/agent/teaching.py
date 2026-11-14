@@ -161,5 +161,17 @@ async def look_and_teach(
     result = await answer_with_screen(command, screenshots, context)
     guidance = result.get("guidance") or {"type": "none"}
     if guidance.get("type") == "point":
+        # The model's point is a good guess. Where Windows can name the exact
+        # control, use its real middle instead.
+        from tools.uia_control import snap_to_named_control
+
+        exact = await asyncio.to_thread(
+            snap_to_named_control,
+            str(guidance.get("label") or ""),
+            float(guidance["x"]),
+            float(guidance["y"]),
+        )
+        if exact is not None:
+            guidance = {**guidance, "x": float(exact[0]), "y": float(exact[1])}
         guidance = {**guidance, "space": "physical"}
     return {"speech": result["speech"], "guidance": guidance}

@@ -268,3 +268,115 @@ def test_a_failed_look_says_so_and_is_not_remembered_as_a_lesson(pipeline, monke
     from agent.context import ConversationContext
 
     assert ConversationContext.get_context("teach-client") == []
+
+
+def test_an_empty_reply_is_asked_again_before_giving_up():
+    replies = iter(["", '{"ok": true}'])
+    with patch.dict(vision_model._PROVIDERS, {"deepseek": lambda *_a: next(replies)}):
+        assert (
+            vision_model.ask_vision_sync("s", "t", ["i"], providers=["deepseek"])
+            == '{"ok": true}'
+        )
+    calls = []
+
+    def always_empty(*_args):
+        calls.append(1)
+        return ""
+
+    with patch.dict(vision_model._PROVIDERS, {"deepseek": always_empty}):
+        with pytest.raises(vision_model.VisionUnavailable):
+            vision_model.ask_vision_sync("s", "t", ["i"], providers=["deepseek"])
+    assert len(calls) == 1 + vision_model.EMPTY_REPLY_RETRIES
+
+
+def test_a_failed_click_by_name_is_retried_by_looking(monkeypatch):
+    import main
+
+    monkeypatch.setattr(vision_model, "vision_providers", lambda: ["deepseek"])
+    steps = [
+        {"tool": "click_element", "label": "Clicked it.", "status": "done"},
+        {"tool": "click_element", "label": "Click 2", "status": "failed"},
+    ]
+    plan = main._plan_by_sight("work out 25 times 4\n\nConnection status: ...", steps)
+    assert plan is not None and plan[0]["tool"] == "vision_control"
+    assert plan[0]["args"]["task"].startswith("work out 25 times 4.")
+    assert "do not repeat" in plan[0]["args"]["task"]
+
+    # Not when the user has not allowed looking at the screen...
+    monkeypatch.setattr(settings, "allow_screen", False)
+    assert main._plan_by_sight("work out 25 times 4", steps) is None
+    monkeypatch.setattr(settings, "allow_screen", True)
+    # ...not for other kinds of failure...
+    assert main._plan_by_sight("send it", [{"tool": "send_email", "status": "failed"}]) is None
+    # ...and never when the plan held a step that needed approval.
+    risky = steps + [{"tool": "send_email", "status": "pending", "requires_approval": True}]
+    assert main._plan_by_sight("click and send", risky) is None
+
+
+def test_a_blind_click_plan_becomes_one_look_then_act_step(monkeypatch):
+    import main
+
+    monkeypatch.setattr(vision_model, "vision_providers", lambda: ["deepseek"])
+    blind = [
+        {"tool": "open_app", "label": "Open Calculator", "args": {"name": "calculator"}},
+        {"tool": "read_screen", "label": "Read", "args": {}},
+        {"tool": "click_element", "label": "Click 9", "args": {"name": "9"}},
+        {"tool": "click_element", "label": "Click =", "args": {"name": "="}},
+        {"tool": "read_screen", "label": "Read", "args": {}},
+    ]
+    plan = main._prefer_sight("work out 9 times 7\n\nstatus block", blind)
+    assert [step["tool"] for step in plan] == ["open_app", "vision_control"]
+    assert plan[1]["args"]["task"].startswith("work out 9 times 7.")
+    # What the planner meant is carried over, so "do it for me" keeps its meaning.
+    assert "Click 9; Click =" in plan[1]["args"]["task"]
+
+    # Plans that are not purely on-screen are left exactly as written.
+    files = [{"tool": "find_file", "label": "Find", "args": {"query": "cv"}}]
+    assert main._prefer_sight("find my cv", files) is files
+    mixed = blind + [{"tool": "send_email", "label": "Send", "args": {}}]
+    assert main._prefer_sight("do it and email it", mixed) is mixed
+    only_reading = [{"tool": "read_screen", "label": "Read", "args": {}}]
+    assert main._prefer_sight("what is on screen", only_reading) is only_reading
+
+    # And nothing changes while looking at the screen is switched off.
+    monkeypatch.setattr(settings, "allow_screen", False)
+    assert main._prefer_sight("work out 9 times 7", blind) is blind
+
+
+def _reply(message):
+    return [{"tool": "respond", "label": "Replying", "args": {"message": message}}]
+
+
+def test_a_reply_that_claims_the_work_is_done_is_recognised():
+    import main
+
+    lie = _reply(
+        "Done — I opened the Calculator and worked it out. 9 × 7 = 63. "
+        "The result is showing on your screen now."
+    )
+    assert main._is_unbacked_claim("open the calculator and work out 9 times 7", lie)
+    assert main._is_unbacked_claim("email the report to John", _reply("I've sent the email."))
+    # Ordinary conversation is untouched.
+    assert not main._is_unbacked_claim("hey", _reply("Hey! What can I help you with today?"))
+    assert not main._is_unbacked_claim(
+        "send it", _reply("Which file should I send?")
+    )
+    # A question about earlier work may be answered in the past tense.
+    assert not main._is_unbacked_claim("did you send the email?", _reply("I sent it earlier."))
+    # A real plan is never a claim.
+    real = [{"tool": "open_app", "label": "Open", "args": {"name": "calculator"}}]
+    assert not main._is_unbacked_claim("open calculator", real)
+
+
+def test_a_false_done_is_replanned_and_never_shown(pipeline, monkeypatch):
+    main, sent = pipeline
+    lie = _reply("Done — 9 × 7 = 63. The result is showing on your screen now.")
+    planned = AsyncMock(side_effect=[lie, lie])
+    monkeypatch.setattr(main, "plan_command", planned)
+
+    asyncio.run(main.process_command("work out 9 times 7 on the calculator", "teach-client"))
+
+    assert planned.await_count == 2
+    assert "nothing has been done yet" in planned.await_args_list[1].args[0]
+    shown = sent["responses"][0]["content"]
+    assert "63" not in shown and "haven't done anything" in shown

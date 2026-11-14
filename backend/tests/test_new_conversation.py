@@ -44,3 +44,18 @@ async def test_metrics_report_no_invented_numbers(temp_db, monkeypatch):
     assert metrics["successRate"] is None
     assert metrics["successDelta"] is None
     assert metrics["tasksCompleted"] == 0
+
+
+def test_an_open_invitation_is_not_drawn_as_a_question_to_answer():
+    import main
+
+    plain = (
+        "I'm TORCH, your AI agent. I can find and read files, send emails, search "
+        "the web, and control your browser and apps. What would you like to do?"
+    )
+    assert main._is_clarifying_question(plain) is False
+    assert main._is_clarifying_question("Hey! What can I help you with today?") is False
+    assert main._is_clarifying_question("Sure. How would you like to start?") is False
+    # A question TORCH is genuinely blocked on still gets the answer box.
+    assert main._is_clarifying_question("Which John do you mean?") is True
+    assert main._is_clarifying_question("I found two files. Which one should I send?") is True

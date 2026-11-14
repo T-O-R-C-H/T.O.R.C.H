@@ -20,7 +20,10 @@ from urllib.parse import quote_plus
 
 logger = logging.getLogger("torch.vision_control")
 MAX_STEPS, STEP_PAUSE = 25, 0.6
-MAX_SCREENSHOT_WIDTH, MAX_SCREENSHOT_HEIGHT = 960, 540
+# The picture the model sees. At 960x540 a full-HD screen is halved, and small
+# targets (a menu word, a toolbar icon) were hit near their edge instead of
+# their middle. 1280x720 keeps them readable for a modest increase in cost.
+MAX_SCREENSHOT_WIDTH, MAX_SCREENSHOT_HEIGHT = 1280, 720
 SESSION_TIMEOUT_SECONDS = 5 * 60
 MODEL_ACTION_TIMEOUT_SECONDS = 90
 MODEL_PROGRESS_INTERVAL_SECONDS = 15
@@ -33,6 +36,9 @@ HANDOFF_SETTLE_SECONDS = 20
 HANDOFF_CHANGE_THRESHOLD = 2.0
 MAX_HANDOFFS = 8
 CAPTURE_OVERLAY_SETTLE_SECONDS = 0.12
+# TORCH's own window minimises when control starts. Looking before that
+# animation ends showed the model TORCH's window instead of the app behind it.
+CONTROL_START_SETTLE_SECONDS = 0.6
 BROWSER_CHOOSER_SETTLE_SECONDS = 0.6
 BROWSER_WINDOW_SETTLE_SECONDS = 0.8
 SYSTEM_PROMPT = """You are controlling a Windows computer on behalf of the user.
@@ -64,6 +70,8 @@ Available actions:
 - failed: the task cannot be completed, with a clear reason
 
 Return these fields: action, x, y, text, key, amount, reason, question, options, message.
+Aim x and y at the middle of the control, never its edge. For done, put in reason one short plain
+sentence saying what is on screen now, written for the user (for example "The File menu is open.").
 Always return exactly one action. After typing into a search field, submit it with enter on the
 next step. Never use type unless a text field visibly has focus or the previous action focused it.
 When a browser is on the wrong page, use ctrl+l first, type the destination URL on the next step,
@@ -345,6 +353,19 @@ def _chrome_profile_chooser_visible() -> bool:
         return found
     except Exception:
         logger.debug("Could not inspect Chrome windows for a profile chooser", exc_info=True)
+        return False
+
+
+def _chrome_profile_chooser_in_front() -> bool:
+    """True when the profile chooser is the window the user is looking at."""
+    if sys.platform != "win32":
+        return False
+    try:
+        import win32gui
+
+        title = str(win32gui.GetWindowText(win32gui.GetForegroundWindow()) or "")
+        return title.strip().casefold() == "google chrome"
+    except Exception:
         return False
 
 
@@ -1120,6 +1141,55 @@ async def _wait_for_user_to_act(cancel_event: threading.Event) -> bool:
     return False
 
 
+MAX_NAMED_CONTROLS = 70
+
+
+def _named_controls_hint(frame: "ScreenFrame") -> str:
+    """Exact positions of the controls Windows can name, in screenshot pixels.
+
+    A vision model reads a screen well but aims loosely: on a calculator it
+    knows it wants "9" and lands on "8". Windows knows exactly where each
+    named control of the front window is, so the model is handed that list
+    and told to use those positions. Apps that describe nothing (many web
+    pages) simply produce no list, and the model aims by eye as before.
+    """
+    try:
+        from tools import uia_control
+
+        if not uia_control.UIA_AVAILABLE:
+            return ""
+        screen = uia_control.read_screen()
+    except Exception:
+        return ""
+    window = str(screen.get("window") or "")
+    if window.startswith("TORCH"):
+        return ""
+    left, top, width, height = frame.capture_bounds
+    model_width, model_height = frame.model_size
+    if width <= 0 or height <= 0:
+        return ""
+    lines = []
+    for element in screen.get("elements", []):
+        if not element.get("enabled", True):
+            continue
+        x = round((element["x"] - left) * model_width / width)
+        y = round((element["y"] - top) * model_height / height)
+        if not (0 <= x < model_width and 0 <= y < model_height):
+            continue
+        name = " ".join(str(element["name"]).split())[:40]
+        lines.append(f'- "{name}" ({element["type"]}) at {x},{y}')
+        if len(lines) >= MAX_NAMED_CONTROLS:
+            break
+    if not lines:
+        return ""
+    return (
+        f'\nWindows can name these controls in the front window "{window[:60]}". '
+        "Their positions are exact for this screenshot. When the control you want is "
+        "in this list, use its x and y exactly as given instead of estimating:\n"
+        + "\n".join(lines)
+    )
+
+
 async def _wait_for_clarification(
     future: asyncio.Future[str],
     cancel_event: threading.Event,
@@ -1393,6 +1463,8 @@ async def vision_loop(
     sessions[session_id] = cancel_event
     try:
         await ws_manager.send_message({"type": "vision_control_start"}, client_id)
+        if CONTROL_START_SETTLE_SECONDS > 0:
+            await asyncio.sleep(CONTROL_START_SETTLE_SECONDS)
         _raise_if_cancelled(cancel_event)
 
         if browser and search_query:
@@ -1439,9 +1511,17 @@ async def vision_loop(
                     f"The screenshot is {captured.model_size[0]}x"
                     f"{captured.model_size[1]} pixels."
                 )
+                # A profile chooser left open somewhere on the desktop is only
+                # TORCH's business when this task uses the browser, or the
+                # chooser is the window in front. It used to interrupt every
+                # task - a sum on the calculator stopped to ask about Chrome.
                 profile_choice_needed = (
                     _chrome_profile_chooser_visible()
+                    and (bool(browser) or _chrome_profile_chooser_in_front())
                     and not any(item["action"] == "user_answer" for item in history)
+                )
+                image_context += await _run_blocking_cancellable(
+                    _named_controls_hint, cancel_event, captured
                 )
             else:
                 # Compatibility for callers/tests that provide a raw base64 image.
@@ -1515,6 +1595,13 @@ async def vision_loop(
                 continue
 
             kind, reason = action.get("action", ""), action.get("reason", "")
+            # One line per step in the log: without it a task that "did
+            # nothing" cannot be told apart from one that clicked the wrong place.
+            logger.info(
+                "Vision step %d: %s at (%s, %s) text=%r key=%r - %s",
+                step, kind, action.get("x"), action.get("y"),
+                (action.get("text") or "")[:40], action.get("key"), reason[:160],
+            )
             if profile_choice_needed and kind != "ask":
                 logger.warning(
                     "Rejected %s while Chrome profile chooser requires clarification",
@@ -1547,7 +1634,7 @@ async def vision_loop(
                     )
                 message = action["message"]
                 # The user is in control now: drop the "TORCH is driving" border.
-                await ws_manager.send_message({"type": "vision_control_end"}, client_id)
+                await ws_manager.send_message({"type": "vision_control_pause"}, client_id)
                 await ws_manager.send_status("awaiting_input", client_id)
                 if message != last_handoff_message:
                     await ws_manager.send_message(
@@ -1572,7 +1659,7 @@ async def vision_loop(
                         "Ask me again when you're ready."
                     )
                 await ws_manager.send_status("executing", client_id)
-                await ws_manager.send_message({"type": "vision_control_start"}, client_id)
+                await ws_manager.send_message({"type": "vision_control_resume"}, client_id)
                 history.append({"action": "handoff", "reason": message})
                 history.append(
                     {
