@@ -6,6 +6,7 @@ import ctypes
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -20,8 +21,9 @@ from urllib.parse import quote_plus
 
 logger = logging.getLogger("torch.vision_control")
 # Writing a few lines and saving them took 25 looks before the save dialog was
-# even filled in. Real tasks need more room than that.
-MAX_STEPS, STEP_PAUSE = 40, 0.35
+# even filled in. Real tasks need more room than that: configuring a laptop on
+# apple.com ran out at 40 looks one page short of the bag.
+MAX_STEPS, STEP_PAUSE = 60, 0.35
 # The picture the model sees. At 960x540 a full-HD screen is halved, and small
 # targets (a menu word, a toolbar icon) were hit near their edge instead of
 # their middle. 1280x720 keeps them readable for a modest increase in cost.
@@ -39,8 +41,9 @@ HANDOFF_CHANGE_THRESHOLD = 2.0
 MAX_HANDOFFS = 8
 CAPTURE_OVERLAY_SETTLE_SECONDS = 0.08
 # TORCH's own cursor glides to a target before the click lands there, so the
-# user sees where TORCH is about to act. Kept short: it is pure waiting.
-CURSOR_LEAD_SECONDS = 0.25
+# user sees where TORCH is about to act. Just longer than the glide (GLIDE_MS
+# in GuidanceOverlay.tsx) so the click blink and the real click coincide.
+CURSOR_LEAD_SECONDS = 0.4
 # Pictures go to the AI service as JPEG: a fifth of the size of PNG, so each
 # look uploads faster, with no measurable loss in what the model can read.
 SCREENSHOT_MEDIA_TYPE = "image/jpeg"
@@ -681,6 +684,57 @@ def _press_without_mouse(x: int, y: int) -> bool:
     worker.start()
     worker.join(INVOKE_WAIT_SECONDS)
     return bool(outcome.get("pressed"))
+
+
+# Two clicks this close (screenshot pixels) are aimed at the same control.
+NEAR_CLICK_PIXELS = 100
+
+
+def _is_near(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    return abs(a[0] - b[0]) <= NEAR_CLICK_PIXELS and abs(a[1] - b[1]) <= NEAR_CLICK_PIXELS
+
+
+# A task that names one of these may press a window's own title-bar buttons.
+_WINDOW_BUTTON_WORDS = re.compile(r"\b(close|quit|exit|minimi[sz]e|maximi[sz]e|restore)\b", re.I)
+# Answers to WM_NCHITTEST for a window's own title-bar buttons.
+_CAPTION_HITS = {20: "Close", 8: "Minimize"}
+
+
+def _window_caption_button_at(x: int, y: int) -> Optional[str]:
+    """Name of the window's own Close / Minimize button at a point, else None.
+
+    The model once "dismissed a pop-up" by clicking the top-right corner of
+    the screen - Chrome's own Close button - and closed the browser it was
+    working in. Windows itself is asked what the point is (WM_NCHITTEST), so
+    a page's or a pop-up's own close mark, which is window content, is never
+    stopped. Chrome does not expose its caption buttons to accessibility at
+    a point, but answers this correctly.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        user32 = ctypes.windll.user32
+        user32.WindowFromPoint.argtypes = [wintypes.POINT]
+        user32.WindowFromPoint.restype = wintypes.HWND
+        user32.GetAncestor.argtypes = [wintypes.HWND, ctypes.c_uint]
+        user32.GetAncestor.restype = wintypes.HWND
+        user32.SendMessageTimeoutW.argtypes = [
+            wintypes.HWND, ctypes.c_uint, wintypes.WPARAM, wintypes.LPARAM,
+            ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_size_t),
+        ]
+        child = user32.WindowFromPoint(wintypes.POINT(int(x), int(y)))
+        window = user32.GetAncestor(child, 2) if child else None  # GA_ROOT
+        if not window:
+            return None
+        answer = ctypes.c_size_t()
+        packed = ((int(y) & 0xFFFF) << 16) | (int(x) & 0xFFFF)
+        # SMTO_ABORTIFHUNG: a frozen app must not freeze the click.
+        if not user32.SendMessageTimeoutW(window, 0x0084, 0, packed, 0x0002, 300, ctypes.byref(answer)):
+            return None
+        return _CAPTION_HITS.get(int(answer.value))
+    except Exception:
+        logger.debug("Title-bar check failed at (%s, %s)", x, y, exc_info=True)
+        return None
 
 
 def _press_at(
@@ -1769,6 +1823,14 @@ def execute_action(
 
     if kind in pointer_actions:
         screen_x, screen_y = _map_screenshot_point(x, y, frame)
+        if not action.get("_allow_window_buttons"):
+            caption = _window_caption_button_at(screen_x, screen_y)
+            if caption:
+                raise ValueError(
+                    f"that spot is the window's own {caption} button, which would "
+                    f"{'close' if caption == 'Close' else 'hide'} the app the task needs. "
+                    "To dismiss a pop-up, press escape or click the pop-up's own close mark"
+                )
         # Let TORCH's own cursor arrive first, so the click is seen to happen
         # where it lands. The user's mouse is never moved.
         time.sleep(CURSOR_LEAD_SECONDS)
@@ -1892,6 +1954,7 @@ async def vision_loop(
         # What the last action was and where, to notice the model repeating
         # itself. It clicked one text box five times running to "focus" it.
         last_signature: Optional[tuple] = None
+        last_click: Optional[tuple[float, float]] = None
         repeats = 0
         handoffs = 0
         last_handoff_message = ""
@@ -2167,15 +2230,16 @@ async def vision_loop(
 
             # Pressing a web page's button through accessibility is sometimes
             # accepted and ignored: a shop's CHECKOUT took five tries. A second
-            # click on the same spot is made as a real click instead.
-            if kind == "click" and last_signature is not None and last_signature == (
-                kind,
-                round(float(action.get("x") or 0) / 12),
-                round(float(action.get("y") or 0) / 12),
-                action.get("key"),
-                action.get("text"),
-            ):
+            # click near the same spot is made as a real click instead. "Near",
+            # not "same": apple.com ignored eleven presses of its 15-inch
+            # option while the model's aim wandered by 90 pixels.
+            this_click = (
+                (float(action.get("x") or 0), float(action.get("y") or 0)) if kind == "click" else None
+            )
+            if this_click and last_click and _is_near(this_click, last_click):
                 action["_real_click"] = True
+            if _WINDOW_BUTTON_WORDS.search(task):
+                action["_allow_window_buttons"] = True
             await _announce_action(action, frame, client_id)
             try:
                 await _run_blocking_cancellable(
@@ -2229,6 +2293,7 @@ async def vision_loop(
             )
             repeats = repeats + 1 if signature == last_signature else 0
             last_signature = signature
+            last_click = this_click
             if repeats >= 1:
                 history.append(
                     {
