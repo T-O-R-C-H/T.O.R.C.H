@@ -1,5 +1,4 @@
 import type { Step } from '../../store/torchStore'
-import { toPlainLanguage } from '../../utils/plainLanguage'
 import { StepTimeline, type TimelineStep } from './StepTimeline'
 
 interface StepListProps {
@@ -24,7 +23,9 @@ function getStepPhrase(
       read_inbox: "Couldn't read your inbox.",
       open_app: "Couldn't open the app."
     }
-    return failMap[tool] || "This step didn't finish."
+    // A step TORCH named itself keeps its name; the cross says it failed.
+    if (tool === 'vision_control' && fallbackLabel) return fallbackLabel
+    return failMap[tool] || fallbackLabel || "This step didn't finish."
   }
 
   const isPending = status === 'pending' || status === 'active' || status === 'hitl_required'
@@ -84,7 +85,7 @@ function getStepPhrase(
  */
 function isCancelled(step: Step): boolean {
   if (step.cancelled) return true
-  return /you cancelled|cancelled this task/i.test(step.error || '')
+  return /you cancelled|cancelled this task|stopped by user/i.test(step.error || '')
 }
 
 /*
@@ -108,35 +109,50 @@ function mapStatus(step: Step): TimelineStep['status'] {
   }
 }
 
+/*
+ * The timeline marks which step failed; it does not say why. TORCH always
+ * closes a failed task with a message that does, and a card here repeating
+ * the same sentence made every error appear twice.
+ */
 export function StepList({ steps }: StepListProps): JSX.Element {
   const timeline: TimelineStep[] = steps.map((step) => ({
     id: step.id,
-    label: isCancelled(step)
-      ? step.label || 'Cancelled.'
-      : getStepPhrase(step.tool, step.args, step.status, step.label),
-    status: mapStatus(step)
+    label: tidyLabel(
+      isCancelled(step)
+        ? step.label || 'Cancelled'
+        : getStepPhrase(step.tool, step.args, step.status, step.label)
+    ),
+    status: mapStatus(step),
+    tool: step.tool,
+    // A to-do left mid-way is not still running once its step has ended:
+    // stopped by the user it is left blank, failed it is marked.
+    substeps: step.substeps?.map((sub) =>
+      (sub.status === 'active' || sub.status === 'waiting') &&
+      (step.status === 'failed' || isCancelled(step))
+        ? {
+            ...sub,
+            status:
+              /stopped by user/i.test(step.error || '') || isCancelled(step)
+                ? 'cancelled'
+                : 'failed'
+          }
+        : sub
+    ),
+    activity: step.activity
   }))
 
   return (
     <div className="step-block">
       <StepTimeline steps={timeline} />
-      {steps.map((step) => {
-        const isFailed = step.status === 'failed'
-        if (!step.error && !(isFailed && step.result)) return null
-
-        // A cancelled step is already marked as such in the timeline; a card
-        // repeating "You cancelled this" underneath adds nothing.
-        if (isCancelled(step)) return null
-
-        return (
-          <div key={step.id} className="chat-error-card chat-error-card--step">
-            <span className="chat-error-card__title">What went wrong</span>
-            <p className="chat-error-card__body">
-              {toPlainLanguage(step.error || step.result || '')}
-            </p>
-          </div>
-        )
-      })}
     </div>
+  )
+}
+
+/** "Opened chrome." -> "Opened Chrome": a row is a name, not a sentence. */
+function tidyLabel(label: string): string {
+  const trimmed = label.trim().replace(/\.$/, '')
+  return trimmed.replace(
+    /\b(Opened|Opening|Open) ([a-z])/,
+    (_m, verb, first) => `${verb} ${first.toUpperCase()}`
   )
 }

@@ -77,6 +77,7 @@ class ConnectionManager:
         error: Optional[str] = None,
         label: Optional[str] = None,
         client_id: str = "main",
+        extra: Optional[dict] = None,
     ) -> None:
         """Send a step execution update."""
         data = {
@@ -91,6 +92,8 @@ class ConnectionManager:
             data["error"] = error
         if label:
             data["label"] = label
+        if extra:
+            data.update(extra)
         await self.send_message(data, client_id)
 
     async def send_agent_response(self, message: dict, client_id: str = "main") -> None:

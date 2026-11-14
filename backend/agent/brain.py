@@ -94,7 +94,15 @@ _CONVERSATIONAL_REPLIES = {
     "greeting": "Hey! I'm TORCH, your AI agent. What can I help you with today?",
     "how_are_you": "I'm running great. What can I do for you?",
     "timeofday": "Hello! I'm TORCH, your AI agent. What can I help you with today?",
-    "capability": "I'm TORCH, your AI agent. I can find and read files, send emails, search the web, and control your browser and apps. What would you like to do?",
+    "capability": (
+        "I'm TORCH. I work on your computer the way you would, and you can watch me do it.\n"
+        "- **Use any app for you**: open it, click, type, fill in forms and save your work\n"
+        "- **Show you how**: ask \"how do I...\" and I'll point at the right button on your screen\n"
+        "- **Shop and book online**: I go up to the payment page and hand that part to you\n"
+        "- **Find and read files**: PDFs, Word and Excel documents, then sum them up\n"
+        "- **Email**: read your inbox and send messages once you approve them\n"
+        "Anything that spends money, sends or deletes waits for your OK. What should we do first?"
+    ),
     "thanks": "You're welcome! Anything else I can do for you?",
     "bye": "Goodbye! Ping me anytime you need something done.",
     "ok": "Got it. Let me know what you need next.",
@@ -234,10 +242,12 @@ def _online_order_plan(user_command: str) -> Optional[List[Dict[str, Any]]]:
                     f"Order {query} online. Open Google, search for exactly '{query}', "
                     f"then open the most suitable website that sells it. Browse that site, "
                     f"find the item that matches '{query}', and add it to the cart. "
-                    "Do not enter any personal, delivery, or payment information and do NOT "
-                    "complete the checkout. When the item is in the cart, stop and report "
-                    "exactly what you added. If you are unsure which result or item to pick, "
-                    "ask the user instead of guessing."
+                    "Then go to the checkout. Never type card, bank, password or other "
+                    "payment details and never press the final button that places the order: "
+                    "hand that step off to the user and wait. Once the order confirmation "
+                    "page is visible, report done with the order number if one is shown. "
+                    "If you are unsure which result or item to pick, ask the user instead "
+                    "of guessing."
                 ),
                 "browser": "chrome",
             },

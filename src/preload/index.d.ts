@@ -11,6 +11,13 @@ interface BackendHealth {
 type TaskCommand =
   | { type: 'stop_task' }
   | { type: 'clarification_response'; taskId: string; response: string }
+  | { type: 'handoff_continue'; taskId: string }
+  | {
+      type: 'hitl_response'
+      messageId: string
+      stepId: string
+      action: 'approve' | 'cancel'
+    }
 
 interface TorchAPI {
   minimizeWindow: () => void
@@ -28,6 +35,7 @@ interface TorchAPI {
   >
   showGuidance: (guidance: VisualGuidance) => void
   hideGuidance: () => void
+  notifyAttention: (message: string) => void
   showControlBorder: () => void
   hideControlBorder: () => void
   completeVisionControl: () => void
@@ -39,6 +47,27 @@ interface TorchAPI {
   removeTaskCommand: () => void
   onGuidance: (callback: (_e: unknown, guidance: VisualGuidance) => void) => void
   removeGuidance: () => void
+  moveAgentCursor: (event: Record<string, unknown>) => void
+  onAgentCursor: (
+    callback: (
+      _e: unknown,
+      event: {
+        action:
+          | 'click'
+          | 'right_click'
+          | 'double_click'
+          | 'scroll'
+          | 'type'
+          | 'key'
+          | 'look'
+          | 'hide'
+        x?: number
+        y?: number
+        note?: string
+      }
+    ) => void
+  ) => void
+  removeAgentCursor: () => void
   openExternal: (url: string) => void
   getReportInfo: () => Promise<{ appVersion: string; electron: string; os: string }>
   getDesktopContext: () => Promise<{
@@ -52,6 +81,7 @@ interface TorchAPI {
   setPillFocused: (focused: boolean) => void
   hidePill: () => void
   showTaskPanel: () => void
+  resizeTaskPanel: (height: number) => void
   hideTaskPanel: () => void
   getVoiceShortcut: () => Promise<string>
   showCompanion: () => void

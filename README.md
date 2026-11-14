@@ -24,8 +24,8 @@
 | Shell    | Electron 39                                                   |
 | Frontend | React 19, TypeScript, Tailwind CSS 4, Zustand 5, Framer Motion |
 | Backend  | Python 3.11, FastAPI, WebSocket                               |
-| AI       | Gemini, OpenAI, Claude, DeepSeek, or a local model via Ollama |
-| Vision   | Qwen2.5-VL via Ollama                                         |
+| AI       | Your own key: DeepSeek or Claude                              |
+| Vision   | The same key (screenshots are sent only when you allow it)    |
 | Voice    | faster-whisper (speech to text) and Kokoro (speech), both local |
 | Storage  | SQLite                                                        |
 

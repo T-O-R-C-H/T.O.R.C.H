@@ -15,6 +15,18 @@ export type AgentStatus =
 export type InputMode = 'type' | 'voice' | 'heytorch'
 export type StepStatus = 'pending' | 'active' | 'done' | 'failed' | 'hitl_required'
 
+/** One line of TORCH's own to-do list for a screen task. */
+export interface SubStep {
+  label: string
+  status: 'pending' | 'active' | 'done' | 'failed' | 'waiting'
+}
+
+/** TORCH has stopped at a step that is the user's to do. */
+export interface AttentionRequest {
+  taskId: string
+  message: string
+}
+
 export interface Step {
   id: string
   label: string
@@ -25,6 +37,10 @@ export interface Step {
   error?: string
   /** Set when the user declined this step, so it is not reported as an error. */
   cancelled?: boolean
+  /** TORCH's to-do list while it works on the screen. */
+  substeps?: SubStep[]
+  /** What TORCH is doing this second, shown under a running step. */
+  activity?: string
   requiresApproval: boolean
 }
 
@@ -87,6 +103,8 @@ export interface TorchState {
   setAgentStatus: (status: AgentStatus) => void
   clarificationRequest: ClarificationRequest | null
   setClarificationRequest: (request: ClarificationRequest | null) => void
+  attentionRequest: AttentionRequest | null
+  setAttentionRequest: (request: AttentionRequest | null) => void
 
   // Input
   inputMode: InputMode
@@ -176,6 +194,8 @@ export const useTorchStore = create<TorchState>((set) => ({
   setAgentStatus: (status): void => set({ agentStatus: status }),
   clarificationRequest: null,
   setClarificationRequest: (request): void => set({ clarificationRequest: request }),
+  attentionRequest: null,
+  setAttentionRequest: (request): void => set({ attentionRequest: request }),
 
   // Input
   inputMode: 'type',

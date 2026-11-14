@@ -299,3 +299,9 @@ def test_plain_button_still_uses_invoke(monkeypatch):
 
     uia_control.click_element("Save")
     assert invoke.invoked is True
+
+
+def test_find_click_target_ignores_an_empty_label():
+    from tools import uia_control
+
+    assert uia_control.find_click_target("", 10, 10) is None

@@ -29,13 +29,20 @@ def get_provider(model: Optional[str] = None) -> Optional[LLMProvider]:
     if requested_model.startswith(("gpt-", "o1", "o3", "o4")):
         return OpenAIProvider(settings.openai_api_key, model=requested_model) if settings.openai_api_key else None
 
-    # Fall back to Gemini, DeepSeek, OpenAI, or Claude
+    # No model named: use the key the user chose, then DeepSeek, then Claude.
+    # Gemini and OpenAI stay last, for people who set them up before.
+    preferred = (settings.active_provider or "").strip().lower()
+    if preferred == "anthropic":
+        preferred = "claude"
+    order = [preferred] if preferred in {"deepseek", "claude"} else []
+    order += [name for name in ("deepseek", "claude") if name not in order]
+    for name in order:
+        if name == "deepseek" and settings.deepseek_api_key:
+            return DeepSeekProvider(settings.deepseek_api_key, model=settings.deepseek_model)
+        if name == "claude" and settings.anthropic_api_key:
+            return ClaudeProvider(settings.anthropic_api_key, model=settings.anthropic_model)
     if settings.gemini_api_key:
         return GeminiProvider(settings.gemini_api_key)
-    elif settings.deepseek_api_key:
-        return DeepSeekProvider(settings.deepseek_api_key, model=settings.deepseek_model)
-    elif settings.openai_api_key:
+    if settings.openai_api_key:
         return OpenAIProvider(settings.openai_api_key)
-    elif settings.anthropic_api_key:
-        return ClaudeProvider(settings.anthropic_api_key)
     return None

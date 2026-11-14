@@ -37,7 +37,7 @@ def all_capabilities_enabled(monkeypatch):
     send_email approval test pass vacuously - the assertion stops describing
     the approval policy and starts describing the developer's machine.
     """
-    for flag in ("allow_files", "allow_apps", "allow_email"):
+    for flag in ("allow_files", "allow_apps", "allow_email", "allow_screen"):
         monkeypatch.setattr(settings, flag, True)
 
 

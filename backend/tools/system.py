@@ -148,6 +148,53 @@ def _visible_windows() -> Dict[int, "tuple[str, str]"]:
     return windows
 
 
+# Window titles of a browser's ordinary windows: "<page> - Google Chrome".
+# The profile chooser is titled just "Google Chrome", so it never matches.
+BROWSER_TITLE_MARKERS = {
+    "chrome": " - Google Chrome",
+    "msedge": " - Microsoft​ Edge",
+}
+
+
+def _open_browser_window(windows: Dict[int, "tuple[str, str]"], command: str) -> Optional[str]:
+    """Title of the front-most ordinary window of this browser, if one is open."""
+    marker = BROWSER_TITLE_MARKERS.get(command)
+    if not marker:
+        return None
+    for title, _class_name in windows.values():
+        # Edge writes a zero-width space into its name; accept either form.
+        if marker in title or marker.replace("​", "") in title:
+            return title
+    return None
+
+
+def _bring_to_front(title: str) -> None:
+    """Put the window with this title in front of everything else.
+
+    An app opened from TORCH often came up behind TORCH's own window, and the
+    next step - which acts on whatever is in front - spent a minute trying to
+    find it. Windows refuses SetForegroundWindow to a background process unless
+    a key was just pressed, hence the tap of Alt first.
+    """
+    if platform.system() != "Windows" or not title:
+        return
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    handle = user32.FindWindowW(None, title)
+    if not handle:
+        return
+    try:
+        if user32.IsIconic(handle):
+            user32.ShowWindow(handle, 9)  # SW_RESTORE
+        user32.keybd_event(0x12, 0, 0, 0)  # Alt down
+        user32.keybd_event(0x12, 0, 2, 0)  # Alt up
+        user32.SetForegroundWindow(handle)
+        user32.BringWindowToTop(handle)
+    except Exception:
+        logger.debug("Could not bring %r to the front", title, exc_info=True)
+
+
 def _await_new_window(before: Dict[int, "tuple[str, str]"], app_name: str) -> Optional[str]:
     """
     Wait for a real application window.
@@ -197,6 +244,15 @@ def open_app(name: str) -> str:
     before = _visible_windows()
     launched = False
 
+    # A browser that is already open is brought forward, not launched again.
+    # Launching Chrome a second time opened its profile chooser over the
+    # user's own window, and the task stalled asking which profile to use.
+    existing = _open_browser_window(before, command) if system == "Windows" else None
+    if existing:
+        logger.info(f"{name} is already open; bringing '{existing}' forward")
+        _bring_to_front(existing)
+        return f"Opened {name}."
+
     try:
         if system == "Windows":
             # A ms-*: URI has to go through the shell handler, not as a command.
@@ -238,6 +294,7 @@ def open_app(name: str) -> str:
     window_title = _await_new_window(before, normalized)
     if window_title:
         logger.info(f"Opened {name}: window '{window_title}'")
+        _bring_to_front(window_title)
         return f"Opened {name}."
 
     # The launcher returned without error but nothing came up - usually a name

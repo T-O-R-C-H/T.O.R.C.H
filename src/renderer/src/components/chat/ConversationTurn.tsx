@@ -10,7 +10,7 @@ import { ApprovalCard } from '../aicss/ApprovalCard'
 import { AgentActivity } from './AgentActivity'
 import { TextResponse } from '../aicss/TextResponse'
 import { StreamingText } from '../aicss/StreamingText'
-import { LinkifiedText } from './LinkifiedText'
+import { RichText } from './RichText'
 import { MailResults } from '../mail/MailResults'
 import { AgentQuestion } from './AgentQuestion'
 import {
@@ -101,9 +101,24 @@ export function ConversationTurn({
           transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
         >
           {bodyText && isErrorReply && (
-            <div className="chat-error-card">
-              <span className="chat-error-card__title">Could not finish</span>
-              <p className="chat-error-card__body">{toPlainLanguage(bodyText)}</p>
+            <div className="chat-note chat-note--stopped" role="status">
+              <svg
+                className="chat-note__icon"
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                aria-hidden="true"
+              >
+                <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+                <path
+                  d="M8 4.8v3.6M8 10.8v.1"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <p className="chat-note__body">{toPlainLanguage(bodyText)}</p>
             </div>
           )}
 
@@ -121,7 +136,7 @@ export function ConversationTurn({
                 <StreamingText text={bodyText} />
               ) : (
                 <TextResponse>
-                  <LinkifiedText text={bodyText} />
+                  <RichText text={bodyText} />
                 </TextResponse>
               )}
             </motion.div>
@@ -146,9 +161,10 @@ export function ConversationTurn({
               plan turn and a recap turn, so reporting on both would put two
               links under one result, and the step-bearing turn is the one
               worth sending. */}
-          {!showActivity && (agent.steps?.length ?? 0) > 0 && (
-            <ReportProblem userMessage={user ?? null} agentMessage={agent ?? null} />
-          )}
+          {!showActivity &&
+            agent.steps?.some(
+              (step) => step.status === 'failed' && !/stopped by user/i.test(step.error || '')
+            ) && <ReportProblem userMessage={user ?? null} agentMessage={agent ?? null} />}
 
           {agent.reversible && (
             <div className="chat-undo">

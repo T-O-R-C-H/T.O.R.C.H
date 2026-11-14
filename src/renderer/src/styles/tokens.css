@@ -17,6 +17,13 @@
    ═══════════════════════════════════════════════════ */
 
 :root {
+  /* TORCH's on-screen cursor is drawn over other apps, not over TORCH, so
+     its outline and shadow are the same in both themes. */
+  --cursor-outline: #ffffff;
+  --cursor-shadow: rgba(0, 0, 0, 0.4);
+  /* Blue means "TORCH has control" - the same blue as the screen-edge glow. */
+  --cursor-color: #2563eb;
+
   /* ─── Semantic surfaces ───
      Aliases over the @theme colours, so a component says which role a surface
      plays instead of which shade it happens to be. */
@@ -135,9 +142,9 @@
   --color-torch-border-subtle: #262626;
   --color-torch-border-hover: #404040;
   --color-torch-text: #e4e4e4;
-  --color-torch-text-secondary: #a3a3a3;
-  --color-torch-text-tertiary: #737373;
-  --color-torch-text-ghost: #4a4a4a;
+  --color-torch-text-secondary: #bdbdbd;
+  --color-torch-text-tertiary: #9c9c9c;
+  --color-torch-text-ghost: #6e6e6e;
   --color-torch-accent: #ededed;
   --color-torch-accent-fg: #171717;
   --color-torch-blue: #60a5fa;

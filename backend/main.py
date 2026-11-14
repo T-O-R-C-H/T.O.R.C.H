@@ -5,6 +5,7 @@ Handles WebSocket communication and REST API endpoints.
 
 import sys
 import os
+import re
 import time
 import asyncio
 import json
@@ -167,7 +168,7 @@ async def list_models():
         tiers.append({"id": "gemini-2.5-flash", "label": "Faster"})
         tiers.append({"id": "gemini-2.5-pro", "label": "More thorough"})
     elif settings.deepseek_api_key:
-        tiers.append({"id": "deepseek-v4-flash", "label": "Faster"})
+        tiers.append({"id": "deepseek-flash", "label": "Faster"})
         tiers.append({"id": "deepseek-v4-pro", "label": "More thorough"})
     elif settings.anthropic_api_key:
         tiers.append({"id": "claude-haiku-4-5", "label": "Faster"})
@@ -288,13 +289,30 @@ _GREETING_MARKERS = (
 )
 
 
+# "What would you like to do?" is an invitation, not a question TORCH is
+# blocked on. Drawing an answer box under it makes a plain reply look like a
+# form the user has to fill in.
+_OPEN_OFFER = re.compile(
+    r"^(?:so[,\s]+|now[,\s]+)?(?:what|how|where)\s+"
+    r"(?:would|do|can|could|may|should|shall)\s+(?:you|i|we)\b"
+    r".*\b(?:like|want|need|help|do|start|try|begin)\b",
+    re.IGNORECASE,
+)
+
+
 def _is_clarifying_question(text: str) -> bool:
-    """True when a reply is a genuine clarifying question that needs an inline
-    answer — not a greeting or chit-chat that merely happens to end with '?'."""
+    """True when TORCH cannot continue until the user answers.
+
+    Only the last sentence counts, and a greeting or an open invitation
+    ("What would you like to do?") is not a question that needs an answer box.
+    """
     t = (text or "").strip().lower()
     if not t.endswith("?"):
         return False
-    return not any(marker in t for marker in _GREETING_MARKERS)
+    if any(marker in t for marker in _GREETING_MARKERS):
+        return False
+    last_sentence = re.split(r"(?<=[.!?])\s+", t)[-1]
+    return not _OPEN_OFFER.match(last_sentence)
 
 
 def _connection_status_block() -> str:
@@ -354,6 +372,7 @@ EDITABLE_SETTINGS = {
     "allow_files": "TORCH_ALLOW_FILES",
     "allow_apps": "TORCH_ALLOW_APPS",
     "allow_email": "TORCH_ALLOW_EMAIL",
+    "allow_screen": "TORCH_ALLOW_SCREEN",
 }
 
 _TRUTHY = {"1", "true", "yes", "on"}
@@ -421,6 +440,7 @@ async def get_settings():
         "allow_files": settings.allow_files,
         "allow_apps": settings.allow_apps,
         "allow_email": settings.allow_email,
+        "allow_screen": settings.allow_screen,
     }
 
 
@@ -981,6 +1001,15 @@ async def handle_ws_message(message: dict, client_id: str) -> None:
             "error": None if accepted else "Approval request is invalid or has expired",
         }, client_id)
 
+    elif msg_type == "handoff_continue":
+        # "I've done my part" from the attention card: look again now rather
+        # than waiting for the screen to change.
+        from tools.vision_control import continue_vision_handoff
+
+        task_id = str(message.get("taskId") or "")
+        accepted = continue_vision_handoff(client_id, task_id)
+        logger.info("Handoff continue for %s accepted=%s", task_id, accepted)
+
     elif msg_type == "clarification_response":
         task_id = str(message.get("taskId") or "")
         response = str(message.get("response") or "")
@@ -1128,6 +1157,327 @@ def _elapsed_ms(started_at: float) -> int:
     return max(0, round((time.monotonic() - started_at) * 1000))
 
 
+def _fill_step_results(message: str, executed_steps: list) -> str:
+    """Put each step's result where a reply refers to it as {{step_N_result}}."""
+    for index, step in enumerate(executed_steps):
+        result = str(step.get("result") or "").strip() or "(nothing found)"
+        message = message.replace(f"{{{{step_{index}_result}}}}", result)
+    # Never show a placeholder that had no step behind it.
+    return re.sub(r"\{\{step_\d+_result\}\}", "(not available)", message)
+
+
+async def _answer_from_screen(command: str, screen_text: str) -> str | None:
+    """One plain sentence answering `command` from what the screen now says.
+
+    Returns None when there is nothing to go on or the AI service cannot be
+    reached; the caller then falls back to its ordinary closing line.
+    """
+    if not screen_text:
+        return None
+    from agent.providers import get_provider
+
+    provider = get_provider()
+    if provider is None:
+        return None
+    request_line = command.splitlines()[0].strip() if command else ""
+    prompt = (
+        "You are TORCH, a helper that has just finished a task on the user's computer.\n"
+        f"The user asked: {request_line}\n"
+        f"The screen now shows these items:\n{screen_text[:3000]}\n\n"
+        "Reply with one short, plain sentence that gives the user the result they asked "
+        "for, using only what the screen shows. If the screen does not show the result, "
+        "say what it does show. No preamble, no markdown, no technical words."
+    )
+    try:
+        answer = await asyncio.wait_for(provider.generate_text(prompt), timeout=20)
+    except Exception:
+        logger.warning("Could not put the screen result into a sentence", exc_info=True)
+        return None
+    answer = " ".join(str(answer or "").split())
+    return answer[:300] or None
+
+
+_CLAIMS_DONE = re.compile(
+    r"^\s*(?:done|all\s+set|all\s+done|finished|completed)\b"
+    r"|\bI(?:'ve|\s+have)?\s+(?:just\s+|now\s+|already\s+)?"
+    r"(?:opened|clicked|sent|deleted|moved|created|typed|worked\s+(?:it\s+)?out|searched|"
+    r"downloaded|saved|closed|posted|played|ordered|turned|changed|added|removed|"
+    r"calculated|launched|renamed|copied|emailed|filled)\b"
+    r"|\bis\s+(?:now\s+)?(?:showing|open|playing)\s+on\s+your\s+screen\b",
+    re.IGNORECASE,
+)
+_ASKS_A_QUESTION = re.compile(
+    r"^\s*(?:did|have|has|what|why|when|who|whom|which|is|are|was|were|do|does|"
+    r"how|where|can\s+you\s+tell|could\s+you\s+tell|tell\s+me)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_unbacked_claim(command: str, raw_steps: list) -> bool:
+    """True when the plan is only a reply that says the work has been done.
+
+    Questions are exempt - "did you send it?" may rightly be answered "I sent
+    it earlier". An instruction answered with nothing but "Done" is a lie.
+    """
+    if not isinstance(raw_steps, list) or not raw_steps:
+        return False
+    if any(not isinstance(step, dict) or step.get("tool") != "respond" for step in raw_steps):
+        return False
+    request_line = command.splitlines()[0].strip() if command else ""
+    if request_line.endswith("?") or _ASKS_A_QUESTION.match(request_line):
+        return False
+    message = str((raw_steps[0].get("args") or {}).get("message") or "")
+    return bool(_CLAIMS_DONE.search(message))
+
+
+# Tools that touch what is on screen. A plan made of these is written before
+# TORCH has seen anything, so it cannot notice that the calculator already
+# shows a 9, or that the button is called "Two" rather than "2".
+_SCREEN_STEP_TOOLS = {
+    "click_element", "type_into", "read_screen", "describe_screen",
+    "analyse_screen", "screenshot", "click", "type_text",
+}
+_BLIND_ACTION_TOOLS = {"click_element", "type_into", "click", "type_text"}
+_OPENING_TOOLS = {"open_app", "open_browser"}
+
+
+def _prefer_sight(command: str, raw_steps: list) -> list:
+    """Swap blind on-screen steps for look-then-act steps.
+
+    A plan is written before TORCH has seen the screen. Steps that click or
+    type without looking land in whatever window happens to have focus: a poem
+    was once typed into the wrong window and an empty document saved in its
+    place. Every run of consecutive on-screen steps that contains such a blind
+    step is replaced by one `vision_control` step, which looks before each
+    action. Steps around the run (opening an app first, finding a file after)
+    are kept as planned.
+
+    Nothing changes when looking at the screen is switched off, when no AI
+    service can look, or when a later step depends on an earlier step's result
+    by number (the numbering would shift).
+    """
+    if not settings.allow_screen or not isinstance(raw_steps, list):
+        return raw_steps
+    if any(not isinstance(step, dict) for step in raw_steps):
+        return raw_steps
+    on_screen_tools = [step.get("tool") for step in raw_steps]
+    has_blind = any(tool in _BLIND_ACTION_TOOLS for tool in on_screen_tools)
+    consecutive_vision = any(
+        first == "vision_control" and second == "vision_control"
+        for first, second in zip(on_screen_tools, on_screen_tools[1:])
+    )
+    reading_after_vision = any(
+        first == "vision_control" and second in (_SCREEN_STEP_TOOLS - _BLIND_ACTION_TOOLS)
+        for first, second in zip(on_screen_tools, on_screen_tools[1:])
+    )
+    if not has_blind and not consecutive_vision and not reading_after_vision:
+        return raw_steps
+    if "{{step_" in json.dumps([step.get("args") for step in raw_steps], default=str):
+        return raw_steps
+    from agent.vision_model import vision_available
+
+    if not vision_available():
+        return raw_steps
+
+    on_screen = _SCREEN_STEP_TOOLS | {"vision_control"}
+    request_line = command.splitlines()[0].strip() if command else ""
+    plan: list = []
+    run: list = []
+
+    def flush() -> None:
+        if not run:
+            return
+        vision_steps = [step for step in run if step.get("tool") == "vision_control"]
+        reads_only = all(
+            step.get("tool") in (_SCREEN_STEP_TOOLS - _BLIND_ACTION_TOOLS)
+            for step in run
+            if step.get("tool") != "vision_control"
+        )
+        if not any(step.get("tool") in _BLIND_ACTION_TOOLS for step in run) and len(vision_steps) < 2:
+            if len(vision_steps) == 1 and reads_only and len(run) > 1:
+                # A screen task already looks at the screen and reports what
+                # it sees. A "read the screen" step after it only dumped the
+                # raw list of buttons into the closing message.
+                plan.append(vision_steps[0])
+            else:
+                plan.extend(run)
+            run.clear()
+            return
+        # The planner read the whole conversation, so its step labels say what
+        # a short request like "do it for me" refers to. Keep them, and keep
+        # any text it already wrote (a poem, a message).
+        intended = "; ".join(
+            str(step.get("label") or "").strip()
+            for step in run
+            if step.get("tool") in (_BLIND_ACTION_TOOLS | {"vision_control"})
+            and step.get("label")
+        )[:600]
+        texts = [
+            str((step.get("args") or {}).get("text") or "").strip()
+            for step in run
+            if step.get("tool") in {"type_text", "type_into"}
+        ]
+        texts = [text for text in texts if text]
+        detail = f" What that means here: {intended}." if intended else ""
+        if texts:
+            detail += " Text to type: " + " | ".join(texts)[:1500]
+        # A name a person would give the job, from the planner's own labels.
+        labels = [
+            str(step.get("label") or "").strip().rstrip(".")
+            for step in run
+            if step.get("tool") in (_BLIND_ACTION_TOOLS | {"vision_control"})
+            and str(step.get("label") or "").strip()
+        ]
+        if len(labels) >= 2:
+            # Several planner steps folded into one: name it after what the
+            # user asked for. Stitching the parts ("Entering 4, then entering
+            # 6") read like a fragment of the work, not the work.
+            label = request_line[:1].upper() + request_line[1:]
+        elif labels:
+            label = labels[0]
+        else:
+            label = request_line[:1].upper() + request_line[1:]
+        if len(label) > 90:
+            label = label[:87].rsplit(" ", 1)[0] + "..."
+        suggested = (
+            " Suggested to-do list: " + "; ".join(labels) + "." if len(labels) >= 2 else ""
+        )
+        plan.append(
+            {
+                "tool": "vision_control",
+                "label": label,
+                "args": {
+                    "task": (
+                        f"{request_line}.{detail}{suggested} Look at what is already on screen "
+                        "before you start. A calculator or form showing leftovers may "
+                        "be cleared; a document that is already open must be left alone "
+                        "- start a new blank one instead. Before you report done, check "
+                        "on screen that the result is really there (for a saved "
+                        "document, that it shows the text). Then report what is on screen."
+                    )
+                },
+                "requires_approval": False,
+            }
+        )
+        for step in vision_steps:
+            for key in ("browser",):
+                if (step.get("args") or {}).get(key) and key not in plan[-1]["args"]:
+                    plan[-1]["args"][key] = step["args"][key]
+        run.clear()
+
+    for step in raw_steps:
+        if step.get("tool") in on_screen:
+            run.append(step)
+        else:
+            flush()
+            plan.append(step)
+    flush()
+    return plan
+
+
+# Tools that act on a control by its name, without looking at the screen.
+_BY_NAME_TOOLS = {"click_element", "type_into", "read_screen", "describe_screen"}
+
+
+def _plan_by_sight(command: str, executed_steps: list) -> list | None:
+    """A one-step plan that redoes `command` by looking, or None.
+
+    Only when a by-name step is what failed, the user allows TORCH to look at
+    the screen, and nothing in the plan needed approval (those are never
+    retried behind the user's back).
+    """
+    failed = [step for step in executed_steps if step.get("status") == "failed"]
+    if not failed or failed[0].get("tool") not in _BY_NAME_TOOLS:
+        return None
+    if not settings.allow_screen:
+        return None
+    if any(step.get("requires_approval") for step in executed_steps):
+        return None
+    from agent.vision_model import vision_available
+
+    if not vision_available():
+        return None
+    done = [
+        str(step.get("label") or "")
+        for step in executed_steps
+        if step.get("status") == "done" and step.get("tool") not in {"read_screen", "describe_screen"}
+    ]
+    already = (
+        " An earlier attempt may already have done part of it ("
+        + "; ".join(done[:6])
+        + "), so check the screen first and do not repeat a step that is already done."
+        if done
+        else ""
+    )
+    request_line = command.splitlines()[0].strip() if command else ""
+    return [
+        {
+            "tool": "vision_control",
+            "label": "Doing it by looking at the screen",
+            "args": {"task": f"{request_line}.{already}"},
+            "requires_approval": False,
+        }
+    ]
+
+
+async def _teach_on_screen(
+    command: str,
+    context: list,
+    client_id: str,
+    planning_id: str,
+    request_id: str | None,
+) -> None:
+    """Answer a how-do-I question by looking at the screen and pointing."""
+    from agent import teaching
+    from agent.context import ConversationContext
+    from errors.plain_language import UserFacingError
+
+    await ws_manager.send_terminal_line("Looking at your screen...", "info", client_id)
+    guidance: dict = {"type": "none"}
+    outcome = "completed"
+    try:
+        result = await teaching.look_and_teach(command, context, client_id)
+        reply = result["speech"]
+        guidance = result["guidance"]
+    except UserFacingError as error:
+        reply, outcome = str(error), "failed"
+    except Exception:
+        logger.exception("Teaching from the screen failed")
+        reply = "I couldn't look at your screen just now. Try again in a moment."
+        outcome = "failed"
+
+    # Stop pressed while TORCH was looking: say nothing further.
+    if await _discard_cancelled_plan(
+        client_id, planning_id, "command", request_id=request_id
+    ):
+        return
+    executor.finish_planning(client_id, planning_id)
+
+    response_msg = create_response_message(reply, [])
+    response_msg["speak"] = True
+    await ws_manager.send_agent_response(response_msg, client_id)
+    if guidance.get("type") == "point":
+        await ws_manager.send_overlay_event(
+            reply=reply, guidance=guidance, client_id=client_id
+        )
+    await ws_manager.send_status("idle", client_id)
+    await _send_task_outcome(client_id, request_id, outcome, reply)
+    if outcome == "completed":
+        ConversationContext.add_exchange(
+            client_id=client_id,
+            user_command=command,
+            reply_summary=reply,
+            step_results=[
+                {
+                    "tool": teaching.TEACH_TOOL,
+                    "label": str(guidance.get("label") or "Explained a step"),
+                    "status": "done",
+                    "result": reply,
+                }
+            ],
+        )
+
+
 async def process_command(
     command: str,
     client_id: str,
@@ -1159,18 +1509,90 @@ async def process_command(
 
         connection_status = _connection_status_block()
 
-        # 2. Plan with Gemini
-        await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
-        raw_steps = await plan_command(
-            f"{command}\n\n{connection_status}",
-            context=context,
-            model=model,
-        )
+        # 1b. Teaching. "How do I...", "show me...", "where is..." are answered
+        # by looking at the screen and pointing, never by acting. Decided here,
+        # before any plan exists, so a question cannot turn into an action.
+        from agent import teaching
+        from agent.planner import SCREEN_OFF_MESSAGE
+
+        if teaching.is_teaching_request(command):
+            if settings.allow_screen:
+                await _teach_on_screen(
+                    command, context, client_id, planning_id, request_id
+                )
+                return
+            if teaching.needs_screen(command):
+                executor.finish_planning(client_id, planning_id)
+                await ws_manager.send_agent_response(
+                    create_response_message(SCREEN_OFF_MESSAGE, []), client_id
+                )
+                await ws_manager.send_status("idle", client_id)
+                await _send_task_outcome(
+                    client_id, request_id, "failed", SCREEN_OFF_MESSAGE
+                )
+                return
+
+        # 2. Plan. "Do it for me" straight after a lesson means the step TORCH
+        # just explained; anything else goes to the planner.
+        raw_steps = teaching.follow_up_plan(command, context)
+        if raw_steps is None:
+            await ws_manager.send_terminal_line("Planning execution steps...", "info", client_id)
+            raw_steps = await plan_command(
+                f"{command}\n\n{connection_status}",
+                context=context,
+                model=model,
+            )
 
         if await _discard_cancelled_plan(
             client_id, planning_id, "command", request_id=request_id
         ):
             return
+
+        raw_steps = _prefer_sight(command, raw_steps)
+
+        # A reply is only words. If the user asked for something to be done and
+        # the plan is a reply saying it has been, nothing was done: ask for a
+        # real plan once, and if that fails too, say so honestly.
+        if _is_unbacked_claim(command, raw_steps):
+            logger.warning("Planner claimed a task was done without planning any steps")
+            raw_steps = await plan_command(
+                f"{command}\n\n{connection_status}\n\n"
+                "IMPORTANT: nothing has been done yet. Do not use the respond tool. "
+                "Plan the tool steps that actually carry out the request.",
+                context=context,
+                model=model,
+            )
+            if await _discard_cancelled_plan(
+                client_id, planning_id, "command", request_id=request_id
+            ):
+                return
+            raw_steps = _prefer_sight(command, raw_steps)
+            if _is_unbacked_claim(command, raw_steps):
+                raw_steps = [
+                    {
+                        "tool": "respond",
+                        "label": "Replying",
+                        "args": {
+                            "message": (
+                                "I couldn't work out how to do that, so I haven't done "
+                                "anything. Try saying it another way."
+                            )
+                        },
+                        "requires_approval": False,
+                    }
+                ]
+
+        # A reply that comes after real steps ("here is what I found: ...")
+        # is the closing message of that work, not a reply instead of it. It
+        # used to be sent straight away with its {{step_0_result}} holes
+        # unfilled, and the steps it depended on were never run.
+        closing_reply = ""
+        if any(s.get("tool") == "respond" for s in raw_steps) and any(
+            s.get("tool") != "respond" for s in raw_steps
+        ):
+            replies = [s for s in raw_steps if s.get("tool") == "respond"]
+            closing_reply = str((replies[-1].get("args") or {}).get("message") or "")
+            raw_steps = [s for s in raw_steps if s.get("tool") != "respond"]
 
         # Intercept respond tool for conversational replies (like greetings and clarifying questions)
         respond_steps = [s for s in raw_steps if s.get("tool") == "respond"]
@@ -1225,10 +1647,11 @@ async def process_command(
         # and a failure in one breath.
         if len(validated_steps) == 1 and validated_steps[0].get("tool") == "error":
             natural_response = step_labels[0]
-        elif len(step_labels) > 1:
-            natural_response = "Got it. Here is my plan:"
         else:
-            natural_response = f"On it. {step_labels[0]}."
+            # No preamble: the step list itself shows what TORCH is doing.
+            # "Here's my plan." / "On it. ..." only restated the first row
+            # and left a gap above the work.
+            natural_response = ""
         
         response_msg = create_response_message(natural_response, validated_steps)
         await ws_manager.send_agent_response(response_msg, client_id)
@@ -1250,17 +1673,41 @@ async def process_command(
             channel="command",
         )
 
+        # A plan is written before TORCH has seen the screen, so a step like
+        # "click the button called 2" fails when the app calls it "Two". That
+        # is not a reason to give up: look at the screen and do it by sight.
+        second_look = _plan_by_sight(command, executed_steps)
+        if second_look is not None and not executor.is_cancelled(client_id, message_id):
+            validated_steps = validate_plan(second_look)
+            response_msg = create_response_message(
+                "That didn't work the quick way, so I'm looking at the screen instead.",
+                validated_steps,
+            )
+            await ws_manager.send_agent_response(response_msg, client_id)
+            message_id = response_msg["id"]
+            executed_steps = await executor.execute_plan(
+                message_id,
+                validated_steps,
+                client_id,
+                channel="command",
+            )
+
         if executor.is_cancelled(client_id, message_id):
             completed_count = sum(1 for s in executed_steps if s["status"] == "done")
             cancelled_count = len(executed_steps) - completed_count
-            recap_sentence = f"I've stopped the task. Completed {completed_count} step(s) and cancelled the remaining {cancelled_count} step(s)."
+            total_count = len(executed_steps)
+            recap_sentence = (
+                "Stopped. Nothing was done yet."
+                if completed_count == 0
+                else f"Stopped. I had finished {completed_count} of {total_count} steps."
+            )
             await ws_manager.send_status("idle", client_id)
             recap_msg = {
                 "id": str(uuid.uuid4()),
                 "role": "torch",
                 "content": recap_sentence,
                 "timestamp": __import__("time").time() * 1000,
-                "steps": executed_steps,
+                "steps": [],  # the plan above already shows them; a copy drew the list twice
                 "speak": True,
             }
             await ws_manager.send_agent_response(recap_msg, client_id)
@@ -1284,7 +1731,13 @@ async def process_command(
                 # when they are the one who stopped it.
                 recap_sentence = "Cancelled — nothing was sent."
             elif first_error:
-                recap_sentence = f"I couldn't finish that. {first_error}"
+                # The step's own message usually says it already ("I stopped
+                # at ..."); prefixing it again read as two apologies.
+                recap_sentence = (
+                    first_error
+                    if re.match(r"^(I stopped|I couldn't|I could not|I can't|I waited)", first_error)
+                    else f"I couldn't finish that. {first_error}"
+                )
             else:
                 failed_labels = [s.get("label") or s.get("tool", "step") for s in failed_steps[:3]]
                 recap_sentence = (
@@ -1336,10 +1789,12 @@ async def process_command(
         completed_steps = [s for s in executed_steps if s["status"] == "done"]
         recap_emails = None
         last_result = ""
+        last_tool = None
 
         if completed_steps:
             tools_used = {s["tool"] for s in completed_steps}
             last_result = (completed_steps[-1].get("result") or "").strip()
+            last_tool = completed_steps[-1].get("tool")
             if "send_email" in tools_used:
                 recap_sentence = "Your email was sent."
             elif "read_inbox" in tools_used:
@@ -1363,6 +1818,27 @@ async def process_command(
                     recap_sentence = "I found your document and pulled out the key details."
                 else:
                     recap_sentence = last_result if last_result else "I found the file."
+            elif "vision_control" in tools_used:
+                # What TORCH saw when it finished ("The File menu is open.") is
+                # the useful closing line - from the screen step itself, not
+                # from whatever step happened to run last.
+                vision_result = next(
+                    (
+                        str(step.get("result") or "")
+                        for step in reversed(completed_steps)
+                        if step.get("tool") == "vision_control"
+                    ),
+                    last_result or "",
+                )
+                seen = vision_result.removeprefix("Done:").strip()
+                recap_sentence = (seen[:1].upper() + seen[1:]) if seen else None
+                if recap_sentence and recap_sentence[-1] not in ".!?":
+                    recap_sentence += "."
+            elif last_tool in {"read_screen", "describe_screen"}:
+                # The plan ended by reading the screen, which means the user
+                # wanted to know something ("work out 25 times 4"). Tell them,
+                # rather than closing with "That's done."
+                recap_sentence = await _answer_from_screen(command, last_result)
             elif "search_web" in tools_used:
                 recap_sentence = "Web search finished."
             elif "run_terminal" in tools_used:
@@ -1380,6 +1856,8 @@ async def process_command(
         # outcome, where the tool's own result is the more useful summary and
         # onboarding renders it verbatim.
         bubble_sentence = recap_sentence or "That's done."
+        if closing_reply:
+            bubble_sentence = _fill_step_results(closing_reply, executed_steps)
 
         if bubble_sentence:
             # `speak` marks the final sentence for the voice ladder. Plan
@@ -1548,46 +2026,42 @@ async def process_companion_command(
     client_id: str,
     audio: dict | None = None,
 ) -> None:
-    """Answer a contextual question and optionally point to a visible desktop element."""
+    """Answer a contextual question and optionally point to a visible desktop element.
+
+    `audio` is accepted for older clients and ignored: voice never leaves the
+    machine, so it is not forwarded to any AI service.
+    """
+    from agent.companion import answer_with_screen
+    from agent.context import ConversationContext
+    from agent.planner import SCREEN_OFF_MESSAGE
+    from errors.plain_language import UserFacingError
+
+    guidance: dict = {"type": "none"}
     try:
         await ws_manager.send_overlay_event(status="processing", client_id=client_id)
-        from agent.companion import answer_with_screen
-        from agent.context import ConversationContext
-
+        if not settings.allow_screen:
+            raise UserFacingError(SCREEN_OFF_MESSAGE)
         context = ConversationContext.get_context(client_id)
-        result = await answer_with_screen(command, screenshots, context, audio)
+        result = await answer_with_screen(command, screenshots, context)
         reply = result["speech"]
-        await ws_manager.send_overlay_event(
-            status="speaking",
-            reply=reply,
-            guidance=result.get("guidance"),
-            client_id=client_id,
-        )
+        guidance = result.get("guidance") or guidance
         ConversationContext.add_exchange(
             client_id=client_id,
             user_command=command,
             reply_summary=reply,
             step_results=[],
         )
-    except Exception as error:
-        logger.error(f"Visual companion failed: {error}", exc_info=True)
-        error_text = str(error).lower()
-        if "gemini api 401" in error_text or "gemini api 403" in error_text:
-            reply = "Gemini rejected the API key. Replace it in Settings, then try again."
-        elif "gemini api 429" in error_text:
-            reply = "Gemini is rate-limiting this key right now. Wait briefly and try again."
-        elif "timeout" in error_text or "timed out" in error_text:
-            reply = "Gemini took too long to respond. I stopped the request so TORCH stays responsive."
-        elif "connection" in error_text or "resolve" in error_text:
-            reply = "I could not reach Gemini. Check this laptop's internet connection and try again."
-        else:
-            reply = "I read the screen but could not finish the visual answer. Please try that once more."
-        await ws_manager.send_overlay_event(
-            status="speaking",
-            reply=reply,
-            guidance={"type": "none"},
-            client_id=client_id,
-        )
+    except UserFacingError as error:
+        reply = str(error)
+    except Exception:
+        logger.exception("Visual companion failed")
+        reply = "I couldn't look at your screen just now. Try again in a moment."
+    await ws_manager.send_overlay_event(
+        status="speaking",
+        reply=reply,
+        guidance=guidance,
+        client_id=client_id,
+    )
 
 
 # ─── ENTRY POINT ───

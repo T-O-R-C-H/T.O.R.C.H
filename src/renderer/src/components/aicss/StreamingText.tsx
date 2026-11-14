@@ -1,6 +1,6 @@
 import styles from './StreamingText.module.css'
 import { useEffect, useState } from 'react'
-import { LinkifiedText } from '../chat/LinkifiedText'
+import { RichText } from '../chat/RichText'
 
 export function StreamingText({ text }: { text: string }): JSX.Element {
   const [shown, setShown] = useState('')
@@ -18,9 +18,9 @@ export function StreamingText({ text }: { text: string }): JSX.Element {
   const streaming = shown.length < text.length
 
   return (
-    <p className={styles.prose}>
-      <LinkifiedText text={shown} />
+    <div className={styles.prose}>
+      <RichText text={shown} />
       <span className={streaming ? `${styles.caret} ${styles.caretSteady}` : styles.caret} />
-    </p>
+    </div>
   )
 }

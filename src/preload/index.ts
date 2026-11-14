@@ -26,6 +26,13 @@ type ClipboardChangeEvent = {
 type TaskCommand =
   | { type: 'stop_task' }
   | { type: 'clarification_response'; taskId: string; response: string }
+  | { type: 'handoff_continue'; taskId: string }
+  | {
+      type: 'hitl_response'
+      messageId: string
+      stepId: string
+      action: 'approve' | 'cancel'
+    }
 
 export type ScreenCapture = {
   displayId: string
@@ -43,6 +50,8 @@ export type VisualGuidance = {
   homeY?: number
   label?: string
   transcript?: string
+  /** 'physical' when x/y are raw screen pixels rather than scaled ones. */
+  space?: 'physical'
 }
 
 // TORCH API exposed to renderer
@@ -56,6 +65,7 @@ const torchAPI = {
   captureScreens: (): Promise<ScreenCapture[]> => ipcRenderer.invoke('companion:captureScreens'),
   showGuidance: (guidance: VisualGuidance): void => ipcRenderer.send('guidance:show', guidance),
   hideGuidance: (): void => ipcRenderer.send('guidance:hide'),
+  notifyAttention: (message: string): void => ipcRenderer.send('attention:notify', message),
   showControlBorder: (): void => ipcRenderer.send('control-border:show'),
   hideControlBorder: (): void => ipcRenderer.send('control-border:hide'),
   completeVisionControl: (): void => ipcRenderer.send('vision-control:complete'),
@@ -81,6 +91,17 @@ const torchAPI = {
   removeGuidance: (): void => {
     ipcRenderer.removeAllListeners('guidance:update')
   },
+  /** Tell TORCH's on-screen cursor where the next action is. */
+  moveAgentCursor: (event: Record<string, unknown>): void =>
+    ipcRenderer.send('agent-cursor:move', event),
+  onAgentCursor: (callback: (_e: unknown, event: Record<string, unknown>) => void): void => {
+    ipcRenderer.on('guidance:cursor', (event, payload: Record<string, unknown>) =>
+      callback(event, payload)
+    )
+  },
+  removeAgentCursor: (): void => {
+    ipcRenderer.removeAllListeners('guidance:cursor')
+  },
 
   // External links
   openExternal: (url: string): void => ipcRenderer.send('shell:openExternal', url),
@@ -98,6 +119,8 @@ const torchAPI = {
   setPillFocused: (focused: boolean): void => ipcRenderer.send('pill:setFocused', focused),
   hidePill: (): void => ipcRenderer.send('pill:hide'),
   showTaskPanel: (): void => ipcRenderer.send('task-panel:show'),
+  /** The panel sizes its window to its content, anchored bottom-right. */
+  resizeTaskPanel: (height: number): void => ipcRenderer.send('task-panel:resize', height),
   hideTaskPanel: (): void => ipcRenderer.send('task-panel:hide'),
   getVoiceShortcut: (): Promise<string> => ipcRenderer.invoke('shortcuts:voice'),
 

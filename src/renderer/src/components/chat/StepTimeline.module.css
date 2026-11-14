@@ -1,24 +1,28 @@
-/* The list of steps for one request. A rail down the left ties the rows
-   together so they read as one piece of work rather than loose lines. */
+/*
+ * A run of work as quiet action rows, with TORCH's to-do list in a box under
+ * the step it belongs to. Neutral text throughout; colour lives only in the
+ * small status marks.
+ */
 
 .timeline {
   display: flex;
   flex-direction: column;
   max-width: 100%;
+  font-size: 13px;
 }
 
 .head {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  gap: 6px;
-  height: 24px;
-  margin-left: -6px;
-  padding: 0 6px;
+  gap: 5px;
+  height: 22px;
+  margin-left: -4px;
+  padding: 0 6px 0 4px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font: inherit;
   font-size: 12.5px;
   font-weight: 500;
@@ -29,17 +33,14 @@
 }
 .head:hover {
   background: var(--surface-hover);
-  color: var(--text-primary);
-}
-.headLabel {
-  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
 }
 .chevron {
-  opacity: 0.7;
+  transform: rotate(90deg);
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .head[aria-expanded='false'] .chevron {
-  transform: rotate(-90deg);
+  transform: rotate(0deg);
 }
 
 .collapsible {
@@ -59,106 +60,235 @@
   min-height: 0;
   overflow: hidden;
   list-style: none;
-  margin: 0;
+  margin: 4px 0 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .item {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 4px 0;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--text-tertiary);
-  animation: timeline-in var(--dur-base) var(--ease-out) backwards;
+  animation: row-in var(--dur-base) var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
-.item:first-child {
-  padding-top: 8px;
-}
-@keyframes timeline-in {
+@keyframes row-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-3px);
   }
 }
 
-/* The rail: a hairline from each icon to the next. */
-.item:not(:last-child)::before {
-  content: '';
-  position: absolute;
-  left: 6.5px;
-  top: 26px;
-  bottom: -6px;
-  width: 1px;
-  background: var(--border-default);
+/* One action: icon, what it was, a status mark at the end. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  color: var(--text-secondary);
+  transition: background var(--dur-instant) ease;
 }
-.item:first-child:not(:last-child)::before {
-  top: 30px;
+.row:hover {
+  background: var(--surface-hover);
+}
+.item[data-status='active'] .row,
+.item[data-status='waiting'] .row {
+  color: var(--text-primary);
 }
 
 .icon {
   flex: none;
-  width: 14px;
-  height: 20px;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-ghost);
-}
-
-.label {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.item[data-status='done'] {
-  color: var(--text-secondary);
-}
-.item[data-status='done'] .icon {
-  color: var(--color-torch-success);
-}
-
-.item[data-status='active'] {
-  color: var(--text-primary);
+  color: var(--text-tertiary);
 }
 .item[data-status='active'] .icon {
   color: var(--brand);
 }
 
-.item[data-status='failed'] {
-  color: var(--tint-error-text);
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 20px;
 }
-.item[data-status='failed'] .icon {
+
+.mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+.markDone {
+  color: var(--text-ghost);
+}
+.markFailed {
   color: var(--color-torch-error);
 }
-
-.item[data-status='waiting'] {
-  color: var(--text-primary);
+.markWaiting {
+  color: var(--tint-warning-text);
+  font-size: 11.5px;
+  font-weight: 500;
 }
-.item[data-status='waiting'] .icon {
-  color: var(--color-torch-warning);
-}
-
-.item[data-status='cancelled'] .label {
-  text-decoration: line-through;
-  text-decoration-color: var(--text-ghost);
+.markMuted {
+  color: var(--text-ghost);
+  font-size: 11.5px;
 }
 
-.spin {
-  animation: timeline-spin 0.9s linear infinite;
+.spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  border-top-color: var(--brand);
+  animation: spin 0.8s linear infinite;
 }
-@keyframes timeline-spin {
+@keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-/* A highlight sweeping across the text: the "still working" signal used by
-   the header and the active row. The base colour stays readable, so the row
-   never dims to nothing between sweeps. */
+/* ---- To-dos ---- */
+.todos {
+  margin: 4px 0 4px 30px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--surface-well);
+  overflow: hidden;
+  animation: row-in var(--dur-base) var(--ease-out);
+}
+.todosHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 11px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.todosCount {
+  color: var(--text-tertiary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.todoList {
+  list-style: none;
+  margin: 0;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+}
+.todo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 26px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 18px;
+  animation: row-in var(--dur-base) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+  transition: color var(--dur-base) ease;
+}
+.todo[data-status='done'] {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-ghost);
+}
+.todo[data-status='active'] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.todo[data-status='waiting'] {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.todo[data-status='failed'] {
+  color: var(--text-primary);
+}
+
+.boxStopped {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--text-ghost);
+  box-sizing: border-box;
+}
+.todo[data-status='cancelled'] {
+  color: var(--text-tertiary);
+}
+
+.box,
+.boxActive,
+.boxDone,
+.boxFailed,
+.boxWaiting {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+.box {
+  border: 1.5px solid var(--border-strong);
+}
+.boxActive {
+  border: 1.5px solid var(--brand);
+  box-shadow: inset 0 0 0 2.5px var(--surface-well);
+  background: var(--brand);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.boxDone {
+  background: var(--text-tertiary);
+  color: var(--surface-well);
+  animation: pop var(--dur-slow) var(--ease-spring);
+}
+.boxFailed {
+  background: var(--color-torch-error);
+  color: var(--color-torch-accent-fg);
+}
+.boxWaiting {
+  border: 1.5px solid var(--color-torch-warning);
+  box-shadow: inset 0 0 0 2.5px var(--surface-well);
+  background: var(--color-torch-warning);
+}
+@keyframes pop {
+  from {
+    transform: scale(0.5);
+  }
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* What TORCH is doing this second. */
+.activity {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0 2px 38px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 17px;
+  animation: row-in var(--dur-base) var(--ease-out);
+}
+.activityCaret {
+  color: var(--text-ghost);
+}
+
+/* A highlight sweeping across the text: the "still working" signal. */
 .shimmer {
   background:
     linear-gradient(
@@ -174,9 +304,9 @@
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: timeline-shimmer 1.8s linear infinite;
+  animation: shimmer 1.8s linear infinite;
 }
-@keyframes timeline-shimmer {
+@keyframes shimmer {
   from {
     background-position:
       140% 0,
@@ -193,5 +323,9 @@
   .shimmer {
     background: none;
     -webkit-text-fill-color: currentColor;
+  }
+  .spinner,
+  .boxActive {
+    animation: none;
   }
 }

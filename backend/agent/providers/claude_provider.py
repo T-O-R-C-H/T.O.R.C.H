@@ -95,15 +95,18 @@ class ClaudeProvider(LLMProvider):
             response = await asyncio.to_thread(
                 self.client.messages.create,
                 model=active_model,
-                max_tokens=4096,
-                temperature=0.1,
+                # Current models think before answering and no longer accept
+                # a temperature; leave room for both the thinking and the plan.
+                max_tokens=16000,
                 messages=[
                     {"role": "user", "content": contents}
                 ],
             )
 
             # Parse response
-            text = response.content[0].text.strip()
+            text = "".join(
+                block.text for block in response.content if block.type == "text"
+            ).strip()
             # Remove markdown code fences if present
             if text.startswith("```"):
                 text = text.split("\n", 1)[1]
@@ -147,12 +150,14 @@ class ClaudeProvider(LLMProvider):
             response = await asyncio.to_thread(
                 self.client.messages.create,
                 model=self.model,
-                max_tokens=4096,
+                max_tokens=16000,
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
             )
-            return response.content[0].text
+            return "".join(
+                block.text for block in response.content if block.type == "text"
+            )
         except Exception as e:
             logger.error(f"Claude generate_text failed: {e}")
             raise e

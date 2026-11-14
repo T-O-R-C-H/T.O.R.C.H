@@ -67,3 +67,13 @@ describe('plain messages pass through', () => {
     expect(toPlainLanguage('I found **your** file.')).not.toContain('**')
   })
 })
+
+describe("TORCH's own messages", () => {
+  it('are not swapped for a vague line just because they are long', () => {
+    const message =
+      'I stopped at \u201cGo to checkout\u201d because it was taking more steps than I allow myself. ' +
+      'Where things are: the cart page is open with Pride and Prejudice in it.'
+    expect(toPlainLanguage(message)).toContain('Go to checkout')
+    expect(toPlainLanguage(message)).not.toContain('Try rephrasing')
+  })
+})

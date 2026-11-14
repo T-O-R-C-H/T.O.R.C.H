@@ -11,7 +11,8 @@ import {
   desktopCapturer,
   session,
   globalShortcut,
-  powerMonitor
+  powerMonitor,
+  Notification
 } from 'electron'
 import { join } from 'path'
 import os from 'os'
@@ -511,6 +512,79 @@ function getProjectRoot(): string {
 
 function completeVisionControl(): void {
   hideControlBorder()
+  restoreMainAfterControl()
+}
+
+/**
+ * TORCH's main window usually sits on top of the app the user is asking
+ * about. Two things follow, and both are handled here.
+ *
+ * Looking: for the instant of a screenshot the window is excluded from
+ * capture, so TORCH sees the app underneath instead of its own chat.
+ *
+ * Acting: a click aimed at the app would land on TORCH's window instead, so
+ * the window steps aside while TORCH is driving and comes back afterwards.
+ */
+/**
+ * Developer switch for recording demos: TORCH_ALLOW_CAPTURE=1 lets screen
+ * recorders see TORCH's overlay windows. Off by default, because those
+ * windows are hidden from capture so TORCH's own screenshots never show the
+ * AI its own panel or cursor.
+ */
+const ALLOW_CAPTURE = process.env['TORCH_ALLOW_CAPTURE'] === '1'
+let mainSteppedAside = false
+/** True while a task is running, from the status events TORCH publishes. */
+let taskActive = false
+
+/** A Windows notification, only when no TORCH window has the user's eye. */
+function notifyUser(title: string, body: string): void {
+  if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return
+  const notification = new Notification({ title, body: body.slice(0, 240) })
+  notification.on('click', () => showTaskPanel())
+  notification.show()
+}
+/** True from the moment TORCH starts driving until it stops or hands off. */
+let torchIsDriving = false
+
+function setMainHiddenFromCapture(hidden: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.setContentProtection(hidden)
+}
+
+/**
+ * With ALLOW_CAPTURE on, the panel, cursor and border are visible to screen
+ * recorders - and so to TORCH's own screenshots, where the model took its
+ * panel for something covering the page and spent steps trying to close it.
+ * They are hidden for the instant TORCH looks. (Without the switch they are
+ * always hidden from capture and this does nothing.)
+ */
+function setOverlaysHiddenFromCapture(hidden: boolean): void {
+  if (!ALLOW_CAPTURE) return
+  for (const window of [taskPanelWindow, guidanceWindow, controlBorderWindow]) {
+    if (window && !window.isDestroyed()) window.setContentProtection(hidden)
+  }
+}
+
+function stepMainAside(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return
+  mainSteppedAside = true
+  mainWindow.minimize()
+}
+
+function restoreMainAfterControl(): void {
+  if (!mainSteppedAside) return
+  mainSteppedAside = false
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.restore()
+}
+
+/** True when a point on screen (scaled pixels) is under the main window. */
+function mainWindowCovers(point: { x: number; y: number }): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  if (!mainWindow.isVisible() || mainWindow.isMinimized()) return false
+  const b = mainWindow.getBounds()
+  return point.x >= b.x && point.x <= b.x + b.width && point.y >= b.y && point.y <= b.y + b.height
 }
 
 /**
@@ -594,6 +668,7 @@ function createControlBorderWindow(): void {
     }
   })
   registerControlBorderDisplayListeners()
+  controlBorderWindow.setContentProtection(!ALLOW_CAPTURE)
   controlBorderWindow.setIgnoreMouseEvents(true, { forward: true })
   controlBorderWindow.setAlwaysOnTop(true, 'screen-saver')
   controlBorderWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -643,7 +718,10 @@ function createMainWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      zoomFactor: 1.0
+      zoomFactor: 1.0,
+      // The window is minimised while TORCH drives the screen. It still has
+      // to keep its connection and its step list ticking at full speed.
+      backgroundThrottling: false
     }
   })
 
@@ -671,6 +749,11 @@ function createMainWindow(): void {
     }
   })
 
+  mainWindow.on('focus', () => hideTaskPanel())
+  mainWindow.on('blur', () => {
+    if (taskActive) showTaskPanel()
+  })
+
   mainWindow.on('show', () => {
     // Keep main window visible on taskbar
   })
@@ -682,7 +765,9 @@ function createMainWindow(): void {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools()
+    // Developer tools open as a separate window, which sits on top of the
+    // apps TORCH is asked to work in. Opt in when they are wanted.
+    if (process.env['TORCH_DEVTOOLS'] === '1') mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -696,8 +781,10 @@ const PILL_FOCUSED_WIDTH = 420
 const PILL_HEIGHT = 44
 const PILL_BOTTOM_GAP = 12
 
-const TASK_PANEL_WIDTH = 300
-const TASK_PANEL_HEIGHT = 420
+const TASK_PANEL_WIDTH = 380
+const TASK_PANEL_HEIGHT = 240
+const TASK_PANEL_MAX_HEIGHT = 640
+const TASK_PANEL_MARGIN = 18
 
 function positionPill(width = PILL_WIDTH): void {
   if (!pillWindow || pillWindow.isDestroyed()) return
@@ -866,14 +953,20 @@ function createTaskPanelWindow(): void {
   taskPanelWindow = new BrowserWindow({
     width: TASK_PANEL_WIDTH,
     height: TASK_PANEL_HEIGHT,
-    x: Math.round(area.x + area.width - TASK_PANEL_WIDTH - 16),
-    y: Math.round(area.y + (area.height - TASK_PANEL_HEIGHT) / 2),
+    // Bottom-right, like a notification: out of the way of the app TORCH
+    // is working in, and where people look for "something needs you".
+    x: Math.round(area.x + area.width - TASK_PANEL_WIDTH - TASK_PANEL_MARGIN),
+    y: Math.round(area.y + area.height - TASK_PANEL_HEIGHT - TASK_PANEL_MARGIN),
     show: false,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    // Must be resizable for its own size changes to reach the page: with
+    // this off, Windows resized the frame but the page stayed 82px tall and
+    // the panel was cut off below its header. There is no frame, so the user
+    // still cannot drag its edges.
+    resizable: true,
     // Carries a Stop button, so it must accept clicks.
     focusable: true,
     hasShadow: false,
@@ -888,7 +981,7 @@ function createTaskPanelWindow(): void {
     }
   })
 
-  taskPanelWindow.setContentProtection(true)
+  taskPanelWindow.setContentProtection(!ALLOW_CAPTURE)
   taskPanelWindow.setAlwaysOnTop(true, 'screen-saver')
   taskPanelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
@@ -970,6 +1063,7 @@ function createGuidanceWindow(): void {
       backgroundThrottling: false
     }
   })
+  guidanceWindow.setContentProtection(!ALLOW_CAPTURE)
   guidanceWindow.setIgnoreMouseEvents(true, { forward: true })
   guidanceWindow.setAlwaysOnTop(true, 'screen-saver')
   guidanceWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
@@ -1194,16 +1288,63 @@ app.whenReady().then(() => {
     // that window gone it starts from the corner of the work area instead.
     const homeX = left + 80
     const homeY = top + 80
+    // The backend measures the screen in physical pixels; Electron lays
+    // windows out in scaled ones. On a display set to 125% the two differ,
+    // and the pointer would land beside its target.
+    let target = { x: Number(guidance.x), y: Number(guidance.y) }
+    if (guidance.space === 'physical' && process.platform === 'win32') {
+      target = screen.screenToDipPoint({ x: Math.round(target.x), y: Math.round(target.y) })
+    }
+    // Pointing at something hidden behind TORCH's own window helps nobody:
+    // step aside so the user can see what is being pointed at. The pointer
+    // carries the words, and the pill takes "do it for me".
+    if (mainWindowCovers(target)) {
+      mainWindow?.minimize()
+      showPill()
+    }
     guidanceWindow?.showInactive()
     guidanceWindow?.webContents.send('guidance:update', {
       ...guidance,
-      x: Number(guidance.x) - left,
-      y: Number(guidance.y) - top,
+      x: target.x - left,
+      y: target.y - top,
       homeX: homeX - left,
       homeY: homeY - top
     })
   })
   ipcMain.on('guidance:hide', () => guidanceWindow?.hide())
+  // TORCH's own cursor: where the next click, scroll or keystroke happens.
+  ipcMain.on('agent-cursor:move', (_, event) => {
+    if (!event || typeof event !== 'object') return
+    if (!guidanceWindow || guidanceWindow.isDestroyed()) createGuidanceWindow()
+    const payload: Record<string, unknown> = { action: String(event.action ?? 'look') }
+    if (typeof event.note === 'string') payload.note = event.note.slice(0, 120)
+    if (Number.isFinite(Number(event.x)) && Number.isFinite(Number(event.y))) {
+      const displays = screen.getAllDisplays()
+      const left = Math.min(...displays.map((display) => display.bounds.x))
+      const top = Math.min(...displays.map((display) => display.bounds.y))
+      let point = { x: Number(event.x), y: Number(event.y) }
+      if (process.platform === 'win32') {
+        point = screen.screenToDipPoint({ x: Math.round(point.x), y: Math.round(point.y) })
+      }
+      payload.x = point.x - left
+      payload.y = point.y - top
+    }
+    if (payload.action !== 'hide') guidanceWindow?.showInactive()
+    guidanceWindow?.webContents.send('guidance:cursor', payload)
+  })
+  // TORCH has stopped and is waiting for the user (a payment, a file to
+  // pick). If they are looking at another app they would never know, so tell
+  // them through Windows. Skipped when a TORCH window already has focus.
+  ipcMain.on('attention:notify', (_, message: unknown) => {
+    if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return
+    const notification = new Notification({
+      title: 'TORCH needs you',
+      body: String(message ?? '').slice(0, 240)
+    })
+    // The Continue and Stop buttons are on the panel, so that is what opens.
+    notification.on('click', () => showTaskPanel())
+    notification.show()
+  })
   ipcMain.on('control-border:show', () => showControlBorder())
   ipcMain.on('control-border:hide', () => hideControlBorder())
   ipcMain.on('task-event:publish', (ipcEvent, taskEvent: unknown) => {
@@ -1211,6 +1352,8 @@ app.whenReady().then(() => {
 
     const eventType = (taskEvent as { type?: unknown }).type
     const relayedEventTypes = new Set([
+      'user_request',
+      'attention_resolved',
       'agent_response',
       'content_delta',
       'content_done',
@@ -1218,6 +1361,9 @@ app.whenReady().then(() => {
       'status',
       'vision_control_start',
       'vision_control_end',
+      'vision_control_pause',
+      'vision_control_resume',
+      'attention_needed',
       'uia_control_start',
       'uia_control_end',
       'vision_capture_start',
@@ -1234,7 +1380,46 @@ app.whenReady().then(() => {
     ])
     if (typeof eventType !== 'string' || !relayedEventTypes.has(eventType)) return
 
-    for (const target of [mainWindow]) {
+    {
+      if (eventType === 'vision_control_start' || eventType === 'vision_control_resume') {
+        torchIsDriving = true
+        stepMainAside()
+      }
+      if (eventType === 'vision_control_end' || eventType === 'vision_control_pause') {
+        torchIsDriving = false
+      }
+      if (eventType === 'vision_capture_start') {
+        // The user may have brought TORCH back mid-task. It is hidden from
+        // the screenshot, so the next click would be aimed at the app behind
+        // it and land on TORCH instead. Step aside again before each look.
+        if (torchIsDriving) stepMainAside()
+        setMainHiddenFromCapture(true)
+        setOverlaysHiddenFromCapture(true)
+      }
+      if (eventType === 'vision_capture_end') {
+        setMainHiddenFromCapture(false)
+        setOverlaysHiddenFromCapture(false)
+      }
+    }
+
+    if (eventType === 'status') {
+      const status = (taskEvent as { status?: unknown }).status
+      taskActive = typeof status === 'string' && status !== 'idle'
+    }
+    // Something only the user can do: bring the panel up over whatever app is
+    // in front, so they can answer without hunting for TORCH's window.
+    if (
+      eventType === 'hitl_request' ||
+      eventType === 'attention_needed' ||
+      eventType === 'clarification_request'
+    ) {
+      if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.isFocused()) showTaskPanel()
+      if (eventType === 'hitl_request') {
+        notifyUser('TORCH needs your OK', 'Approve or reject in the TORCH panel.')
+      }
+    }
+
+    for (const target of [mainWindow, taskPanelWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
         target.webContents.send('task-event:update', taskEvent)
       }
@@ -1242,14 +1427,30 @@ app.whenReady().then(() => {
   })
   ipcMain.on('task-command:publish', (ipcEvent, command: unknown) => {
     if (!command || typeof command !== 'object') return
-    const taskCommand = command as { type?: unknown; taskId?: unknown; response?: unknown }
+    const taskCommand = command as {
+      type?: unknown
+      taskId?: unknown
+      response?: unknown
+      messageId?: unknown
+      stepId?: unknown
+      action?: unknown
+    }
     const validStop = taskCommand.type === 'stop_task'
     const validClarification =
       taskCommand.type === 'clarification_response' &&
       typeof taskCommand.taskId === 'string' &&
       typeof taskCommand.response === 'string'
-    if (!validStop && !validClarification) return
-    for (const target of [mainWindow]) {
+    const validContinue =
+      taskCommand.type === 'handoff_continue' && typeof taskCommand.taskId === 'string'
+    const validApproval =
+      taskCommand.type === 'hitl_response' &&
+      typeof taskCommand.messageId === 'string' &&
+      typeof taskCommand.stepId === 'string' &&
+      (taskCommand.action === 'approve' || taskCommand.action === 'cancel')
+    if (!validStop && !validClarification && !validContinue && !validApproval) return
+    // Every window with a connection hears it; only the one that started the
+    // task acts on it.
+    for (const target of [mainWindow, pillWindow]) {
       if (target && !target.isDestroyed() && target.webContents.id !== ipcEvent.sender.id) {
         target.webContents.send('task-command:update', taskCommand)
       }
@@ -1289,8 +1490,22 @@ app.whenReady().then(() => {
   // while the main window is out of the way - it would be noise on top of the
   // Command Center, which already shows the same steps.
   ipcMain.on('task-panel:show', () => {
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) return
+    // Not while the user is looking at TORCH itself: the chat shows the same.
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) return
     showTaskPanel()
+  })
+  ipcMain.on('task-panel:resize', (_event, height: unknown) => {
+    if (!taskPanelWindow || taskPanelWindow.isDestroyed()) return
+    const wanted = Math.round(Number(height))
+    if (!Number.isFinite(wanted)) return
+    const area = screen.getPrimaryDisplay().workArea
+    const panelHeight = Math.max(80, Math.min(TASK_PANEL_MAX_HEIGHT, wanted))
+    taskPanelWindow.setBounds({
+      x: Math.round(area.x + area.width - TASK_PANEL_WIDTH - TASK_PANEL_MARGIN),
+      y: Math.round(area.y + area.height - panelHeight - TASK_PANEL_MARGIN),
+      width: TASK_PANEL_WIDTH,
+      height: panelHeight
+    })
   })
   ipcMain.on('task-panel:hide', () => hideTaskPanel())
 

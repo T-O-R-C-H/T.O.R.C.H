@@ -11,7 +11,14 @@ export function toPlainLanguage(raw: string | undefined): string {
   if (lower.includes('permission') || lower.includes('access denied')) {
     return "I don't have permission to do that. Close the file if it's open elsewhere and try again."
   }
-  if (lower.includes('network') || lower.includes('timeout') || lower.includes('connection')) {
+  if (
+    lower.includes('network error') ||
+    lower.includes('timed out') ||
+    lower.includes('econnrefused') ||
+    lower.includes('connection refused') ||
+    lower.includes('connectionerror') ||
+    lower.includes('network unreachable')
+  ) {
     return 'There was a connection problem. Check your internet and try again.'
   }
   if (lower.includes('backend offline') || lower.includes('not connected')) {
@@ -38,11 +45,13 @@ export function toPlainLanguage(raw: string | undefined): string {
   if (lower.includes('step ') && lower.includes('failed after')) {
     return 'This step did not finish. Check the details below and try again.'
   }
+  // Only something that is plainly a program's error output is replaced.
+  // TORCH's own messages are already written for people, and the old length
+  // test swapped "I stopped at 'Go to checkout' because..." for a vague line.
   if (
     lower.includes('traceback') ||
-    lower.includes('exception') ||
-    lower.includes('line ') ||
-    raw.length > 140
+    /\b\w+(error|exception):/i.test(raw) ||
+    /\bline \d+, in \w+/.test(raw)
   ) {
     return 'Something went wrong on this step. Try rephrasing your request.'
   }

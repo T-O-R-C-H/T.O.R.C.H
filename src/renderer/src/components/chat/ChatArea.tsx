@@ -7,6 +7,7 @@ import { CmdFileSearch, CmdFolder, CmdMail, CmdMonitor } from '../icons/cleanIco
 import { buildChatTurns } from '../../utils/chatTurns'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { formatAgentContent } from '../../utils/plainLanguage'
+import { AttentionCard } from './AttentionCard'
 import { ClarificationPrompt } from './ClarificationPrompt'
 
 const promptSuggestions = [
@@ -218,6 +219,7 @@ export function ChatArea({ onApprove, onEdit, onCancel, onSend }: ChatAreaProps)
           )
         })}
         <ClarificationPrompt />
+        <AttentionCard />
       </div>
     </div>
   )
