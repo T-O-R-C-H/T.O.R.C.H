@@ -976,3 +976,83 @@
   color: var(--bg);
 }
 
+
+/* ------------------------------------------- the demo's Windows taskbar */
+
+.taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  height: 6.2%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9cqw;
+  background: rgb(255 255 255 / 0.72);
+  border-top: 1px solid var(--line);
+  font-size: 1cqw;
+}
+
+.taskbar span {
+  display: grid;
+  place-items: center;
+  height: 70%;
+  aspect-ratio: 1;
+  border-radius: 0.6cqw;
+  color: var(--ink-2);
+}
+
+.taskbar svg {
+  width: 1.4cqw;
+  height: 1.4cqw;
+}
+
+.taskbar__start {
+  color: var(--blue) !important;
+}
+
+.taskbar__search {
+  aspect-ratio: auto !important;
+  width: 11cqw;
+  justify-items: start !important;
+  padding: 0 1cqw;
+  border-radius: 99px !important;
+  background: var(--tint);
+  color: var(--faint) !important;
+}
+
+.taskbar__app {
+  position: relative;
+}
+
+.taskbar__app.is-on {
+  background: rgb(11 11 12 / 0.06);
+}
+
+.taskbar__app.is-on::after {
+  content: '';
+  position: absolute;
+  bottom: 0.15cqw;
+  width: 1cqw;
+  height: 0.25cqw;
+  border-radius: 1cqw;
+  background: var(--blue);
+}
+
+.taskbar__torch {
+  aspect-ratio: auto !important;
+  padding: 0 0.8cqw;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 0.85cqw;
+}
+
+.taskbar__clock {
+  position: absolute;
+  right: 1.4cqw;
+  aspect-ratio: auto !important;
+  color: var(--muted) !important;
+}
+

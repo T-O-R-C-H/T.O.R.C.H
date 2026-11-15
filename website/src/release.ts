@@ -3,6 +3,13 @@ import { useEffect, useState } from 'react'
 export const REPO = 'T-O-R-C-H/T.O.R.C.H'
 export const GITHUB_URL = `https://github.com/${REPO}`
 export const RELEASES_URL = `${GITHUB_URL}/releases`
+/**
+ * The newest installer, as a file. electron-builder names it TORCH-Setup.exe
+ * on every release (electron-builder.yml), so this one address always
+ * downloads the latest version with no API call.
+ */
+export const INSTALLER_NAME = 'TORCH-Setup.exe'
+export const DOWNLOAD_URL = `${GITHUB_URL}/releases/latest/download/${INSTALLER_NAME}`
 
 export type Release =
   | { state: 'loading' }

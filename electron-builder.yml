@@ -27,7 +27,8 @@ asarUnpack:
 win:
   executableName: torch
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  # A fixed name, so the website can link to releases/latest/download/TORCH-Setup.exe
+  artifactName: TORCH-Setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always

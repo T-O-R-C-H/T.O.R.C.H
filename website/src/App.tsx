@@ -1,18 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
-import { flushSync } from 'react-dom'
-import Autopilot from './Autopilot'
-import { Link, Wordmark } from './components'
-import { DesktopFooter, Taskbar } from './os'
-import { Github } from './icons'
-import { GITHUB_URL } from './release'
-import type { Route } from './components'
+import { AnimatePresence, motion, useScroll, useSpring } from 'motion/react'
 import DownloadPage from './pages/DownloadPage'
 import Home from './pages/Home'
 import How from './pages/How'
 import NotFound from './pages/NotFound'
 import Privacy from './pages/Privacy'
 import Safety from './pages/Safety'
+import { EASE, Footer, Nav } from './ui'
+import type { Route } from './ui'
 
 const ROUTES: Route[] = ['/', '/how', '/safety', '/download', '/privacy']
 
@@ -31,22 +27,13 @@ function readRoute(): Route {
   return (ROUTES as string[]).includes(raw) ? (raw as Route) : '/404'
 }
 
-/** Hash routing, with a cross-fade between pages where the browser can. */
 function useRouter(): [Route, (to: Route) => void] {
   const [route, setRoute] = useState<Route>(readRoute)
+  const routeRef = useRef(route)
+  routeRef.current = route
 
   useEffect(() => {
-    const onHash = (): void => {
-      const next = readRoute()
-      const swap = (): void => {
-        flushSync(() => setRoute(next))
-        window.scrollTo(0, 0)
-      }
-      const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
-      if (doc.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches)
-        doc.startViewTransition(swap)
-      else swap()
-    }
+    const onHash = (): void => setRoute(readRoute())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -55,87 +42,109 @@ function useRouter(): [Route, (to: Route) => void] {
     document.title = TITLES[route]
   }, [route])
 
-  const routeRef = useRef(route)
-  routeRef.current = route
   const go = useCallback((to: Route): void => {
     if (to === routeRef.current) {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
-    // Changing the hash fires hashchange, which runs the transition, so the
-    // back and forward buttons animate exactly like clicks do.
     window.location.hash = to
   }, [])
 
   return [route, go]
 }
 
-/** Fade elements up as they scroll into view. */
-function useReveal(key: string): void {
-  useEffect(() => {
-    const items = document.querySelectorAll<HTMLElement>('.reveal:not(.is-in)')
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-in')
-            io.unobserve(entry.target)
-          }
-        }
-      },
-      { rootMargin: '0px 0px -6% 0px', threshold: 0.1 }
-    )
-    items.forEach((item) => io.observe(item))
-    return () => io.disconnect()
-  }, [key])
+function Page({ route, go }: { route: Route; go: (to: Route) => void }): JSX.Element {
+  switch (route) {
+    case '/how':
+      return <How go={go} />
+    case '/safety':
+      return <Safety go={go} />
+    case '/download':
+      return <DownloadPage />
+    case '/privacy':
+      return <Privacy />
+    case '/404':
+      return <NotFound go={go} />
+    default:
+      return <Home go={go} />
+  }
 }
 
 export default function App(): JSX.Element {
   const [route, go] = useRouter()
-  const [driving, setDriving] = useState(false)
-  const onDriving = useCallback((on: boolean) => setDriving(on), [])
-  useReveal(route)
+  const { scrollYProgress } = useScroll()
+  const progress = useSpring(scrollYProgress, { stiffness: 180, damping: 30, mass: 0.3 })
+  const first = useRef(true)
+  useEffect(() => {
+    first.current = false
+  }, [])
 
   return (
-    <div className={`desk ${driving ? 'is-driving' : ''}`}>
-      <a
-        className="skip"
-        href="#/"
-        onClick={(event) => {
-          event.preventDefault()
-          document.getElementById('main')?.focus()
-        }}
-      >
-        Skip to content
-      </a>
-      <header className="deskbar">
-        <Link to="/" go={go} className="deskbar__brand" label="TORCH home">
-          <Wordmark />
-        </Link>
-        <span className="deskbar__status">
-          <i /> {driving ? 'TORCH is driving' : 'Ready'}
-        </span>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="deskbar__gh"
-          aria-label="TORCH on GitHub"
+    <>
+      <motion.div className="progress" style={{ scaleX: progress }} aria-hidden="true" />
+      <Nav route={route} go={go} />
+
+      <AnimatePresence mode="wait" onExitComplete={() => window.scrollTo(0, 0)}>
+        <motion.main
+          key={route}
+          id="main"
+          className="page"
+          initial={first.current ? false : { opacity: 0, y: 40, filter: 'blur(12px)' }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            filter: 'blur(0px)',
+            transition: { duration: 0.7, ease: EASE, delay: 0.25 }
+          }}
+          exit={{
+            opacity: 0,
+            y: -24,
+            filter: 'blur(10px)',
+            transition: { duration: 0.35, ease: EASE }
+          }}
         >
-          <Github size={18} />
-        </a>
-      </header>
-      <main id="main" className="page" key={route} tabIndex={-1}>
-        {route === '/' && <Home go={go} />}
-        {route === '/how' && <How go={go} />}
-        {route === '/safety' && <Safety go={go} />}
-        {route === '/download' && <DownloadPage />}
-        {route === '/privacy' && <Privacy />}
-        {route === '/404' && <NotFound go={go} />}
-      </main>
-      <DesktopFooter go={go} />
-      <Taskbar route={route} go={go} driving={driving} />
-      <Autopilot route={route} go={go} onChange={onDriving} />
-    </div>
+          <Page route={route} go={go} />
+        </motion.main>
+      </AnimatePresence>
+
+      {/* The curtain: a sheet with TORCH's mark wipes up between pages. */}
+      <AnimatePresence>
+        <motion.div
+          key={`curtain-${route}`}
+          className="curtain"
+          initial={
+            first.current ? { clipPath: 'inset(100% 0 0 0)' } : { clipPath: 'inset(100% 0 0 0)' }
+          }
+          animate={
+            first.current
+              ? { clipPath: 'inset(100% 0 0 0)' }
+              : {
+                  clipPath: ['inset(100% 0 0 0)', 'inset(0% 0 0 0)', 'inset(0 0 100% 0)'],
+                  transition: { duration: 1.05, times: [0, 0.42, 1], ease: EASE }
+                }
+          }
+          aria-hidden="true"
+        >
+          <motion.img
+            src="icon.png"
+            alt=""
+            width="64"
+            height="64"
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={
+              first.current
+                ? {}
+                : {
+                    scale: [0.6, 1, 1.1],
+                    opacity: [0, 1, 0],
+                    transition: { duration: 1.05, times: [0, 0.45, 1] }
+                  }
+            }
+          />
+        </motion.div>
+      </AnimatePresence>
+
+      <Footer go={go} />
+    </>
   )
 }
