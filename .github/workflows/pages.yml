@@ -1,15 +1,11 @@
 name: Deploy website
 
-# Publishes site/ to GitHub Pages.
-#
-# Deliberately not website/: that folder holds an in-progress Vite build of
-# the marketing site, and this is the self-contained no-framework version.
-# Keeping them apart means deploying one does not overwrite the other.
+# Builds website/ (Vite + React) and publishes it to GitHub Pages.
 on:
   push:
     branches: [main]
     paths:
-      - 'site/**'
+      - 'website/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -29,11 +25,24 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      # --ignore-scripts: no dependency gets to run code at install time
+      # (see SECURITY.md for why this repository is careful about that).
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx tsc --noEmit -p .
+      - run: npx vite build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: website/dist
       - id: deployment
         uses: actions/deploy-pages@v4
