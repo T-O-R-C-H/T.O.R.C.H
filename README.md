@@ -95,6 +95,30 @@ backend\venv\Scripts\python backend/build_backend.py   # bundles the backend
 npm run build:win
 ```
 
+## Releasing
+
+Set `"version"` in `package.json`, commit, then push a matching tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+`.github/workflows/release.yml` builds the installer on a clean Windows
+machine and publishes it as a GitHub release. The website's Download button
+picks up the newest release on its own.
+
+## Website
+
+`website/` is the public site (Vite + React), deployed to GitHub Pages by
+`.github/workflows/pages.yml` on every push to `main` that touches it.
+
+```bash
+cd website
+npm ci --ignore-scripts
+npm run dev
+```
+
 ## Architecture
 
 ```
