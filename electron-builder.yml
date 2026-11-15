@@ -27,7 +27,8 @@ asarUnpack:
 win:
   executableName: torch
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  # A fixed name, so the website can link to releases/latest/download/TORCH-Setup.exe
+  artifactName: TORCH-Setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -55,3 +56,6 @@ publish:
   provider: github
   owner: T-O-R-C-H
   repo: T.O.R.C.H
+  # Published, not a draft: the website's Download button reads the latest
+  # release, and drafts are invisible to it.
+  releaseType: release

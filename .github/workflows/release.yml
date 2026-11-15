@@ -1,0 +1,66 @@
+name: Release
+
+# Push a version tag (git tag v1.0.0 && git push origin v1.0.0) to build the
+# Windows installer on a clean Windows machine and publish it as a GitHub
+# release. The website's Download button picks up the newest release itself.
+#
+# The tag must match "version" in package.json; electron-builder names the
+# release and the installer from that field.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Bundle the backend (no Python needed on the user's PC)
+        run: |
+          python -m pip install -r backend/requirements.txt "pyinstaller>=6.10"
+          python backend/build_backend.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Build the installer and publish the release
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: torch-windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
