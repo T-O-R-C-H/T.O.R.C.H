@@ -42,7 +42,9 @@ def test_open_app_brings_an_open_chrome_forward_instead_of_launching(monkeypatch
 
 
 def _click():
-    return {"action": "click", "x": 1270, "y": 10}
+    # Inside even a 1024x768 screen (CI runners), so the coordinate check
+    # passes and the title-bar guard is what decides.
+    return {"action": "click", "x": 500, "y": 10}
 
 
 def test_click_on_a_window_close_button_is_refused(monkeypatch):
