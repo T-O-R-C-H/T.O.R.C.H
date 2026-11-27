@@ -114,7 +114,7 @@ not started.
 ## Documentation
 
 - [`SPEC.md`](SPEC.md) — authoritative behaviour spec
-- [`docs/contract-reference.md`](docs/contract-reference.md) — public surface
+- [`docs/contract.md`](docs/contract.md) — public surface
 - [`SUBMISSION.md`](SUBMISSION.md) — what is deployed, proven and missing
 - [`change.md`](change.md) — how this repo got here
 

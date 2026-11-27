@@ -1,0 +1,47 @@
+site_name: Torch
+site_description: A registry that stops Soroban contracts from going dark
+site_url: https://t-o-r-c-h.github.io/T.O.R.C.H/
+repo_url: https://github.com/T-O-R-C-H/T.O.R.C.H
+repo_name: T-O-R-C-H/T.O.R.C.H
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+nav:
+  - Introduction: index.md
+  - How it works: how-it-works.md
+  - Contract reference: contract.md
+  - Guides:
+      - Register a contract: guides/register.md
+      - Run a keeper: guides/keeper.md
+  - Developer guide: developer.md
+  - Contributing: contributing.md

@@ -3,7 +3,7 @@
 Testnet: `CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P`
 ([explorer](https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P))
 
-Full behaviour spec: [`SPEC.md`](../SPEC.md). This page is the surface.
+Full behaviour spec: [`SPEC.md`](https://github.com/T-O-R-C-H/T.O.R.C.H/blob/main/SPEC.md). This page is the surface.
 
 ## Types
 
