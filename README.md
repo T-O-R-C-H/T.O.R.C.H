@@ -1,125 +1,145 @@
-# Vigil
+# Torch
 
-A registry for Soroban contracts that should not be allowed to archive.
+**A registry that stops Soroban contracts from going dark.**
 
-Soroban ledger entries expire. When a contract's instance and code entries pass
-their TTL they are archived: the contract stops answering, balances stay
+[![ci](https://github.com/T-O-R-C-H/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)](https://github.com/T-O-R-C-H/T.O.R.C.H/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![network](https://img.shields.io/badge/network-testnet-blueviolet)](https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P)
+[![soroban-sdk](https://img.shields.io/badge/soroban--sdk-29.0.1-informational)](https://crates.io/crates/soroban-sdk)
+[![stellar-cli](https://img.shields.io/badge/stellar--cli-30.0.1-informational)](https://github.com/stellar/stellar-cli)
+
+## The problem
+
+A Soroban contract is a set of ledger entries. Each entry has a TTL. When the TTL
+runs out the entry is archived: the contract stops answering, balances sit
 unreachable, and recovery needs a `RestoreFootprintOp` from whoever notices.
-Extension is deliberately permissionless (CAP-0046-12), which is the right
-protocol design and also means **nobody is responsible for it**.
 
-Vigil makes responsibility explicit. A team registers a watch policy — which
-contract, how close to archival to act, how far to extend — and a keeper reads
-that registry and extends before anything archive.
+Extension is permissionless on purpose. CAP-0046-12:
 
-The registry exists because Soroban RPC cannot enumerate a contract's ledger
-entries. A generic watchdog has no way to discover what to watch, so the list has
-to be declared by someone who knows. That is this contract.
+> Any account may issue a TTL extension or restoration for any entry without
+> authorization. TTL extension and restoration is defined to always be beneficial
+> to the owner of the entry and can not be used maliciously.
+
+Permissionless is the right protocol design, and it creates a public good with no
+owner. Teams assume someone else's keeper is watching, or trust a cron job on a
+laptop that eventually stops.
+
+Second: Soroban RPC can fetch a specific ledger key but cannot enumerate a
+contract's entries. A generic watchdog cannot discover what to watch. The list
+has to be declared. That is why this is a contract and not a config file.
+
+## How it works
 
 ```
 register ──▶ Active ──▶ (pause ⇄ resume) ──▶ remove
                  │
-                 └─▶ keeper reads list(), extends TTL, report()s back
+                 └─▶ keeper reads list(), extends instance + code, report()s back
 ```
 
-## Status
+1. A contract or its deployer registers a watch policy: target, threshold,
+   extend target.
+2. A keeper reads the registry over RPC, reads the live TTL of the instance
+   **and** the code entry, and extends whichever expires first.
+3. The keeper reports the extension, so `last_reported` is public history.
 
-Deployed on Stellar **testnet** and exercised end to end.
+## Deployed
 
 | | |
 | --- | --- |
-| Contract id | `CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P` |
+| Network | Stellar **testnet** (mainnet not deployed, unaudited) |
+| Contract | `CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P` |
+| Explorer | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P) |
 | Wasm hash | `a62609d9f3e1ed17556863690ab7812d19fea8b8ef85528c1ad0d1025c8c9c3b` |
 | Wasm size | 9,814 bytes, 15 exported functions |
-| Explorer | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P) |
 
-Testnet transactions:
+Proven end to end, not just compiled: extension transaction
+`f7606e257bedce6d0d9a2310f482bfd43c172f7c29af351041af823bd9748c43`, report
+transaction `acf8805445fd0ac296cf935eddace59c5dfea17e58c1915161c75e43d4e00a2b`,
+and `last_reported` read back from chain as `5951776`.
 
-| Step | Transaction |
-| --- | --- |
-| deploy | `48adec032d52f12a00b491df11005014d6ec0d7109e6b7419506c2b35622d706` |
-| init | `34430f179703e8554e9c5e221402c7d7c0ba9dfeded19bdccade0091e37b1abb` |
-| set_keeper | `93e16c030cc59b46445c6d237779d2bc68c11dcd8e9eb1b6db8dfc8224b6de71` |
-| first `register` | `9b50c5510abfe89e471553a0f5423a6ff5e1227f28ddf119fc96ce19b1dcb27e` |
-
-Current testnet state: `count` is 1, and policy `0` watches the registry itself
-(threshold 1,000 ledgers, extend to 2,000,000) — a live policy for the keeper to
-exercise, not a mock.
-
-- 32 tests: happy paths, auth failures, bounds, pagination, id monotonicity.
-- `cargo test`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
-  clean.
-- `stellar contract build` clean under stellar-cli 30.0.1.
-
-**This is testnet only.** No mainnet deploy, no audit. The contract has not been
-through the Soroban Audit Bank.
-
-`SPEC.md` is the behaviour spec. Where code and spec disagree, the spec is the
-bug report.
-
-## Layout
-
-```
-Cargo.toml                     workspace
-contracts/registry/
-  src/lib.rs                   contract surface, wiring only
-  src/types.rs                 DataKey, WatchPolicy, Error, constants
-  src/storage.rs               typed storage, TTL extension on every write
-  src/admin.rs                 init, admin, keeper
-  src/register.rs              register + read paths
-  src/policy.rs                update, pause, resume, remove
-  src/report.rs                keeper reports
-  src/events.rs                contractevent structs
-  src/test.rs                  32 tests
-scripts/deploy_testnet.sh
-```
-
-## Build and test
+## Quick start
 
 ```bash
 rustup target add wasm32v1-none
-cargo test
+curl -fsSL https://github.com/stellar/stellar-cli/install.sh | bash   # 30.0.1
+
+cargo test                          # 32 tests
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-stellar contract build          # requires stellar-cli 30.0.1
+stellar contract build             # cargo build for wasm is blocked from SDK 28
 ```
 
-From `soroban-sdk` 28 onward a plain `cargo build` for wasm fails by design; the
-CLI strips unreachable spec entries after compiling. Use `stellar contract build`.
-
-## Deploy
+Deploy your own:
 
 ```bash
-export ADMIN=G...              # admin address, funded on testnet
-export SOURCE=deployer         # stellar keys name, must equal ADMIN to call init
-./scripts/deploy_testnet.sh
+export ADMIN=G... SOURCE=deployer
+./scripts/deploy_testnet.sh         # builds, deploys, inits, prints the contract id
 ```
 
-The script prints `REGISTRY_CONTRACT_ID=...` at the end. Put that into the app
-repo's `.env`; do not hand-edit a contract id anywhere.
+Register a policy:
 
-## Non-goals for v1
+```bash
+stellar contract invoke --id <CONTRACT_ID> --source deployer --network testnet -- \
+  register --owner G... --target C... --threshold 1000 --extend_to 2000000
+```
 
-- **No payments.** A contract cannot read another contract's TTL, so a keeper's
-  claim that it extended something cannot be verified on-chain. Paid claims would
-  be trust-based, which is worse than not offering them.
-- **No persistent data-key watching.** Each key must be declared; v1 watches the
-  instance and code entries, which is where "contract went dark" usually starts.
-- **No automated upgrades.** Upgrading requires the client contract to hold an
-  admin and call `update_current_contract_wasm` itself. That is their code, not a
-  service performed from outside.
+## Architecture
+
+```
+contracts/registry/src/
+  lib.rs        contract surface, wiring only
+  types.rs      DataKey, WatchPolicy, Error, constants
+  storage.rs    typed storage; every write extends that entry's TTL
+  admin.rs      init, admin, keeper
+  register.rs   register + read paths (paginated list)
+  policy.rs     update, pause, resume, remove (owner-only)
+  report.rs     keeper reports
+  events.rs     9 contractevent structs
+```
+
+One contract, one responsibility: hold the list of what should stay alive. The
+keeper lives in the app repo and needs no privilege on chain — extension is
+permissionless; only `report` is keeper-gated.
+
+Non-goals for v1, with reasons: no payments (a contract cannot read another
+contract's TTL, so keeper claims cannot be verified on-chain), no persistent
+data-key watching (keys cannot be enumerated, v2 declares them), no automated
+upgrades (the client contract must hold an admin itself).
+
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md). Current position: M1 complete, M2 (dashboard)
+not started.
+
+## Documentation
+
+- [`SPEC.md`](SPEC.md) — authoritative behaviour spec
+- [`docs/contract-reference.md`](docs/contract-reference.md) — public surface
+- [`SUBMISSION.md`](SUBMISSION.md) — what is deployed, proven and missing
+- [`change.md`](change.md) — how this repo got here
+
+## Maintainers
+
+| Maintainer | Role | Contact |
+| --- | --- | --- |
+| [@Muyideen-js](https://github.com/Muyideen-js) | Founder, contract | GitHub issues |
+| [@techAlhaji](https://github.com/techAlhaji) | Keeper and tooling | GitHub issues |
 
 ## Contributing
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md). Build, test and lint commands are in
-[Build and test](#build-and-test); a PR that changes the contract without
-changing `SPEC.md` will be sent back.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md). Two rules that matter: `cargo fmt`,
+`clippy -D warnings`, `cargo test` and `stellar contract build` must pass, and a
+contract change without a `SPEC.md` change will be sent back.
 
-- `SPEC.md` — authoritative behaviour spec
-- [`docs/contract-reference.md`](docs/contract-reference.md) — the public surface
-- [`SECURITY.md`](SECURITY.md) — unaudited, and how to report a vulnerability
-- [`SUBMISSION.md`](SUBMISSION.md) — what is deployed, proven and still missing
+Security: [`SECURITY.md`](SECURITY.md). This contract is **unaudited**. Report
+privately, not in an issue.
+
+## Contributors
+
+<a href="https://github.com/T-O-R-C-H/T.O.R.C.H/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=T-O-R-C-H/T.O.R.C.H" alt="contributors" />
+</a>
 
 ## Licence
 
-MIT.
+MIT — see [`LICENSE`](LICENSE).

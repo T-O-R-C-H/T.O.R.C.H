@@ -8,7 +8,7 @@ SOURCE="${SOURCE:-deployer}"
 ADMIN="${ADMIN:?set ADMIN to the admin address (it must be the SOURCE signer)}"
 KEEPER="${KEEPER:-}"
 
-WASM="target/wasm32v1-none/release/vigil_registry.wasm"
+WASM="target/wasm32v1-none/release/torch_registry.wasm"
 
 command -v stellar >/dev/null || {
   echo "stellar-cli not found. Install it first: https://github.com/stellar/stellar-cli" >&2

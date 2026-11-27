@@ -1,4 +1,4 @@
-# Vigil registry — specification
+# Torch registry — specification
 
 Matches the code in `contracts/registry/src`. If they disagree, the spec is the
 bug report and the code gets fixed.

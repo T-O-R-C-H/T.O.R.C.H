@@ -25,7 +25,7 @@ In scope:
 
 Out of scope:
 
-- The keeper and dashboard (`vigil-app`)
+- The keeper and dashboard (`torch-app`)
 - Testnet state and any keys committed by mistake (report those privately anyway)
 
 ## Known properties that are not vulnerabilities

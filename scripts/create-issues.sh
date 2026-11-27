@@ -17,7 +17,13 @@ done
 
 create() {
   local title="$1" body="$2"; shift 2
-  gh issue create --repo "$REPO" --title "$title" --body "$body" "$@"
+  # A push-only token cannot create labels. Create the issue anyway rather than
+  # losing the backlog; the intended labels are visible in this script.
+  if gh issue create --repo "$REPO" --title "$title" --body "$body" "$@" 2>/dev/null; then
+    return
+  fi
+  echo "  labels unavailable for this token; creating without them"
+  gh issue create --repo "$REPO" --title "$title" --body "$body"
 }
 
 create "feat(registry): watch declared persistent data keys" \
