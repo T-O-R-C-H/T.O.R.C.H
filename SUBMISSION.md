@@ -23,6 +23,7 @@ generic keeper can know what to watch.
 | Registry contract (testnet) | `CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P` |
 | Explorer | https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P |
 | Contract repo | https://github.com/T-O-R-C-H/T.O.R.C.H |
+| Documentation site | https://t-o-r-c-h.github.io/T.O.R.C.H/ |
 | App repo | **pending** — `torch-app` is built locally; the repo could not be created with the current GitHub token |
 | Wasm hash | `a62609d9f3e1ed17556863690ab7812d19fea8b8ef85528c1ad0d1025c8c9c3b` |
 

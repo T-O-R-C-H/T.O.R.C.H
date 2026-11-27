@@ -113,6 +113,9 @@ not started.
 
 ## Documentation
 
+**Docs site: [t-o-r-c-h.github.io/T.O.R.C.H](https://t-o-r-c-h.github.io/T.O.R.C.H/)** —
+includes the mechanics, the contract reference and both end-user guides.
+
 - [`SPEC.md`](SPEC.md) — authoritative behaviour spec
 - [`docs/contract.md`](docs/contract.md) — public surface
 - [`SUBMISSION.md`](SUBMISSION.md) — what is deployed, proven and missing
