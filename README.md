@@ -109,6 +109,17 @@ repo's `.env`; do not hand-edit a contract id anywhere.
   admin and call `update_current_contract_wasm` itself. That is their code, not a
   service performed from outside.
 
+## Contributing
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md). Build, test and lint commands are in
+[Build and test](#build-and-test); a PR that changes the contract without
+changing `SPEC.md` will be sent back.
+
+- `SPEC.md` — authoritative behaviour spec
+- [`docs/contract-reference.md`](docs/contract-reference.md) — the public surface
+- [`SECURITY.md`](SECURITY.md) — unaudited, and how to report a vulnerability
+- [`SUBMISSION.md`](SUBMISSION.md) — what is deployed, proven and still missing
+
 ## Licence
 
 MIT.
