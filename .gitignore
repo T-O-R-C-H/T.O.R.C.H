@@ -1,59 +1,7 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-
-# Dependencies
-node_modules/
-
-# Build outputs
-out/
-dist/
-dist-electron/
-
-# Environment
+target/
 .env
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
+.env.local
+.tmp/
 *.swp
-*.swo
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.eggs/
-venv/
-.venv/
-*.egg
-
-# Data
-data/
-*.db
-
-# Caches
-.eslintcache
-*.tsbuildinfo
-
-# Packages
-*.exe
-*.dmg
-*.AppImage
-
-# Claude Code local permissions (machine-specific, may grant broad tool access)
-.claude/settings.json
-.claude/settings.local.json
-
-# PyInstaller backend bundle output (rebuilt by backend/build_backend.py)
-dist-backend/
-build-backend/
-
-# uiautomation writes this next to the process
-@AutomationLog.txt
+.DS_Store
+node_modules

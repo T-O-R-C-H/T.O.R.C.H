@@ -1,3 +1,0 @@
-User-agent: *
-Allow: /
-Sitemap: https://t-o-r-c-h.github.io/T.O.R.C.H/sitemap.xml

@@ -1,0 +1,15 @@
+[workspace]
+members = ["contracts/registry"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/T-O-R-C-H/T.O.R.C.H"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+overflow-checks = true
+strip = "symbols"

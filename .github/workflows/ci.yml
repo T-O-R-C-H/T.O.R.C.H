@@ -1,98 +1,21 @@
-name: CI
+name: ci
 
 on:
   push:
-    branches:
-      - main
-      - develop
-      - 'feat/**'
+    branches: [main]
   pull_request:
-    branches:
-      - main
-      - develop
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend checks
-    runs-on: windows-latest
-    timeout-minutes: 20
+  rust:
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: '22'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Type-check
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run frontend tests
-        run: npm run test
-
-  backend:
-    name: Backend tests
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
-
-      - name: Install dependencies
-        run: python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
-
-      - name: Run backend tests
-        working-directory: backend
-        run: python -m pytest
-
-  renderer-build:
-    name: Desktop renderer build
-    needs:
-      - frontend
-      - backend
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Electron renderer and main process
-        run: npm run build
-
-      # Installer packaging is intentionally not claimed here. The current
-      # builder copies a local development venv and must be replaced by the
-      # planned PyInstaller backend before packaging becomes a reliable gate.
+          components: rustfmt, clippy
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test

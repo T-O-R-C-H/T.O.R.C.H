@@ -1,150 +1,93 @@
-# T.O.R.C.H
+# Vigil
 
-![CI](https://github.com/T-O-R-C-H/T.O.R.C.H/actions/workflows/ci.yml/badge.svg)
+A registry for Soroban contracts that should not be allowed to archive.
 
-### _Thinking, Observing, Reasoning, Creating & Handling_
+Soroban ledger entries expire. When a contract's instance and code entries pass
+their TTL they are archived: the contract stops answering, balances stay
+unreachable, and recovery needs a `RestoreFootprintOp` from whoever notices.
+Extension is deliberately permissionless (CAP-0046-12), which is the right
+protocol design and also means **nobody is responsible for it**.
 
-> An AI agent for Windows that uses your computer the way a person does. Tell it what you want in plain English; it looks at the screen, clicks and types, checks its work, and keeps going until the job is done.
+Vigil makes responsibility explicit. A team registers a watch policy — which
+contract, how close to archival to act, how far to extend — and a keeper reads
+that registry and extends before anything archive.
 
----
-
-## What it does
-
-- **Works in any app.** Chrome, Notepad, Calculator, File Explorer, a video editor: if you can see it, TORCH can use it. No plugins or app-specific integrations.
-- **Does the whole task.** "Go to demoblaze.com, find the cheapest laptop, add it to the cart and check out" runs from the first click to the checkout form.
-- **Teaches or does.** "How do I import a video?" points at the real button on your screen. "Do it for me" does that step.
-- **Asks first.** Sending, deleting, buying, downloading and running commands wait for your approval.
-- **Hands over at payment.** At a payment form, a CAPTCHA or a final "place order", TORCH stops and gives control back to you. It never types card details.
-- **Stays out of your way.** TORCH has its own on-screen cursor and never moves yours. A soft blue glow round the screen edge shows when it's in control, and a small panel in the corner shows its to-do list.
-- **Yours.** Runs on your computer with your own AI key. Keys are encrypted by the operating system. No telemetry, and voice never leaves the machine.
-
-## Things to try
+The registry exists because Soroban RPC cannot enumerate a contract's ledger
+entries. A generic watchdog has no way to discover what to watch, so the list has
+to be declared by someone who knows. That is this contract.
 
 ```
-Open Chrome, go to YouTube and play Doja by Central Cee
-Open Calculator and work out 128 x 24
-Open Notepad, write a short poem about Lagos and save it as lagos.txt
-Find my CV in Documents and open it
-How do I add a transition in CapCut?
-```
-
-## How screen control works
-
-When no built-in tool covers a task, TORCH runs a look-then-act loop
-(`backend/tools/vision_control.py`):
-
-1. Take a screenshot (TORCH's own windows are hidden from it).
-2. Read the Windows accessibility tree for the names and exact positions of
-   the controls on screen.
-3. Send both to the vision model, which returns one action as JSON: click a
-   named control, type, press a key, scroll, wait, ask, hand over or done.
-   It also keeps a to-do list and says which item it is on.
-4. Do the action, then look again to check what changed.
-
-Guard rails are code, not prompts. Approval policy lives in Python
-(`backend/agent/planner.py`). Clicks on a window's own Close or Minimize
-button are refused unless the task asks for them. Repeated clicks a page
-ignores are retried as real mouse clicks. Payment and final-order steps
-are always handed to the user.
-
-Looking at the screen is off by default. Turn it on in Settings → "Look at my
-screen". Screenshots go only to the AI service whose key you added.
-
-## Tech stack
-
-| Layer    | Technology                                                       |
-| -------- | ---------------------------------------------------------------- |
-| Shell    | Electron 39                                                      |
-| Frontend | React 19, TypeScript, Tailwind CSS 4, Zustand 5, Framer Motion   |
-| Backend  | Python 3.11, FastAPI, WebSocket                                  |
-| AI       | Your own key: DeepSeek or Claude (one is the fallback for the other) |
-| Vision   | The same key, plus Windows UI Automation for exact positions     |
-| Voice    | faster-whisper (speech to text) and Kokoro (speech), both local  |
-| Storage  | SQLite                                                           |
-
-## Getting started
-
-Requires Node.js 20+ and Python 3.11 on Windows 10/11.
-
-```bash
-npm ci
-
-cd backend
-python -m venv venv
-venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt
-cd ..
-
-npm run dev
-```
-
-`npm run dev` starts the desktop app, which starts the backend for you. Add
-a DeepSeek or Claude key in Settings → Connections (until then the app runs
-in demo mode). For screen tasks, also turn on "Look at my screen".
-
-## Checks
-
-```bash
-npm run typecheck && npm run lint && npm run test   # frontend
-cd backend && venv\Scripts\python -m pytest         # backend
-```
-
-## Building the installer
-
-```bash
-backend\venv\Scripts\python backend/build_backend.py   # bundles the backend
-npm run build:win
-```
-
-## Releasing
-
-Set `"version"` in `package.json`, commit, then push a matching tag:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-`.github/workflows/release.yml` builds the installer on a clean Windows
-machine and publishes it as a GitHub release. The website's Download button
-picks up the newest release on its own.
-
-## Website
-
-`website/` is the public site (Vite + React), deployed to GitHub Pages by
-`.github/workflows/pages.yml` on every push to `main` that touches it.
-
-```bash
-cd website
-npm ci --ignore-scripts
-npm run dev
-```
-
-## Architecture
-
-```
-Electron main ──spawns──► Python backend (127.0.0.1, random session token)
-      │                          ▲
-      ├─► React renderer ──WebSocket + REST──┘
-      └─► overlay windows: task panel, TORCH cursor, control border
-                                 │
-     plan (AI) → validate + approval policy → named tools or the vision loop
+register ──▶ Active ──▶ (pause ⇄ resume) ──▶ remove
+                 │
+                 └─▶ keeper reads list(), extends TTL, report()s back
 ```
 
 ## Status
 
-Pre-launch. Known gaps:
+Contract implemented and tested. **Not deployed.** No contract id exists yet and
+none should appear in this repo until `stellar contract deploy` prints one.
 
-- The installer is unsigned, so Windows SmartScreen warns on install (`CODE_SIGNING.md`).
-- A clean-machine install (no Python) has not been verified yet.
-- Social posting opens the site with the text ready. It does not post.
-- Each screen step takes a few seconds, most of it the AI model thinking.
+- 32 tests: happy paths, auth failures, bounds, pagination, id monotonicity.
+- `cargo test`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
+  all clean.
+- `stellar contract build` has not been run here — no Stellar CLI or wasm target
+  in this environment. That is the first thing to do before deploying.
 
-## Read next
+`SPEC.md` is the behaviour spec. Where code and spec disagree, the spec is the
+bug report.
 
-- `VISION.md`: what TORCH is meant to become
-- `CLAUDE.md`: the full technical picture and the rules learned building it
-- `SECURITY.md`: the November 2026 supply-chain incident. Every contributor needs to read it.
+## Layout
 
-## License
+```
+Cargo.toml                     workspace
+contracts/registry/
+  src/lib.rs                   contract surface, wiring only
+  src/types.rs                 DataKey, WatchPolicy, Error, constants
+  src/storage.rs               typed storage, TTL extension on every write
+  src/admin.rs                 init, admin, keeper
+  src/register.rs              register + read paths
+  src/policy.rs                update, pause, resume, remove
+  src/report.rs                keeper reports
+  src/events.rs                contractevent structs
+  src/test.rs                  32 tests
+scripts/deploy_testnet.sh
+```
 
-MIT
+## Build and test
+
+```bash
+rustup target add wasm32v1-none
+cargo test
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+stellar contract build          # requires stellar-cli 30.0.1
+```
+
+From `soroban-sdk` 28 onward a plain `cargo build` for wasm fails by design; the
+CLI strips unreachable spec entries after compiling. Use `stellar contract build`.
+
+## Deploy
+
+```bash
+export ADMIN=G...              # admin address, funded on testnet
+export SOURCE=deployer         # stellar keys name, must equal ADMIN to call init
+./scripts/deploy_testnet.sh
+```
+
+The script prints `REGISTRY_CONTRACT_ID=...` at the end. Put that into the app
+repo's `.env`; do not hand-edit a contract id anywhere.
+
+## Non-goals for v1
+
+- **No payments.** A contract cannot read another contract's TTL, so a keeper's
+  claim that it extended something cannot be verified on-chain. Paid claims would
+  be trust-based, which is worse than not offering them.
+- **No persistent data-key watching.** Each key must be declared; v1 watches the
+  instance and code entries, which is where "contract went dark" usually starts.
+- **No automated upgrades.** Upgrading requires the client contract to hold an
+  admin and call `update_current_contract_wasm` itself. That is their code, not a
+  service performed from outside.
+
+## Licence
+
+MIT.
