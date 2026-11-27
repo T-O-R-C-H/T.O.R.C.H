@@ -24,14 +24,35 @@ register ──▶ Active ──▶ (pause ⇄ resume) ──▶ remove
 
 ## Status
 
-Contract implemented and tested. **Not deployed.** No contract id exists yet and
-none should appear in this repo until `stellar contract deploy` prints one.
+Deployed on Stellar **testnet** and exercised end to end.
+
+| | |
+| --- | --- |
+| Contract id | `CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P` |
+| Wasm hash | `a62609d9f3e1ed17556863690ab7812d19fea8b8ef85528c1ad0d1025c8c9c3b` |
+| Wasm size | 9,814 bytes, 15 exported functions |
+| Explorer | [stellar.expert](https://stellar.expert/explorer/testnet/contract/CAPABMYRGX54YT5DODZL43ZMA73HEUZOGAD6DKHD2LZ7RMAPMGVARD5P) |
+
+Testnet transactions:
+
+| Step | Transaction |
+| --- | --- |
+| deploy | `48adec032d52f12a00b491df11005014d6ec0d7109e6b7419506c2b35622d706` |
+| init | `34430f179703e8554e9c5e221402c7d7c0ba9dfeded19bdccade0091e37b1abb` |
+| set_keeper | `93e16c030cc59b46445c6d237779d2bc68c11dcd8e9eb1b6db8dfc8224b6de71` |
+| first `register` | `9b50c5510abfe89e471553a0f5423a6ff5e1227f28ddf119fc96ce19b1dcb27e` |
+
+Current testnet state: `count` is 1, and policy `0` watches the registry itself
+(threshold 1,000 ledgers, extend to 2,000,000) — a live policy for the keeper to
+exercise, not a mock.
 
 - 32 tests: happy paths, auth failures, bounds, pagination, id monotonicity.
 - `cargo test`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
-  all clean.
-- `stellar contract build` has not been run here — no Stellar CLI or wasm target
-  in this environment. That is the first thing to do before deploying.
+  clean.
+- `stellar contract build` clean under stellar-cli 30.0.1.
+
+**This is testnet only.** No mainnet deploy, no audit. The contract has not been
+through the Soroban Audit Bank.
 
 `SPEC.md` is the behaviour spec. Where code and spec disagree, the spec is the
 bug report.
